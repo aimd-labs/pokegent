@@ -75,12 +75,20 @@ def check_port(name: str, port: MemoryPort, profile: RomProfile) -> dict[str, An
         avatar = profile.symbol("gPlayerAvatar").address
         index = port.read_u8(avatar + C.AVATAR_OBJECT_EVENT_ID_OFFSET)
         if index < C.OBJECT_EVENTS_COUNT:
-            raw = port.read_range(events + index * C.OBJECT_EVENT_SIZE + 0x10, 4)
-            cx, cy = struct.unpack("<hh", raw)
-            if (cx - 7, cy - 7) != (player.x, player.y):
-                failures.append(
-                    f"pos ({player.x},{player.y}) != object event coords-7 ({cx - 7},{cy - 7})"
-                )
+            obj = events + index * C.OBJECT_EVENT_SIZE
+            # The usable reader above already enforces the exact pre-field callback allowlist
+            # and absence of ANY active player before permitting an uncreated avatar. Only an
+            # initialized active player has coordinates to cross-check here.
+            if (
+                port.read_u8(obj) & C.OBJ_EVENT_ACTIVE_BIT
+                and port.read_u8(obj + 2) & C.OBJ_EVENT_IS_PLAYER_BIT
+            ):
+                raw = port.read_range(obj + 0x10, 4)
+                cx, cy = struct.unpack("<hh", raw)
+                if (cx - 7, cy - 7) != (player.x, player.y):
+                    failures.append(
+                        f"pos ({player.x},{player.y}) != object event coords-7 ({cx - 7},{cy - 7})"
+                    )
     result["summary"] = {
         "map": [player.map_group, player.map_num],
         "pos": [player.x, player.y],
