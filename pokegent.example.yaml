@@ -24,6 +24,8 @@ field:
   menus: false
 output:
   run_dir: runs
+emulator:
+  realtime_idle_while_deciding: false # opt in: keep audio/animation running during model waits
 stream:
   enabled: false
   port: 19700

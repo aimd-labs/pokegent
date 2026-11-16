@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
-from typing import Literal
+from typing import Callable, Literal
 
 from pokegent.actions.battle import state as battle_state
 from pokegent.actions.battle.state import BattleBlock
@@ -51,6 +51,7 @@ from pokegent.games.gen3.firered.reader.live import (
     AtomicSnapshotPort,
     AtomicSnapshotSource,
     LiveReader,
+    live_snapshot_seq,
 )
 from pokegent.games.gen3.firered.reader.memory_port import (
     EWRAM_END,
@@ -170,6 +171,37 @@ class CompositeSnapshotSource:
         atomic = self._source.read_atomic_snapshot()  # the ONE emulator read of this step
         self.reads += 1
         return self.build(atomic)
+
+    def decision_guard(
+        self, snapshot_seq: int, *, allow_invalid_core: bool = False
+    ) -> Callable[[AtomicSnapshot], bool]:
+        """Compare every idle frame with the exact atomic sample behind the offered frame.
+
+        A separate decoder owns its caches and text sidecar on the emulator thread. No live
+        actor reads, route planning, builders, provider calls or input happen in this guard.
+        Always decode the map here, even if normal perception has map_mode=off.
+        """
+        from pokegent.games.gen3.firered.reader.decision_idle import observable_state
+
+        baseline = self._last_atomic
+        if baseline is None or live_snapshot_seq(baseline) != snapshot_seq:
+            raise ValueError("decision idle needs the exact decision snapshot")
+        decoder = CompositeSnapshotSource(
+            self._source, self._profile, sidecar=TextSidecar(),
+            party_source=self.party_source, map_mode="field", include_battle=True,
+        )
+        decoder.build(baseline)
+        expected = observable_state(decoder.last, allow_invalid_core=allow_invalid_core)
+
+        def unchanged(atomic: AtomicSnapshot) -> bool:
+            if atomic.load_epoch != baseline.load_epoch:
+                return False
+            decoder.build(atomic)
+            return observable_state(
+                decoder.last, allow_invalid_core=allow_invalid_core
+            ) == expected
+
+        return unchanged
 
     def read_snapshot_if_changed(self, *, mode: str = "wait") -> StateSnapshot | None:
         """Cheap executor poll: decode fully only when decision-relevant RAM changed.

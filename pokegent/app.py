@@ -206,8 +206,11 @@ class AppConfig:
     stream: AddonConfig = field(default_factory=AddonConfig)
     dashboard: AddonConfig = field(default_factory=AddonConfig)
     new_game: NewGameConfig = field(default_factory=NewGameConfig)
+    realtime_idle_while_deciding: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.realtime_idle_while_deciding, bool):
+            raise AppError("emulator.realtime_idle_while_deciding must be a boolean")
         if not _RUN_ID_OK.match(self.run_id):
             raise AppError(
                 f"run_id must be 1..{RUN_ID_MAX} characters of letters, digits, '.', '_' or '-' "
@@ -306,6 +309,7 @@ class AppConfig:
 
 _SECTIONS = {
     "objectives": {"fallback"},
+    "emulator": {"realtime_idle_while_deciding"},
     "schema_version": None,
     "autoplay": None,
     "external": {"walk_step_limit"},
@@ -424,7 +428,7 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
     if bad_external:
         raise AppError(f"unknown keys in external: {bad_external}")
     kw["external"] = dict(external)
-    for section in ("run", "families", "battle"):
+    for section in ("run", "families", "battle", "emulator"):
         body = raw.get(section) or {}
         if not isinstance(body, Mapping):
             raise AppError(f"{section} must be a mapping")
@@ -1248,14 +1252,16 @@ def startup_snapshot_allowed(snapshot: Any, scene_id: str | None) -> bool:
 
 @contextmanager
 def open_emulator(
-    rom_path: str | os.PathLike[str], *, fps: float | None = None
+    rom_path: str | os.PathLike[str], *, fps: float | None = None,
+    realtime_idle_while_deciding: bool = False,
 ) -> Iterator[tuple[Any, RomProfile]]:
     """The real headless emulator behind its single-writer actor, plus the ROM's profile.
 
     Raises ``UnsupportedRomError`` for a ROM no profile knows. The ROM is read-only, never copied.
     ``fps`` paces every frame to ``1/fps`` wall seconds (``--realtime``) but only while a command
     needs frames (``idle_frames=False``): the game advances exactly as in an unpaced run, only
-    slower, so a human can watch it and the run stays replayable.
+    slower, so a human can watch it and the run stays replayable. Opt-in decision idle uses
+    60 fps when no addon pacing was selected; only provider waits gain extra no-input frames.
     """
     from pokegent.emulator import EmuClock, EmulatorActor, PyGBAEmulator
     from pokegent.games.gen3.firered.rom.rom_data import (
@@ -1268,8 +1274,12 @@ def open_emulator(
     profile = require_supported(identify_rom_file(rom_path, profiles), profiles)
     emulator = PyGBAEmulator()
     emulator.load(str(rom_path))
+    if realtime_idle_while_deciding and fps is None:
+        fps = 60.0
     clock = EmuClock(emulator, fps=fps, idle_frames=False) if fps else None
-    with EmulatorActor(emulator, clock=clock) as actor:
+    with EmulatorActor(
+        emulator, clock=clock, realtime_idle_while_deciding=realtime_idle_while_deciding
+    ) as actor:
         yield actor, profile
 
 
@@ -1952,7 +1962,10 @@ def run_offline(
         from pokegent.games.gen3.firered.rom.rom_data import UnsupportedRomError
 
         try:
-            with open_emulator(rom, fps=vcfg.fps if vcfg.realtime_on else None) as (actor, profile):
+            with open_emulator(
+                rom, fps=vcfg.fps if vcfg.realtime_on else None,
+                realtime_idle_while_deciding=cfg.realtime_idle_while_deciding,
+            ) as (actor, profile):
                 facts = build_facts(
                     profile,
                     rom,
