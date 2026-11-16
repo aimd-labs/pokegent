@@ -24,6 +24,7 @@ SESSION_TAIL = 6
 def _party_row(mon: dict[str, Any]) -> dict[str, Any]:
     return {
         "species_id": mon["species_id"],
+        "national_dex": mon.get("national_dex"),
         "species": mon["species"],
         "nickname": mon["nickname"],
         "level": mon["level"],
@@ -60,6 +61,7 @@ def _battle(battle: dict[str, Any]) -> dict[str, Any]:
         if foe is None
         else {
             "species_id": foe["species_id"],
+            "national_dex": foe.get("national_dex"),
             "species": foe["species"],
             "nickname": foe["nickname"],
             "level": foe["level"],

@@ -56,18 +56,27 @@ def foe_facts(view: BattleView, snapshot: Any, objective: Any) -> dict[str, Any]
     foe = view.opponent
     wanted = wanted_species(objective)
     owned = snapshot_owned_species(snapshot)
-    new = None if owned is None else foe.species not in owned
-    state = "wanted" if wanted == foe.species else ("new" if new else "already owned")
+    dex = view.tables.national_dex(foe.species) if view.tables is not None else None
+    new = None if owned is None or dex is None else dex not in owned
+    state = (
+        "wanted"
+        if dex is not None and wanted == dex
+        else "unknown"
+        if new is None
+        else "new"
+        if new
+        else "already owned"
+    )
     facts: dict[str, Any] = {
         "wild_target": f"{foe.name} ({state})",
         "wanted_species": wanted,
         "foe_new_to_pokedex": new,
     }
-    if wanted == foe.species:
+    if dex is not None and wanted == dex:
         facts["wanted"] = True
         facts["wanted_text"] = "WANTED: this is the Pokemon the objective needs"
     elif wanted is not None:
-        facts["wanted"] = False
+        facts["wanted"] = None if dex is None else False
     return facts
 
 

@@ -122,6 +122,15 @@ class RomTables:
                 # Synthetic and ROM-free snapshots retain the raw-port path.
                 self._tables = False
 
+    def national_dex(self, species: int) -> int | None:
+        if self._tables:
+            return self._tables.national_dex(species)
+        from pokegent.games.gen3.firered.rom.species_dex import national_dex, read_species_dex
+
+        if not hasattr(self, "_species_dex"):
+            self._species_dex = read_species_dex(self._port, self._profile)
+        return national_dex(self._species_dex, species)
+
     # -- raw rows ---------------------------------------------------------------------------
 
     def _row(self, table: str, index: int, size: int | None = None) -> bytes | None:

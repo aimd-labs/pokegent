@@ -390,6 +390,7 @@ class BattleLookups(_F):
     """
 
     species: dict[int, str] = Field(default_factory=dict)
+    species_national_dex: dict[int, int] = Field(default_factory=dict)
     #: ROM-derived type ids for species mentioned by this snapshot. Kept separate from names so
     #: learn-move facts can use the learner's species even when it is benched.
     species_types: dict[int, tuple[int, int]] = Field(default_factory=dict)

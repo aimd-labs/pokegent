@@ -208,6 +208,11 @@ profiles:
       # matching entry. Each base is proven by historical local validation (names, ids, structural
       # scans of every entry, known-answer entries), run on the host ROM, 2026-10-08.
     rom_tables:
+      sSpeciesToNationalPokedexNum:
+        address: 0x08251FEE
+        size: 822
+        source: "https://github.com/pret/pokefirered/blob/037335f4/src/pokemon.c#L39 and #L512: u16[NUM_SPECIES - 1], species - 1 indexing; https://github.com/pret/pokefirered/blob/symbols/pokefirered.sym#L26908: address 08251fee, size 00000336"
+        verified_by: ["Runtime: exact 411 u16 entries, first 251 equal 1..251, real species values 0..386; reserved slots 252..276 accept 0..411 and yield null"]
       gTrainers:
         address: 0x0823EAC8
         size: 29720
