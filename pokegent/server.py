@@ -257,7 +257,9 @@ class ExternalDecider:
                     if not 1 <= scale <= 4:
                         self._send(400, {"error": "scale must be an integer from 1 to 4"})
                         return
-                    frame = owner._frames.latest()
+                    # The agent may arrive after demand-driven capture went idle. Refresh
+                    # through the read-only source so a pending choice sees the current screen.
+                    frame = owner._frames.grab(max_age=0)
                     if frame is None:
                         self._send(503, {"error": "no frame yet"})
                         return
