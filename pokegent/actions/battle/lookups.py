@@ -16,6 +16,9 @@ class Lookups:
     def __init__(self, data: BattleLookups) -> None:
         self._d = data
 
+    def national_dex(self, species: int) -> int | None:
+        return self._d.species_national_dex.get(species)
+
     # names ------------------------------------------------------------------------------------
     def species_name(self, species: int) -> str | None:
         return self._d.species.get(species)
@@ -122,6 +125,9 @@ def collect_lookups(
         )
     return BattleLookups(
         species=sp,
+        species_national_dex={
+            i: n for i in sorted(species) if (n := tables.national_dex(i)) is not None
+        },
         species_types=species_types,
         species_gender_ratio=species_gender_ratio,
         species_base_stats=species_base_stats,

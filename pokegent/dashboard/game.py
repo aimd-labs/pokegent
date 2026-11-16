@@ -29,7 +29,7 @@ BADGE_NAMES = (
     "Volcano",
     "Earth",
 )
-#: species ids 1..251 are the national dex numbers (the sprites of the dashboard); above, no sprite
+#: Legacy species_id is limited to 1..251; national_dex supplies the full sprite number.
 MAX_SPRITE_SPECIES = 251
 _WORD_SPLIT = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=[0-9])")
 
@@ -83,6 +83,7 @@ def party_row(mon: PartyMember, names: NameBook) -> dict[str, Any]:
     return {
         "slot": mon.slot,
         "species_id": None if mon.is_egg else _species_id(mon.species),
+        "national_dex": None if mon.is_egg else names.national_dex(mon.species),
         "species": species,
         "nickname": mon.nickname or species,
         "level": mon.level,
@@ -198,6 +199,7 @@ def battle_block(snapshot: StateSnapshot, names: NameBook) -> dict[str, Any]:
         types = _battler_types(foe)
         out["enemy"] = {
             "species_id": _species_id(foe.species),
+            "national_dex": names.national_dex(foe.species),
             "species": name,
             "nickname": name,
             "level": foe.level,

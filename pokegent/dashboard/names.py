@@ -24,6 +24,9 @@ class NameBook:
     def available(self) -> bool:
         return self._tables is not None
 
+    def national_dex(self, species_id: int) -> int | None:
+        return self._lookup(lambda t: t.national_dex(species_id))
+
     def species_name(self, species_id: int) -> str | None:
         return self._lookup(lambda t: t.species(species_id).name)
 

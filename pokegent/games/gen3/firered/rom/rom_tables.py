@@ -475,6 +475,7 @@ class GameTables:
         tmhm_learnsets: tuple[bytes, ...] = (),
         tmhm_moves: tuple[int, ...] = (),
         evolutions: tuple[tuple[EvolutionData, ...], ...] = (),
+        species_dex: tuple[int, ...] = (),
     ) -> None:
         self._moves = moves
         self._species = species
@@ -486,6 +487,12 @@ class GameTables:
         self._tmhm_learnsets = tmhm_learnsets
         self._tmhm_moves = tmhm_moves
         self._evolutions = evolutions
+        self._species_dex = species_dex
+
+    def national_dex(self, species: int) -> int | None:
+        from pokegent.games.gen3.firered.rom.species_dex import national_dex
+
+        return national_dex(self._species_dex, species)
 
     # -- construction -------------------------------------------------------------------------
 
@@ -493,6 +500,8 @@ class GameTables:
     def from_port(cls, port: MemoryPort, profile: RomProfile) -> GameTables:
         """Read every table through ``port``. A missing table address raises ``ProfileError``;
         malformed data raises :class:`TablesError`. Never guesses an address."""
+        from pokegent.games.gen3.firered.rom.species_dex import read_species_dex
+
         sym = rom_table_addresses(profile)
 
         raw_moves = port.read_range(sym["gBattleMoves"], C.MOVES_COUNT * MOVE_ENTRY_SIZE)
@@ -563,6 +572,7 @@ class GameTables:
             ability_names=ability_names,
             type_names=type_names,
             profile_id=profile.profile_id,
+            species_dex=read_species_dex(port, profile),
             tmhm_learnsets=tuple(
                 raw_learnsets[i * TMHM_LEARNSET_ENTRY_SIZE : (i + 1) * TMHM_LEARNSET_ENTRY_SIZE]
                 for i in range(TMHM_LEARNSET_COUNT)
@@ -582,9 +592,25 @@ class GameTables:
         and is checked against the generated document.
         """
         from pokegent.games.gen3.firered.rom.rom_cache import ensure
+        from pokegent.games.gen3.firered.rom.rom_data import (
+            ROM_PATH_ENV,
+            ProfileError,
+            load_profiles,
+        )
+        from pokegent.games.gen3.firered.rom.species_dex import COUNT, TABLE, decode_species_dex
 
         cache = ensure(path)
-        return cls.from_cache(cache, profile_id=profile_id)
+        tables = cls.from_cache(cache, profile_id=profile_id)
+        try:
+            profile = load_profiles().get(tables.profile_id)
+            entry = profile.rom_table(TABLE)
+            if entry.size == COUNT * 2:
+                with Path(path or os.environ[ROM_PATH_ENV]).expanduser().open("rb") as source:
+                    source.seek(entry.address - 0x08000000)
+                    tables._species_dex = decode_species_dex(source.read(entry.size))
+        except (OSError, ValueError, KeyError, ProfileError):
+            pass
+        return tables
 
     @classmethod
     def from_rom_image(cls, image: bytes, profile: RomProfile) -> GameTables:

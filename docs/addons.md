@@ -69,3 +69,21 @@ Layout and clock bounds are documented by the profile's pinned interoperability
 reference: [SaveBlock2](https://github.com/pret/pokefirered/blob/037335f4c725d7c9aecdac87066f2002b4bd7e14/include/global.h),
 [clock](https://github.com/pret/pokefirered/blob/037335f4c725d7c9aecdac87066f2002b4bd7e14/src/play_time.c),
 and [national dex counting](https://github.com/pret/pokefirered/blob/037335f4c725d7c9aecdac87066f2002b4bd7e14/src/pokedex.c).
+
+Public `state.party[].species_id` and `state.battle.enemy.species_id` retain their
+legacy meaning: an internal FireRed species ID only in the range 1–251, otherwise
+`null` (also `null` for party eggs). They are not general national dex numbers.
+Both objects now also expose `national_dex` (`int | null`), the national number
+1–386 used for sprite lookup, including Gen-3 species whose internal IDs differ.
+This value is read from the user's ROM table, validated and cached in memory;
+missing or invalid tables, reserved internal slots, unknown species and party
+eggs yield `null`. Consumers should use `national_dex` for sprites and keep an
+unknown placeholder when it is `null`. Battle catch facts likewise compare
+national numbers with objective `dex_owned` probes and Pokédex flags; without
+that mapping, wanted/new/seen facts remain unknown. No legality is inferred.
+
+The table layout and species-minus-one indexing come from
+[pret pokemon.c](https://github.com/pret/pokefirered/blob/037335f4/src/pokemon.c#L512).
+Legacy Unown slots lie outside the real national dex range in
+[pret pokedex.h](https://github.com/pret/pokefirered/blob/037335f4/include/constants/pokedex.h#L395);
+they are excluded from the public number rather than treated as Gen-3 species.

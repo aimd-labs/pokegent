@@ -456,14 +456,12 @@ class BattleBuilder:
         else:
             hidden = ()
         owned = getattr(getattr(ctx.snapshot, "pokedex", None), "owned", None)
+        dex = view.tables.national_dex(view.opponent.species) if view.tables is not None else None
+        seen = getattr(getattr(ctx.snapshot, "pokedex", None), "seen", None)
         party_foe_facts = {
             "foe_species": view.opponent.species,
-            "foe_new_to_pokedex": None if owned is None else view.opponent.species not in owned,
-            "foe_seen_in_pokedex": (
-                None
-                if getattr(getattr(ctx.snapshot, "pokedex", None), "seen", None) is None
-                else view.opponent.species in ctx.snapshot.pokedex.seen
-            ),
+            "foe_new_to_pokedex": None if owned is None or dex is None else dex not in owned,
+            "foe_seen_in_pokedex": None if dex is None or seen is None else dex in seen,
         }
         options = [
             option.model_copy(update={"facts": {**option.facts, **party_foe_facts}})
