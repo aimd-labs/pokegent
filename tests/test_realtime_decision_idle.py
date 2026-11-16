@@ -25,7 +25,7 @@ from pokegent.dashboard.stream.frames import FrameHub
 from pokegent.emulator import EmuClock, EmulatorActor
 from pokegent.errors import ErrorCode
 from pokegent.events import EventType, MemoryEventLog
-from pokegent.games.gen3.firered.maps.map_schema import MapObject, MapState
+from pokegent.games.gen3.firered.maps.map_schema import MapObject, MapState, PlayerPlacement
 from pokegent.games.gen3.firered.reader.battle_reader import BattleSnapshot
 from pokegent.games.gen3.firered.reader.decision_idle import observable_state
 from pokegent.games.gen3.firered.reader.schemas import (
@@ -43,7 +43,7 @@ from pokegent.games.gen3.firered.reader.snapshot_sources import (
 from pokegent.games.gen3.firered.reader.ui_schemas import UiEvidence
 from pokegent.games.gen3.firered.rom.dialog_text import DialogText
 from pokegent.games.gen3.firered.rom.rom_data import RomProfile
-from pokegent.loop import Runner
+from pokegent.loop import Runner, RunnerConfig
 from pokegent.options.models import ChoiceResult, DecisionFrame, Legality, Option, StaleDecision
 from pokegent.pipeline import Observation, Perception, PerceptionKind
 from pokegent.server import ExternalDecider
@@ -261,6 +261,7 @@ def test_observable_identity_ignores_clocks_but_detects_all_scene_facts():
                                        "ui": ui.model_copy(update={"main": ui.main.model_copy(
                                            update={"held_keys": 1, "new_keys": 1})})})
     assert observable_state(replace(read, snapshot=timed)) == expected
+    assert observable_state(change_observable(read, "npc_movement")) == expected
     variants = [
         snapshot.model_copy(update={"player": snapshot.player.model_copy(update={"x": 1})}),
         snapshot.model_copy(update={"player": snapshot.player.model_copy(update={"money": 1})}),
@@ -285,6 +286,25 @@ def test_observable_identity_ignores_clocks_but_detects_all_scene_facts():
         observable_state(replace(read, snapshot=snapshot.model_copy(update={"map": None})))
 
 
+def test_live_forced_player_step_is_stale_even_before_saved_position_changes():
+    read = composite()
+    placement = PlayerPlacement(
+        save_x=0, save_y=0, avatar_x=0, avatar_y=0, prev_x=0, prev_y=0, x=0, y=0,
+        position_consistent=True, facing="down", elevation=0, object_event_id=0,
+        avatar_flags=0, surfing=False, underwater=False, biking=False,
+        controllable_flag=False, forced=True, moving=False,
+        tile_transition_state=0, running_state=0,
+    )
+    before = replace(read, snapshot=read.snapshot.model_copy(update={"map":
+        read.snapshot.map.model_copy(update={"player": placement})}))
+    after = replace(read, snapshot=read.snapshot.model_copy(update={"map":
+        read.snapshot.map.model_copy(update={"player": placement.model_copy(update={
+            "avatar_x": 1, "moving": True, "position_consistent": False,
+        })})}))
+    assert after.snapshot.player == before.snapshot.player
+    assert observable_state(after) != observable_state(before)
+
+
 def synthetic_source(actor, monkeypatch, *, transition=False):
     profile = RomProfile.model_validate(dict(
         profile_id="synthetic", display_name="Synthetic", supported=True,
@@ -296,6 +316,9 @@ def synthetic_source(actor, monkeypatch, *, transition=False):
     atomic = actor.read_atomic_snapshot()
 
     def build(self, sample):
+        # The synthetic transition depends on the fake's frame word, like the real decoder's
+        # tracked RAM reads. Full decoder/prefilter coverage is tested separately below.
+        sample.read_range(0x02000000, 4)
         snapshot = baseline.snapshot.model_copy(update={
             "snapshot_seq": sample.frame + sample.load_epoch,
             "emulator_frame": sample.frame,
@@ -352,7 +375,7 @@ def test_runner_rejects_idle_change_or_passes_through_ram_verifier(actor, monkey
     decider.discard_stale_decision = lambda: discarded.append(True)
     runner = Runner(decider=decider, executor=executor, events=events, perceiver=perceiver)
     chosen = runner._decide(frame)
-    if transition:
+    if transition and transition != "npc_movement":
         assert chosen is None
         assert events.events[-1].type == EventType.OPTION_REJECTED
         assert events.events[-1].outcome == ErrorCode.E_STALE_DECISION.value
@@ -412,5 +435,146 @@ def test_external_stale_choice_uses_http_409_and_unblocks_for_fresh_decision(mon
             decider.discard_stale_decision()
             assert decider.take_decided_frame() is None
             assert not decider._agent_choice_pending
+            assert decider._outcome["status"] == "stale"
+            assert decider._outcome["option_id"] == "confirm"
+            published.clear()
+            fresh = pool.submit(decider.decide, decision(2))
+            assert published.wait(2)
+            assert decider._feedback[-1]["status"] == "stale"
+            decider.choose({"frame_id": decider._frame["frame_id"], "option_id": "confirm"})
+            fresh.result(timeout=2)
     finally:
         decider.close()
+
+
+@pytest.mark.parametrize("limit", [1, 3])
+def test_stale_budget_freezes_next_fresh_decision(actor, monkeypatch, limit):
+    actor, backend = actor
+    source = synthetic_source(actor, monkeypatch, transition="menu_cursor")
+    source.decision_guard = lambda *args, **kwargs: lambda sample: False
+    calls = []
+
+    def decide(frame):
+        calls.append(frame)
+        # Frozen fallback must not tick, and no guard/provider thread can send input.
+        if len(calls) <= limit:
+            wait_frames(actor)
+        return ChoiceResult(option_id="confirm")
+
+    runner = Runner(decider=SimpleNamespace(decide=decide),
+                    executor=SimpleNamespace(actor=actor, perceiver=True),
+                    events=MemoryEventLog("synthetic"),
+                    perceiver=SimpleNamespace(source=source),
+                    config=RunnerConfig(decision_idle_stale_limit=limit))
+    # Scripted state/fingerprint changes must not renew the same decision point's budget.
+    for n in range(limit):
+        source._last_atomic = actor.read_atomic_snapshot()
+        assert runner._decide(decision(source._last_atomic.frame)) is None
+    source._last_atomic = actor.read_atomic_snapshot()
+    before = actor.frames_run
+    frame = decision(before)
+    assert runner._decide(frame) == (frame, "confirm")
+    assert actor.frames_run == before
+    assert runner.counters.stale_decisions == limit
+    assert runner.counters.frozen_decisions == 1
+    assert not backend.read_u32(0x02000004)
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "3"])
+def test_stale_limit_is_a_positive_integer(value):
+    with pytest.raises(ValueError, match="decision_idle_stale_limit"):
+        config_from_mapping({"runner": {"decision_idle_stale_limit": value}}).runner_config()
+
+
+def test_guard_time_has_separate_metrics():
+    now = [0.0]
+
+    class Backend:
+        def tick(self, n):
+            now[0] += .002
+
+    clock = EmuClock(Backend(), timer=lambda: now[0])
+    clock._decision_idle = lambda backend: now.__setitem__(0, now[0] + .005)
+    clock._frame()
+    metrics = clock.metrics()
+    assert metrics["frame_ms"]["mean"] == pytest.approx(2)
+    assert metrics["decision_guard_ms"]["mean"] == pytest.approx(5)
+
+
+def real_decoder_source():
+    """Invented pre-game RAM, with the real composite/UI/core readers and no game data."""
+    from test_intro_save_validation import synthetic_save
+
+    from pokegent.games.gen3.firered.reader import ui_symbols as U
+
+    reader = synthetic_save(U.NEW_GAME_SCENE_CALLBACK)
+    profile = reader.profile.model_dump()
+    addresses = dict(
+        gTasks=0x02008000, sTextPrinters=0x02009000, gWindows=0x0200A000,
+        sGlobalScriptContextStatus=0x0200B000, sGlobalScriptContext=0x0200B010,
+        sLockFieldControls=0x0200B100, sMenu=0x0200C000, sYesNoWindowId=0x0200C100,
+        gMapHeader=0x02001F00, VMap=0x02001E00, gBackupMapData=0x02001D00,
+        gMapGroups=0x08000800,
+    )
+    for name, address in addresses.items():
+        profile["symbols"][name] = dict(address=address, source="synthetic")
+    profile["structs"]["SaveBlock1"]["fields"]["flashLevel"] = dict(
+        offset=0, size=1, source="synthetic")
+    profile["structs"]["MapHeader"] = dict(size=28, source="synthetic", fields={
+        name: dict(offset=i * 4, size=4, source="synthetic")
+        for i, name in enumerate(("mapLayout", "events", "mapScripts", "connections"))
+    })
+    profile = RomProfile.model_validate(profile)
+    atomic = reader._source.read_atomic_snapshot()
+    # An ordinary unknown background task, with changing work counters.
+    atomic = ram_change(atomic, addresses["gTasks"], b"\x01\x09\x00\x08\x01\x00\x00\x00")
+    source = CompositeSnapshotSource(SimpleNamespace(read_atomic_snapshot=lambda: atomic), profile)
+    source.build(atomic)
+    assert source.last.snapshot.health.valid and not source.last.snapshot.ui.read_errors
+    return source, atomic
+
+
+def ram_change(atomic, address, data):
+    regions = dict(atomic.regions)
+    for region in atomic.region_defs:
+        if region.contains(address, len(data)):
+            raw = bytearray(regions[region.name])
+            raw[address - region.base:address - region.base + len(data)] = data
+            regions[region.name] = bytes(raw)
+            return replace(atomic, regions=regions, frame=atomic.frame + 1)
+    raise AssertionError(address)
+
+
+def test_byte_prefilter_uses_real_decoder_and_ignores_background_counters(monkeypatch):
+    from pokegent.games.gen3.firered.reader import ui_symbols as U
+
+    source, atomic = real_decoder_source()
+    builds = []
+    original = CompositeSnapshotSource.build
+
+    def counted(self, sample):
+        builds.append(sample.frame)
+        return original(self, sample)
+
+    monkeypatch.setattr(CompositeSnapshotSource, "build", counted)
+    guard = source.decision_guard(atomic.frame + atomic.load_epoch)
+    assert len(builds) == 1
+    for address in (0x02008000 + U.TASK_DATA, 0x02002024 + 0x10,
+                    0x03000200 + U.MAIN_HELD_KEYS, 0x0203F000):
+        atomic = ram_change(atomic, address, b"\x02")
+        assert guard(atomic)
+    assert len(builds) == 1  # no model dumps, map reads or hashing on unchanged relevant RAM
+    changed = ram_change(atomic, 0x0200C000 + U.SMENU_CURSOR_POS, b"\x01")
+    assert not guard(changed)
+    assert len(builds) == 2
+    assert not guard(replace(atomic, load_epoch=atomic.load_epoch + 1))
+
+
+@pytest.mark.parametrize("field", ["money", "flags", "vars", "pos"])
+def test_real_decoder_prefilter_never_hides_core_changes(field):
+    source, atomic = real_decoder_source()
+    guard = source.decision_guard(atomic.frame + atomic.load_epoch)
+    offset = source.profile.field("SaveBlock1", field).offset
+    if field == "flags":
+        offset += 1  # flag zero is reserved and intentionally absent from decoded flags
+    assert not guard(ram_change(atomic, 0x02004000 + offset, b"\x01"))

@@ -635,6 +635,14 @@ class ExternalDecider:
     def discard_stale_decision(self) -> None:
         """Withdraw a choice invalidated after its provisional HTTP acknowledgement."""
         with self._condition:
+            if self._choice is not None:
+                outcome = {
+                    "option_id": self._choice, "status": "stale", "outcome": "stale",
+                    "applied": False, "verified": False, "agent_choice": True,
+                    "decided_by": "agent", "reason": "state changed before input",
+                }
+                self._outcome = outcome
+                self._actions_since_decision.append(outcome)
             self._decided_frame = None
             self._agent_choice_pending = False
             self._autoplay_pending = None

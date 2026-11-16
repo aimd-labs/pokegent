@@ -7,7 +7,7 @@ import pytest
 from addons.system_one.hybrid import HybridDecider
 from pokegent.actions._exec.models import ActionResult, ActionStatus
 from pokegent.events import EventType, MemoryEventLog
-from pokegent.options.models import ChoiceResult, DecisionFrame, Legality, Option
+from pokegent.options.models import ChoiceResult, DecisionFrame, Legality, Option, StaleDecision
 from pokegent.user_config import load_user_config
 
 
@@ -73,6 +73,35 @@ def test_third_unchanged_sign_goes_directly_to_agent(hybrid):
     assert event.type == EventType.DECISION_AGENT_REQUESTED
     assert event.details["escalation_reason"] == "repeated_option"
     assert act(decider, frame(3)).provider_id == "system1"
+
+
+def test_stale_choice_preserves_executed_repeat_streak(hybrid):
+    decider, calls = hybrid
+    decider.external.discard_stale_decision = lambda: None
+    assert act(decider, frame()).provider_id == "system1"
+    decider.discard_stale_decision()
+    assert act(decider, frame(1)).provider_id == "system1"
+    decider.discard_stale_decision()
+    assert act(decider, frame(2)).provider_id == "agent"
+    assert len(calls) == 2
+
+
+def test_stale_forced_agent_choice_does_not_renew_system1_budget(hybrid, monkeypatch):
+    decider, calls = hybrid
+    act(decider, frame())
+    act(decider, frame(1))
+    offer = decider.external.offer
+
+    def stale(*args, **kwargs):
+        raise StaleDecision("synthetic animation")
+
+    monkeypatch.setattr(decider.external, "offer", stale)
+    with pytest.raises(StaleDecision):
+        decider.decide(frame(2))
+    assert decider._repeat_count == 2
+    monkeypatch.setattr(decider.external, "offer", offer)
+    assert act(decider, frame(3)).provider_id == "agent"
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize("change", ["state", "scene", "option", "progress", "forced"])

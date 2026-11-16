@@ -258,6 +258,8 @@ class RunnerConfig:
     busy_stuck_limit: int = 20
     decider_retries: int = 1
     invalid_choice_limit: int = 3
+    #: After this many stale idle decisions at a decision point, decide with time frozen.
+    decision_idle_stale_limit: int = 3
     # Keep enough same-frame failures to suppress sibling option ids (PC party
     # actions can expose six targets) until the frame context changes.
     recent_failed_keep: int = 64
@@ -291,6 +293,9 @@ class RunnerConfig:
     system1_max_outage_s: float = 0.0
 
     def __post_init__(self) -> None:
+        if (type(self.decision_idle_stale_limit) is not int
+                or self.decision_idle_stale_limit < 1):
+            raise ValueError("decision_idle_stale_limit must be an integer >= 1")
         if self.system1_outage not in ("wait", "pause"):
             raise ValueError("system1_outage must be wait|pause")
         if self.system1_max_outage_s < 0:
@@ -338,6 +343,9 @@ class GameClearObserver(Protocol):
 
 @dataclass
 class ProgressCounters:
+    realtime_idle_while_deciding: int = 0
+    stale_decisions: int = 0
+    frozen_decisions: int = 0
     iterations: int = 0
     actions_applied: int = 0
     actions_verified: int = 0
@@ -497,6 +505,12 @@ class Runner:
         self._hybrid_recovery_decisions = 0
         self._objective_lock = threading.RLock()
         self._decision_idle = None
+        # Keep budgets across animated fingerprint changes and scene alternation until an
+        # action reaches the normal progress/rejection/recovery accounting.
+        self._decision_stales: dict[tuple, int] = {}
+        self.counters.realtime_idle_while_deciding = int(bool(getattr(
+            getattr(self.executor, "actor", None), "realtime_idle_while_deciding", False
+        )))
         bind_valid = getattr(self.decider, "bind_decision_valid", None)
         if callable(bind_valid):
             bind_valid(
@@ -546,6 +560,10 @@ class Runner:
                 "deadline_s": cfg.deadline_s,
                 "goal_id": cfg.goal_id,
                 "no_progress_limit": cfg.no_progress_limit,
+                "realtime_idle_while_deciding": bool(
+                    self.counters.realtime_idle_while_deciding
+                ),
+                "decision_idle_stale_limit": cfg.decision_idle_stale_limit,
                 **(
                     {
                         "objective_file": str(self.objectives.store.path),
@@ -1378,6 +1396,16 @@ class Runner:
         actor = getattr(self.executor, "actor", None)
         if not getattr(actor, "realtime_idle_while_deciding", False):
             return self.decider.decide(frame)
+        key = (frame.scene_id, self._goal_key(frame))
+        if self._decision_stales.get(key, 0) >= self.config.decision_idle_stale_limit:
+            self.counters.frozen_decisions += 1
+            self._emit(
+                EventType.DECISION_SYSTEMONE_REQUESTED,
+                scene_id=frame.scene_id, request_id=frame.decision_id,
+                details={"idle_fallback": "frozen", "consecutive_stales":
+                         self._decision_stales[key]},
+            )
+            return self.decider.decide(frame)
         guard = self.perceiver.source.decision_guard(
             frame.snapshot_seq,
             allow_invalid_core=bool(
@@ -1451,13 +1479,18 @@ class Runner:
                         frame = adopted
                 break
             except StaleDecision as exc:
+                key = (frame.scene_id, self._goal_key(frame))
+                self._decision_stales[key] = self._decision_stales.get(key, 0) + 1
+                self.counters.stale_decisions += 1
+                self.coverage.stale(frame.scene_id)
                 discard = getattr(self.decider, "discard_stale_decision", None)
                 if callable(discard):
                     discard()
                 self._emit(
                     EventType.OPTION_REJECTED, scene_id=frame.scene_id,
                     request_id=frame.decision_id, outcome=ErrorCode.E_STALE_DECISION.value,
-                    details={"reason": str(exc)},
+                    details={"reason": str(exc), "consecutive_stales":
+                             self._decision_stales[key]},
                 )
                 return None  # the next iteration perceives and offers a fresh state
             except DeciderTimeout as exc:
@@ -1763,6 +1796,7 @@ class Runner:
     ) -> RunStatus | None:
         if self.stop_event.is_set():
             return RunStatus.INTERRUPTED
+        self._decision_stales.clear()
         if option_id == "bike_on":
             self._last_bike_on_position = (
                 self._player_position(self._last_snapshot) if self._last_snapshot else None

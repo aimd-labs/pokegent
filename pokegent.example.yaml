@@ -23,6 +23,8 @@ output:
   run_dir: runs
 emulator:
   realtime_idle_while_deciding: false # opt in: keep audio/animation running during model waits
+runner:
+  decision_idle_stale_limit: 3 # then make the next decision with time frozen
 stream:
   enabled: false
   port: 19700

@@ -84,8 +84,6 @@ class HybridDecider:
 
     def discard_stale_decision(self) -> None:
         self.external.discard_stale_decision()
-        self._repeat_key = None
-        self._repeat_count = 0
 
     def take_decided_frame(self) -> DecisionFrame | None:
         """Adopt the frame paired with a choice refreshed while the agent waited."""
@@ -133,13 +131,10 @@ class HybridDecider:
                 interruptible_wait=True,
             )
         scope = (frame.scene_id, frame.state_fingerprint)
-        if self._repeat_key is not None and self._repeat_key[:2] != scope:
-            self._repeat_key = None
-            self._repeat_count = 0
-        force_agent = self._repeat_count >= self.force_agent_after_repeats
-        if force_agent:
-            self._repeat_key = None
-            self._repeat_count = 0
+        # Offering or discarding a choice is not an executed action. Only result accounting
+        # updates the streak, including after a forced agent choice has actually completed.
+        force_agent = (self._repeat_key is not None and self._repeat_key[:2] == scope
+                       and self._repeat_count >= self.force_agent_after_repeats)
         started = time.monotonic()
         system_result: ChoiceResult | None = None
         system_error: Exception | None = None
