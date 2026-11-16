@@ -159,6 +159,7 @@ class Perceiver:
         tables: Any = None,
         world: Any = None,
         pre_game_callbacks: Collection[str] | None = None,
+        allow_unknown_scene: bool = False,
     ) -> None:
         if transient_retries < 0:
             raise ValueError("transient_retries must be >= 0")
@@ -188,6 +189,7 @@ class Perceiver:
         self._pre_game_mode = pre_game_callbacks is not None
         self._pre_game_active = self._pre_game_mode
         self._pre_game_callbacks = frozenset(pre_game_callbacks or ())
+        self.allow_unknown_scene = allow_unknown_scene
         #: diagnostics: one-frame settles spent on transient invalid reads, reads that recovered,
         #: and the longest run of consecutive transient invalid frames that recovered
         self.transient_settled = 0
@@ -336,7 +338,7 @@ class Perceiver:
         # evidence (the reboot after the credits, docs/contracts.md v1.8); never otherwise
         if scene.is_invalid or not readable(snapshot, scene):
             return Perception(PerceptionKind.INVALID, snapshot, scene, detection=detection)
-        if scene.is_unknown:
+        if scene.is_unknown and (not self.allow_unknown_scene or scene.busy):
             return Perception(PerceptionKind.UNKNOWN, snapshot, scene, detection=detection)
         if scene.scene_id in PAUSE_SCENE_IDS:
             return Perception(PerceptionKind.PAUSE, snapshot, scene, detection=detection)
@@ -408,6 +410,8 @@ class Perceiver:
         frame = self._with_item_storage_fact(frame, snapshot)
         wrong = self._wrong_verbs(frame)
         kind = PerceptionKind.READY if frame.chooseable() else PerceptionKind.NO_OPTIONS
+        if scene.is_unknown:
+            kind = PerceptionKind.UNKNOWN
         return Perception(
             kind,
             snapshot,

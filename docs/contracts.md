@@ -84,6 +84,13 @@ snapshots carry game events), `elapsed_frames`, `verified_outcome` (`bool|None`)
 7. A tap is logged before the actor call, so an uncertain press is never reported as "no input".
 8. Unknown/unsupported/escalation-only scene, no builder, no chooseable option, invalid snapshot:
    no input; diagnostics event; escalation (or SAFE_PAUSE for invalid/unsupported ROM).
+   Additive hybrid opt-in: `hybrid.escalate_unknown_scene` (default true) may offer an unknown
+   scene to the agent after bounded settles. It offers only generic wait/B/direction primitives,
+   with no confirmation inputs or assumed game-specific effects. Every choice passes the same
+   fresh scene, fingerprint, option, input-budget and RAM/frame verification gates. This uses
+   rule 10's single bounded agent window (including wait choices), even when no-progress
+   escalation is disabled. A screen requiring A may still exhaust the window and SAFE_PAUSE.
+   Other deciders and invalid/unsupported-state handling are unchanged.
 9. Exactly one chooseable option: executed without calling the decider (`decision.forced`).
 10. The same (scene, option, fingerprint) attempted `no_progress_limit` times inside
     `no_progress_window` iterations: `progress.stuck` + escalation.

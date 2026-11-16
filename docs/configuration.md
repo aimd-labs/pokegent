@@ -30,6 +30,27 @@ SAFE_PAUSE (exit 1). Verified progress rearms the single recovery window. Frame 
 validation and invalid/unsupported-state pauses still apply throughout. Disabling this setting
 retains the original no-progress stop. Non-hybrid modes keep their existing behavior.
 There is no automatic game-input recovery ladder.
+
+With `hybrid.escalate_unknown_scene: true` (the hybrid default), an unknown scene that persists
+past the bounded settle retries is offered directly to the agent with
+`escalation_reason=unknown_scene`, the current decision frame, and the existing `/screenshot`
+endpoint. System One is bypassed. The generic set contains a 30-frame wait and, with valid UI
+evidence and no reported input lock, one short B/UP/DOWN/LEFT/RIGHT tap. No game-specific effects
+are inferred. A/START and other confirmation inputs are withheld: an unknown screen requiring A
+may still end in bounded SAFE_PAUSE and needs supervisor review.
+
+Unknown-scene handling shares the no-progress agent window: at most `runner.no_progress_limit`
+agent decisions without executor-verified durable progress, including wait-only decisions.
+Changing options, positions, or UI screens does not renew the window. The unknown-scene opt-in is
+independent of `hybrid.escalate_on_no_progress`; disabling it restores the original escalation.
+Other decider modes are unchanged. Every primitive uses fresh scene/core/UI fingerprint and
+option revalidation and a bounded RAM/frame postcondition; verifying a tap/wait does not claim
+semantic progress. Invalid or unsupported state retains its normal pause path.
+
+Saved-state validation checks the ROM header and RAM invariants, independently of the last scene
+classification. A healthy save in `scene.unknown` is resumable; unknown does not excuse corrupt RAM
+or a missing avatar outside the established pre-field callback allowlist.
+
 Old `recovery:`, `objectives:` and `runner.busy_nudge_after`
 keys are rejected with an error, never silently ignored.
 

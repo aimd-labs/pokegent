@@ -722,6 +722,11 @@ def build_runner(
         ),
     )
     field_family = bundle.plugins.get("field")
+    allow_unknown_scene = getattr(decider, "escalate_unknown_scene", False) is True
+    if allow_unknown_scene:
+        from pokegent.actions.unknown import register_unknown_recovery
+
+        register_unknown_recovery(registries)
     world = getattr(getattr(field_family, "builder", None), "world", None)
     source = CompositeSnapshotSource(
         actor,
@@ -752,6 +757,7 @@ def build_runner(
         tables=tables,
         world=world,
         pre_game_callbacks=PRE_GAME_CALLBACKS if config.new_game.enabled else None,
+        allow_unknown_scene=allow_unknown_scene,
     )
     executor = Executor(
         actor,
@@ -972,6 +978,7 @@ def build_decider(
                 escalate_below_confidence=settings.get("escalate_below_confidence", 0.35),
                 override_window_s=float(settings.get("override_window_s", 0.0)),
                 escalate_on_no_progress=settings.get("escalate_on_no_progress", True),
+                escalate_unknown_scene=settings.get("escalate_unknown_scene", True),
                 force_agent_after_repeats=settings.get("force_agent_after_repeats", 2),
                 events=events,
             )
