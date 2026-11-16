@@ -16,7 +16,11 @@ DEFAULTS: dict[str, Any] = {
     "decider": "hybrid",
     "autoplay": None,
     "external": {"port": 19760, "walk_step_limit": 8},
-    "hybrid": {"escalate_below_confidence": 0.35, "override_window_s": 0.0},
+    "hybrid": {
+        "escalate_below_confidence": 0.35,
+        "override_window_s": 0.0,
+        "force_agent_after_repeats": 2,
+    },
     "battle": {"opponent_knowledge": "guide"},
     "field": {"menus": True},
     "output": {"run_dir": None},
@@ -187,6 +191,9 @@ def load_user_config(
         raise ValueError("hybrid.escalate_below_confidence must be a number or mapping")
     elif not math.isfinite(float(threshold)) or not 0 <= threshold <= 1:
         raise ValueError("hybrid.escalate_below_confidence must be between 0 and 1")
+    repeats = hybrid["force_agent_after_repeats"]
+    if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 1:
+        raise ValueError("hybrid.force_agent_after_repeats must be a positive integer")
     if hybrid["override_window_s"] < 0:
         raise ValueError("hybrid.override_window_s must be non-negative")
     if result["battle"]["opponent_knowledge"] not in {"guide", "fair_play"}:

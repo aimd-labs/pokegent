@@ -10,7 +10,13 @@ The main keys are `rom_path`, `decider` (`agent`, `system1`, `hybrid`, `first`, 
 `system1.model` and `system1.timeouts`, `external.port` (19700–19799) and
 and `hybrid.escalate_below_confidence` (default `0.35`, or a mapping of `scene_id` to thresholds
 with optional `default`; unknown scenes use `default`, or `0.35` when omitted),
-`hybrid.override_window_s` (default `0`). `battle.opponent_knowledge` (`guide` by default or
+`hybrid.override_window_s` (default `0`), and `hybrid.force_agent_after_repeats` (positive integer,
+default `2`). After that many consecutive executed System One choices of the same option on the
+same scene and state fingerprint without verified state change, the next decision bypasses System
+One and waits for the agent (`decision.agent.requested`, reason `repeated_option`). A new state or
+option, verified progress, an agent choice, or an intervening forced action resets the streak.
+A successful interaction postcondition alone does not establish state change. These choices still
+pass normal frame and executor validation. `battle.opponent_knowledge` (`guide` by default or
 `fair_play`), `field.menus`, and `output.run_dir`.
 
 The runner has no self-recovery ladder. On no progress it prints one `stopped: no progress ...`
