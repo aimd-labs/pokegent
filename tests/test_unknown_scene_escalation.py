@@ -27,7 +27,7 @@ from pokegent.games.gen3.firered.reader.ui_schemas import (
     TextEvidence,
     UiEvidence,
 )
-from pokegent.loop import Runner, RunnerConfig, RunStatus
+from pokegent.loop import EscalationKind, Runner, RunnerConfig, RunStatus
 from pokegent.options.models import ChoiceResult, DeciderTimeout, to_system_one_payload
 from pokegent.pipeline import Perceiver, PerceptionKind
 from pokegent.state.scenes import FunctionDetector, PriorityClass, SceneResult
@@ -240,6 +240,46 @@ def test_busy_unknown_never_offers_buttons(harness):
     assert h.perceiver.perceive("test").frame is None
     assert h.runner.run().status is RunStatus.SAFE_PAUSE
     assert not h.state.actions and not h.offers
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("settles_needed", [1, 2])
+def test_brief_busy_unknown_settles_inside_recovery_window(
+    harness, monkeypatch, enabled, settles_needed,
+):
+    h = harness(enabled=enabled, choices=("wait:30",))
+    # Reuse synthetic primitives for a recognized scene, independently of the unknown opt-out.
+    if not enabled:
+        register_unknown_recovery(h.registries)
+    h.registries.builders.register_scenes(("dialog.end",), UnknownBuilder())
+    transition_end = settles_needed * h.runner.config.settle_frames
+    h.registries.detectors.register(FunctionDetector(
+        "transition", PriorityClass.FIELD_DIALOG,
+        lambda s: SceneResult(scene_id="scene.unknown", confidence=1, busy=True)
+        if h.state.frame < transition_end else SceneResult(scene_id="dialog.end", confidence=1),
+    ))
+    assert h.runner._escalate(
+        EscalationKind.NO_PROGRESS, "dialog.end", ErrorCode.E_NO_PROGRESS, {},
+    ) is None
+    assert h.runner._hybrid_no_progress_active
+    assert h.perceiver.perceive("transition").frame is None
+    settles = []
+    settle = h.executor.settle
+
+    def record_settle(frames):
+        settles.append(frames)
+        return settle(frames)
+
+    monkeypatch.setattr(h.executor, "settle", record_settle)
+    summary = h.runner.run()
+    assert summary.status is RunStatus.SAFE_PAUSE
+    assert summary.verdict == "no_progress"
+    assert settles == [h.runner.config.settle_frames] * settles_needed
+    assert len(h.offers) == len(h.results) == h.runner.config.no_progress_limit
+    assert all(frame.scene_id == "dialog.end" for frame, _ in h.offers)
+    assert not h.state.actions
+    assert not any(e.outcome == "unknown_scene" for e in
+                   h.events.of_type(EventType.ESCALATION_REQUESTED))
 
 
 @pytest.mark.parametrize("change, code", [

@@ -1070,15 +1070,24 @@ class Runner:
                 outcome="no_input",
                 details={**self._diagnostics(perception), "streak": self._unknown_streak},
             )
-        if (
-            not self._hybrid_no_progress_active
-            and self._unknown_streak <= self.config.unknown_retries
-        ):
+        recover = getattr(self.decider, "request_unknown_scene_recovery", None)
+        recovery_accepted = (
+            not perception.scene.busy
+            and perception.frame is not None
+            and (
+                self._hybrid_no_progress_active
+                or self._unknown_streak > self.config.unknown_retries
+            )
+            and callable(recover)
+            and recover()
+        )
+        # Only an accepted decision may bypass settles inside an active recovery window.
+        # Busy fades/warps have no frame and still need the normal settle-and-reread budget.
+        if not recovery_accepted and self._unknown_streak <= self.config.unknown_retries:
             self.executor.settle(self.config.settle_frames)  # may be a transition frame; no input
             return None
         self._unknown_streak = 0
-        recover = getattr(self.decider, "request_unknown_scene_recovery", None)
-        if perception.frame is not None and callable(recover) and recover():
+        if recovery_accepted:
             if not self._hybrid_no_progress_active:
                 self._hybrid_no_progress_active = True
                 self._hybrid_recovery_decisions = 0
