@@ -971,6 +971,7 @@ def build_decider(
                 autoplay=autoplay or "off",
                 escalate_below_confidence=settings.get("escalate_below_confidence", 0.35),
                 override_window_s=float(settings.get("override_window_s", 0.0)),
+                escalate_on_no_progress=settings.get("escalate_on_no_progress", True),
                 events=events,
             )
         except (OSError, ValueError) as exc:

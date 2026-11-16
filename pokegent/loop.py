@@ -492,6 +492,8 @@ class Runner:
         self._pending_objective_key: tuple[str, int] | None = None
         self._stop_reason_override: tuple[str, dict[str, Any]] | None = None
         self._verdict = "other"
+        self._hybrid_no_progress_active = False
+        self._hybrid_recovery_decisions = 0
         self._objective_lock = threading.RLock()
         refresh_pending = getattr(self.decider, "bind_pending_frame", None)
         if callable(refresh_pending):
@@ -719,6 +721,13 @@ class Runner:
             now=observed_at,
             iteration=self.counters.iterations,
         )
+        if progressed:
+            self._finish_no_progress_recovery()
+        if (
+            self._hybrid_no_progress_active
+            and self._hybrid_recovery_decisions >= self.config.no_progress_limit
+        ):
+            return self._report_no_progress("agent recovery window exhausted", perception.frame)
         if (
             not progressed
             and not (self.objectives is not None and self.objectives.done)
@@ -837,8 +846,18 @@ class Runner:
     def _progress_tracks_scene(scene_id: str | None) -> bool:
         return scene_id == "field.free" or scene_id in _FIELD_MENU_SCENES
 
+    def _finish_no_progress_recovery(self) -> None:
+        if not self._hybrid_no_progress_active:
+            return
+        self._hybrid_no_progress_active = False
+        self._hybrid_recovery_decisions = 0
+        self._attempts.clear()
+        self._postcondition_attempts.clear()
+        self._rejected_choice_attempts.clear()
+        self.decider.notify_progress()
+
     def _report_no_progress(self, reason: str, frame: DecisionFrame | None) -> RunStatus | None:
-        """Report a detector verdict and stop without choosing a recovery action."""
+        """Report a detector verdict, then escalate through the bounded hybrid recovery gate."""
         scene_id = frame.scene_id if frame is not None else None
         self.counters.stuck += 1
         details = {
@@ -869,7 +888,7 @@ class Runner:
         code: ErrorCode,
         details: Mapping[str, Any],
     ) -> RunStatus | None:
-        """Escalate a detector verdict without mutating emulator or runner strategy state."""
+        """Escalate a detector verdict through the bounded hybrid recovery gate."""
         if kind is EscalationKind.NO_PROGRESS:
             reason = str(details.get("reason") or "repeated action without progress")
             option_id = details.get("option_id")
@@ -1721,7 +1740,7 @@ class Runner:
         if self.executor.last_emulator_frame is not None:
             self._frame_no = self.executor.last_emulator_frame
         option = frame.get(option_id)
-        if self._progress_tracks_scene(frame.scene_id):
+        if self._progress_tracks_scene(frame.scene_id) or self._hybrid_no_progress_active:
             self._progress.note_decision(
                 verified=(
                     result.status is ActionStatus.APPLIED
@@ -1772,6 +1791,11 @@ class Runner:
                 }
             },
         )
+
+        if result.progressed is True:
+            self._finish_no_progress_recovery()
+        if self._hybrid_no_progress_active and source == "decider":
+            self._hybrid_recovery_decisions += 1
 
         rejected_key = (
             (frame.scene_id, option_id, result.error_code)
@@ -2075,6 +2099,21 @@ class Runner:
                 **details,
             },
         )
+        if kind is EscalationKind.NO_PROGRESS and not terminal:
+            recover = getattr(self.decider, "request_no_progress_recovery", None)
+            if self._hybrid_no_progress_active:
+                # A second exhausted window must stop even if a custom sink says CONTINUE.
+                terminal = True
+            elif callable(recover) and recover():
+                self._hybrid_no_progress_active = True
+                self._hybrid_recovery_decisions = 0
+                self._attempts.clear()
+                self._postcondition_attempts.clear()
+                self._rejected_choice_attempts.clear()
+                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+                self._stop_reason_override = None
+                self._verdict = "other"
+                return None
         request = EscalationRequest(kind, scene_id, self.counters.iterations, code, dict(details))
         response = self._ask_sink(request)
         if terminal:

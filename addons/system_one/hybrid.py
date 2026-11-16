@@ -25,12 +25,17 @@ class HybridDecider:
         external_timeout: float,
         escalate_below_confidence: float | Mapping[str, float] = 0.35,
         override_window_s: float = 0.0,
+        escalate_on_no_progress: bool = True,
         autoplay: str = "off",
         events: EventSink | None = None,
     ) -> None:
         self._thresholds = self._validate_thresholds(escalate_below_confidence)
         if override_window_s < 0:
             raise ValueError("hybrid.override_window_s must be non-negative")
+        if not isinstance(escalate_on_no_progress, bool):
+            raise ValueError("hybrid.escalate_on_no_progress must be a boolean")
+        self.escalate_on_no_progress = escalate_on_no_progress
+        self._no_progress_recovery = False
         self.system1 = system1
         self.agent = ExternalDecider(port, external_timeout, autoplay=autoplay)
         # Compatibility attribute; the bridge module is now server.
@@ -70,7 +75,27 @@ class HybridDecider:
     ) -> None:
         self.external.update_briefing(snapshot, tables, world, events, frame)
 
+    def request_no_progress_recovery(self) -> bool:
+        """Reserve one agent-owned recovery window; the runner owns its bound."""
+        if not self.escalate_on_no_progress:
+            return False
+        self._no_progress_recovery = True
+        return True
+
+    def notify_progress(self) -> None:
+        self._no_progress_recovery = False
+
     def decide(self, frame: DecisionFrame) -> ChoiceResult:
+        if self._no_progress_recovery:
+            self.last_decision = {
+                "decided_by": "agent", "escalated": True, "escalation_reason": "no_progress",
+            }
+            return self.external.offer(
+                frame,
+                metadata={"escalated": True, "escalation_reason": "no_progress"},
+                wait_timeout=None,
+                interruptible_wait=True,
+            )
         started = time.monotonic()
         system_result: ChoiceResult | None = None
         system_error: Exception | None = None
