@@ -27,6 +27,7 @@ class HybridDecider:
         escalate_below_confidence: float | Mapping[str, float] = 0.35,
         override_window_s: float = 0.0,
         escalate_on_no_progress: bool = True,
+        escalate_unknown_scene: bool = True,
         force_agent_after_repeats: int = 2,
         autoplay: str = "off",
         events: EventSink | None = None,
@@ -37,6 +38,9 @@ class HybridDecider:
         if not isinstance(escalate_on_no_progress, bool):
             raise ValueError("hybrid.escalate_on_no_progress must be a boolean")
         self.escalate_on_no_progress = escalate_on_no_progress
+        if not isinstance(escalate_unknown_scene, bool):
+            raise ValueError("hybrid.escalate_unknown_scene must be a boolean")
+        self.escalate_unknown_scene = escalate_unknown_scene
         self._no_progress_recovery = False
         if (
             isinstance(force_agent_after_repeats, bool)
@@ -97,15 +101,24 @@ class HybridDecider:
     def notify_progress(self) -> None:
         self._no_progress_recovery = False
 
+    def request_unknown_scene_recovery(self) -> bool:
+        """Use the same runner-owned bound even when no-progress recovery is disabled."""
+        if not self.escalate_unknown_scene:
+            return False
+        self._no_progress_recovery = True
+        return True
+
     def decide(self, frame: DecisionFrame) -> ChoiceResult:
         self._decision_id = frame.decision_id
-        if self._no_progress_recovery:
+        unknown = self.escalate_unknown_scene and frame.scene_id == "scene.unknown"
+        if self._no_progress_recovery or unknown:
+            reason = "unknown_scene" if unknown else "no_progress"
             self.last_decision = {
-                "decided_by": "agent", "escalated": True, "escalation_reason": "no_progress",
+                "decided_by": "agent", "escalated": True, "escalation_reason": reason,
             }
             return self.external.offer(
                 frame,
-                metadata={"escalated": True, "escalation_reason": "no_progress"},
+                metadata={"escalated": True, "escalation_reason": reason},
                 wait_timeout=None,
                 interruptible_wait=True,
             )

@@ -1070,10 +1070,20 @@ class Runner:
                 outcome="no_input",
                 details={**self._diagnostics(perception), "streak": self._unknown_streak},
             )
-        if self._unknown_streak <= self.config.unknown_retries:
+        if (
+            not self._hybrid_no_progress_active
+            and self._unknown_streak <= self.config.unknown_retries
+        ):
             self.executor.settle(self.config.settle_frames)  # may be a transition frame; no input
             return None
         self._unknown_streak = 0
+        recover = getattr(self.decider, "request_unknown_scene_recovery", None)
+        if perception.frame is not None and callable(recover) and recover():
+            if not self._hybrid_no_progress_active:
+                self._hybrid_no_progress_active = True
+                self._hybrid_recovery_decisions = 0
+                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+            return self._handle_ready(perception)
         return self._escalate(
             EscalationKind.UNKNOWN_SCENE,
             perception.scene.scene_id,
@@ -1272,7 +1282,7 @@ class Runner:
         # Pure waits and animation settles are observations, not agent choices.  They may run
         # without a decider; every action-bearing option still belongs to the decider.
         forced = frame.forced_option()
-        if forced is not None:
+        if forced is not None and not perception.scene.is_unknown:
             spec = self.executor.executors.get(forced.executor_ref)
             pure_wait = (
                 spec is not None and (spec.kind.value == "deterministic" or spec.autoplay_safe)

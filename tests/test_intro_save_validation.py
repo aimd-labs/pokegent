@@ -80,6 +80,19 @@ def test_initialized_avatar_coords_are_still_checked_in_intro():
     assert "object event coords" in check.conformance["failures"][0]
 
 
+def test_unknown_scene_save_is_resumable_with_healthy_ram():
+    from pokegent.app import startup_snapshot_allowed
+
+    reader = synthetic_save("unknown_callback", active=True)
+    assert reader.after_state_load("unknown scene checkpoint").ok
+    assert startup_snapshot_allowed(reader.read().snapshot, "scene.unknown")
+
+
+@pytest.mark.parametrize("kwargs", [{"mismatch": True}, {"bad_header": True}, {"bad_party": True}])
+def test_unknown_scene_does_not_bypass_save_validation(kwargs):
+    assert not synthetic_save("unknown_callback", active=True, **kwargs).after_state_load().ok
+
+
 @pytest.mark.parametrize("kwargs", [
     {}, {"active": True, "wrong_index": True}, {"index": C.OBJECT_EVENTS_COUNT},
     {"bad_header": True}, {"bad_party": True},

@@ -1,7 +1,8 @@
 # Runtime invariants
 
 Pokegent reads RAM and locally supplied ROM facts, offers typed actions, and verifies results.
-One emulator has one writer. Unknown state or legality pauses execution. Revalidate options before
+One emulator has one writer. Unknown legality pauses execution. Unknown scenes also pause, except
+the opt-in hybrid window of conservative agent primitives (docs/contracts.md, rule 8). Revalidate before
 input and verify each action against current RAM. Never release a Pokémon, discard HMs or key
 items, deposit the last healthy Pokémon, or confirm an irreversible prompt without explicit intent
 in the current objective. Optional providers may fail open; action legality must fail closed.
