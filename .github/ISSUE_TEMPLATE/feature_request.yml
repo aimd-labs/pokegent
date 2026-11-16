@@ -1,0 +1,17 @@
+name: Feature request
+description: Propose a focused improvement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and intended outcome
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+  - type: textarea
+    id: verification
+    attributes:
+      label: How could this be verified with synthetic data?

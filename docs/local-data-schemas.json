@@ -1,0 +1,877 @@
+{
+  "pret_map_groups.json": {
+    "additionalProperties": true,
+    "properties": {
+      "group_order": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "maxItems": 256,
+        "minItems": 1,
+        "title": "Group Order",
+        "type": "array"
+      },
+      "groups": {
+        "additionalProperties": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        "propertyNames": {
+          "minLength": 1
+        },
+        "title": "Groups",
+        "type": "object"
+      }
+    },
+    "required": [
+      "group_order",
+      "groups"
+    ],
+    "title": "MapGroups",
+    "type": "object"
+  },
+  "cinnabar_quiz.yaml": {
+    "$defs": {
+      "QuizQuestion": {
+        "additionalProperties": true,
+        "properties": {
+          "number": {
+            "minimum": 1,
+            "title": "Number",
+            "type": "integer"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "answer_yes": {
+            "title": "Answer Yes",
+            "type": "boolean"
+          },
+          "door_flag": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Door Flag"
+          }
+        },
+        "required": [
+          "number",
+          "prompt",
+          "answer_yes",
+          "door_flag"
+        ],
+        "title": "QuizQuestion",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "questions": {
+        "items": {
+          "$ref": "#/$defs/QuizQuestion"
+        },
+        "minItems": 1,
+        "title": "Questions",
+        "type": "array"
+      }
+    },
+    "required": [
+      "questions"
+    ],
+    "title": "Quiz",
+    "type": "object"
+  },
+  "elevators.yaml": {
+    "$defs": {
+      "Elevator": {
+        "additionalProperties": true,
+        "properties": {
+          "scene": {
+            "enum": [
+              "dialog.elevator",
+              "menu.elevator"
+            ],
+            "title": "Scene",
+            "type": "string"
+          },
+          "map": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Map",
+            "type": "array"
+          },
+          "menu": {
+            "enum": [
+              "multichoice",
+              "list"
+            ],
+            "title": "Menu",
+            "type": "string"
+          },
+          "panels": {
+            "items": {
+              "items": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Panels",
+            "type": "array"
+          },
+          "exit_mat": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Exit Mat",
+            "type": "array"
+          },
+          "exit_push": {
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ],
+            "title": "Exit Push",
+            "type": "string"
+          },
+          "floors": {
+            "items": {
+              "$ref": "#/$defs/Floor"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Floors",
+            "type": "array"
+          },
+          "cancel": {
+            "maximum": 255,
+            "minimum": 0,
+            "title": "Cancel",
+            "type": "integer"
+          },
+          "requires": {
+            "anyOf": [
+              {
+                "const": "lift_key",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Requires"
+          },
+          "menu_id": {
+            "anyOf": [
+              {
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Menu Id"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "shown": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Shown"
+          }
+        },
+        "required": [
+          "scene",
+          "map",
+          "menu",
+          "panels",
+          "exit_mat",
+          "exit_push",
+          "floors",
+          "cancel"
+        ],
+        "title": "Elevator",
+        "type": "object"
+      },
+      "Floor": {
+        "additionalProperties": true,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "map": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Map",
+            "type": "array"
+          },
+          "place": {
+            "minLength": 1,
+            "title": "Place",
+            "type": "string"
+          },
+          "arrival": {
+            "anyOf": [
+              {
+                "items": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Arrival"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "map",
+          "place"
+        ],
+        "title": "Floor",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "elevators": {
+        "additionalProperties": {
+          "$ref": "#/$defs/Elevator"
+        },
+        "propertyNames": {
+          "minLength": 1
+        },
+        "title": "Elevators",
+        "type": "object"
+      }
+    },
+    "required": [
+      "elevators"
+    ],
+    "title": "Elevators",
+    "type": "object"
+  },
+  "field_surf.yaml": {
+    "$defs": {
+      "SurfBadge": {
+        "additionalProperties": true,
+        "properties": {
+          "number": {
+            "minimum": 0,
+            "title": "Number",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "flag": {
+            "minimum": 0,
+            "title": "Flag",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "name",
+          "flag"
+        ],
+        "title": "SurfBadge",
+        "type": "object"
+      },
+      "SurfCapability": {
+        "additionalProperties": true,
+        "properties": {
+          "move": {
+            "$ref": "#/$defs/SurfMove"
+          },
+          "badge": {
+            "$ref": "#/$defs/SurfBadge"
+          },
+          "prompt": {
+            "$ref": "#/$defs/SurfPrompt"
+          }
+        },
+        "required": [
+          "move",
+          "badge",
+          "prompt"
+        ],
+        "title": "SurfCapability",
+        "type": "object"
+      },
+      "SurfDismount": {
+        "additionalProperties": true,
+        "properties": {
+          "land_elevation": {
+            "minimum": 0,
+            "title": "Land Elevation",
+            "type": "integer"
+          },
+          "water_elevation": {
+            "minimum": 0,
+            "title": "Water Elevation",
+            "type": "integer"
+          },
+          "rule": {
+            "minLength": 1,
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "land_elevation",
+          "water_elevation",
+          "rule"
+        ],
+        "title": "SurfDismount",
+        "type": "object"
+      },
+      "SurfMove": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "move_id": {
+            "minimum": 0,
+            "title": "Move Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "move_id"
+        ],
+        "title": "SurfMove",
+        "type": "object"
+      },
+      "SurfPrompt": {
+        "additionalProperties": true,
+        "properties": {
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "SurfPrompt",
+        "type": "object"
+      },
+      "SurfStart": {
+        "additionalProperties": true,
+        "properties": {
+          "player_elevation": {
+            "minimum": 0,
+            "title": "Player Elevation",
+            "type": "integer"
+          },
+          "front_tile": {
+            "minLength": 1,
+            "title": "Front Tile",
+            "type": "string"
+          },
+          "result": {
+            "minLength": 1,
+            "title": "Result",
+            "type": "string"
+          },
+          "water_behaviors": {
+            "additionalProperties": true,
+            "title": "Water Behaviors",
+            "type": "object"
+          }
+        },
+        "required": [
+          "player_elevation",
+          "front_tile",
+          "result",
+          "water_behaviors"
+        ],
+        "title": "SurfStart",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "capability": {
+        "$ref": "#/$defs/SurfCapability"
+      },
+      "start_rule": {
+        "$ref": "#/$defs/SurfStart"
+      },
+      "dismount_rule": {
+        "$ref": "#/$defs/SurfDismount"
+      }
+    },
+    "required": [
+      "capability",
+      "start_rule",
+      "dismount_rule"
+    ],
+    "title": "Surf",
+    "type": "object"
+  },
+  "puzzles.yaml": {
+    "$defs": {
+      "Mansion": {
+        "additionalProperties": true,
+        "properties": {
+          "switch_flag": {
+            "minimum": 0,
+            "title": "Switch Flag",
+            "type": "integer"
+          },
+          "maps": {
+            "additionalProperties": {
+              "items": {
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "propertyNames": {
+              "minLength": 1
+            },
+            "title": "Maps",
+            "type": "object"
+          },
+          "secret_key": {
+            "$ref": "#/$defs/SecretKey"
+          },
+          "statues": {
+            "items": {
+              "$ref": "#/$defs/Statue"
+            },
+            "minItems": 1,
+            "title": "Statues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "switch_flag",
+          "maps",
+          "secret_key",
+          "statues"
+        ],
+        "title": "Mansion",
+        "type": "object"
+      },
+      "SecretKey": {
+        "additionalProperties": true,
+        "properties": {
+          "map": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Map",
+            "type": "array"
+          },
+          "tile": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Tile",
+            "type": "array"
+          },
+          "hidden_item_flag": {
+            "minimum": 0,
+            "title": "Hidden Item Flag",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "map",
+          "tile",
+          "hidden_item_flag"
+        ],
+        "title": "SecretKey",
+        "type": "object"
+      },
+      "Statue": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "floor": {
+            "minLength": 1,
+            "title": "Floor",
+            "type": "string"
+          },
+          "map": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Map",
+            "type": "array"
+          },
+          "statue": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Statue",
+            "type": "array"
+          },
+          "stand": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Stand",
+            "type": "array"
+          },
+          "facing": {
+            "enum": [
+              "N",
+              "S",
+              "E",
+              "W"
+            ],
+            "title": "Facing",
+            "type": "string"
+          },
+          "opens": {
+            "items": {
+              "items": {
+                "items": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Opens",
+            "type": "array"
+          },
+          "closes": {
+            "items": {
+              "items": {
+                "items": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Closes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "floor",
+          "map",
+          "statue",
+          "stand",
+          "facing",
+          "opens",
+          "closes"
+        ],
+        "title": "Statue",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "mansion": {
+        "$ref": "#/$defs/Mansion"
+      }
+    },
+    "required": [
+      "mansion"
+    ],
+    "title": "Puzzles",
+    "type": "object"
+  },
+  "prompt_rules.yaml": {
+    "$defs": {
+      "PromptRule": {
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "enum": [
+              "heal",
+              "field_move",
+              "poke_flute",
+              "fossil_choice",
+              "secret_switch",
+              "quiz",
+              "destructive",
+              "item_receive",
+              "unknown",
+              "unreadable",
+              "pc_storage_error"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "patterns": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Patterns",
+            "type": "array"
+          },
+          "default_yes": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Default Yes"
+          },
+          "field_move": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Field Move"
+          },
+          "irreversible": {
+            "default": false,
+            "title": "Irreversible",
+            "type": "boolean"
+          },
+          "wrong_answer_cost": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Wrong Answer Cost"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "patterns"
+        ],
+        "title": "PromptRule",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "rules": {
+        "items": {
+          "$ref": "#/$defs/PromptRule"
+        },
+        "title": "Rules",
+        "type": "array"
+      }
+    },
+    "required": [
+      "rules"
+    ],
+    "title": "PromptRules",
+    "type": "object"
+  },
+  "fly_destinations.json": {
+    "$defs": {
+      "FlyDestination": {
+        "additionalProperties": true,
+        "properties": {
+          "mapsec": {
+            "minimum": 0,
+            "title": "Mapsec",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "map_key": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Map Key",
+            "type": "array"
+          },
+          "landing": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Landing",
+            "type": "array"
+          },
+          "visited_flag": {
+            "minimum": 0,
+            "title": "Visited Flag",
+            "type": "integer"
+          },
+          "cell": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Cell",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mapsec",
+          "name",
+          "map_key",
+          "landing",
+          "visited_flag",
+          "cell"
+        ],
+        "title": "FlyDestination",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "destinations": {
+        "items": {
+          "$ref": "#/$defs/FlyDestination"
+        },
+        "minItems": 1,
+        "title": "Destinations",
+        "type": "array"
+      }
+    },
+    "required": [
+      "destinations"
+    ],
+    "title": "FlyDestinations",
+    "type": "object"
+  }
+}

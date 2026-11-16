@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>pokegent viewer</title>
+<style nonce="__NONCE__">
+:root {
+  color-scheme: dark;
+  --bg: #0b1220; --panel: #121c2e; --panel2: #18253b; --line: #26364f;
+  --text: #e6edf7; --mute: #8fa1ba; --accent: #4cc2ff; --pick: #ffd24c;
+  --good: #46d37c; --warn: #f2b84b; --bad: #ff6b6b; --bar: #35507a;
+}
+* { box-sizing: border-box; }
+html { font-size: clamp(12px, min(100vw / 106, 100vh / 60), 28px); }
+@media (orientation: portrait) { html { font-size: clamp(12px, 100vw / 60, 28px); } }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 1rem/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center;
+  padding: .55rem .9rem; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 1.15rem; margin: 0; letter-spacing: .02em; }
+.pill { padding: .1rem .55rem; border-radius: 1rem; font-weight: 700; font-size: .85rem;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--mute); }
+.pill.live { color: #04230f; background: var(--good); border-color: var(--good); }
+.pill.stopped { color: #2b1d00; background: var(--warn); border-color: var(--warn); }
+.pill.off { color: #2b0000; background: var(--bad); border-color: var(--bad); }
+.mute { color: var(--mute); }
+main { display: grid; gap: .7rem; padding: .7rem; grid-template-columns: 31rem 1fr 26rem;
+  align-items: start; }
+@media (orientation: portrait) {
+  main { grid-template-columns: 1fr; }
+  main .col { display: contents; }  /* one column; the order below puts the decisions second */
+  .s-game { order: 1; } .s-dec { order: 2; } .s-now { order: 3; } .s-party { order: 4; }
+  .s-battle { order: 5; } .s-model { order: 6; } .s-act { order: 7; } .s-ev { order: 8; }
+  .s-hi { order: 9; } .s-prob { order: 10; }
+}
+.col { display: grid; gap: .7rem; min-width: 0; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: .5rem;
+  padding: .6rem .75rem; min-width: 0; }
+section > h2 { margin: 0 0 .4rem; font-size: .8rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--mute); font-weight: 600; }
+#frame { display: block; width: 100%; aspect-ratio: 3 / 2; image-rendering: pixelated;
+  background: #000; border-radius: .3rem; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: .1rem .7rem; }
+.kv dt { color: var(--mute); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+.mon { display: grid; grid-template-columns: 1fr auto; gap: .05rem .6rem; padding: .25rem 0;
+  border-top: 1px solid var(--line); }
+.mon:first-of-type { border-top: 0; }
+.mon.active { background: linear-gradient(90deg, rgba(76,194,255,.14), transparent); }
+.mon.fainted { opacity: .55; }
+.mon b { font-weight: 650; } .lv { color: var(--mute); margin-left: .35rem; }
+.hp { grid-column: 1 / -1; display: flex; gap: .5rem; align-items: center; }
+.track { flex: 1; height: .55rem; background: #0a1322; border-radius: .3rem; overflow: hidden; }
+.track > i { display: block; height: 100%; background: var(--good); }
+.track > i.mid { background: var(--warn); } .track > i.low { background: var(--bad); }
+.chip { font-size: .72rem; padding: 0 .35rem; border-radius: .25rem; background: var(--panel2);
+  border: 1px solid var(--line); margin-left: .25rem; white-space: nowrap; }
+.chip.stat { color: var(--warn); }
+.decision { border-top: 1px solid var(--line); padding: .5rem 0; }
+.decision:first-of-type { border-top: 0; padding-top: 0; }
+.decision.big .q { font-size: 1.2rem; }
+.decision.compact .fact { padding: .15rem .45rem; font-size: .9rem; }
+.decision.compact .opt { padding-block: 0; }
+.decision .meta { display: flex; flex-wrap: wrap; gap: .25rem .5rem; align-items: center;
+  font-size: .85rem; color: var(--mute); }
+.q { font-weight: 650; margin: .15rem 0 .3rem; }
+.opt { display: grid; grid-template-columns: minmax(7rem, 14rem) 1fr 3.4rem; gap: .5rem;
+  align-items: center; padding: .08rem .25rem; border-radius: .3rem; }
+.opt.sel { background: rgba(255,210,76,.13); outline: 1px solid rgba(255,210,76,.5); }
+.opt .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt.sel .name { color: var(--pick); font-weight: 700; }
+.opt .bar { height: .6rem; background: #0a1322; border-radius: .3rem; overflow: hidden; }
+.opt .bar > i { display: block; height: 100%; background: var(--bar); }
+.opt.sel .bar > i { background: var(--pick); }
+.opt .pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--mute); }
+.opt.noprob .bar { visibility: hidden; }
+.fact { margin: .35rem 0 0; padding: .3rem .5rem; background: var(--panel2); border-radius: .3rem;
+  border-left: .2rem solid var(--pick); }
+.fact b { color: var(--pick); }
+.recent { margin: .3rem 0 0; font-size: .82rem; color: var(--mute); }
+.recent li { margin-left: 1rem; }
+.st-thinking { color: var(--accent); } .st-done { color: var(--good); }
+.st-executing { color: var(--warn); }
+.st-failed, .st-error, .st-rejected, .st-timeout, .st-invalid, .st-interrupted { color: var(--bad); }
+ul.log { list-style: none; margin: 0; padding: 0; }
+ul.log li { padding: .12rem 0; border-top: 1px solid var(--line); display: flex; gap: .5rem; }
+ul.log li:first-child { border-top: 0; }
+ul.log time { color: var(--mute); min-width: 3.2rem; font-variant-numeric: tabular-nums; }
+.empty { color: var(--mute); font-style: italic; }
+pre.model { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 22rem; overflow: auto; margin: 0;
+  font: .8rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0a1322;
+  padding: .4rem .5rem; border-radius: .3rem; }
+#events li { font: .78rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#events .ty { display: inline-block; min-width: 9rem; margin-right: .5rem; color: var(--accent); }
+.mode { font-size: .85rem; }
+#banner { display: none; padding: .45rem .9rem; background: #3a2a05; color: #ffd98a;
+  border-bottom: 1px solid #5c4410; font-weight: 600; }
+#banner.bad { background: #3a0f0f; color: #ffb3b3; border-color: #6a2222; }
+</style>
+</head>
+<body>
+<header>
+  <h1>pokegent</h1><span class="pill mode" title="the operator view: everything. The public stream output is /dashboard/">OPERATOR</span>
+  <span id="live" class="pill off">CONNECTING</span>
+  <span id="run" class="mute"></span>
+  <span id="step" class="mute"></span>
+  <span id="scene" class="mute"></span>
+  <span id="clock" class="mute"></span>
+  <a id="dash" class="mute" href="/dashboard/" hidden>old dashboard</a>
+</header>
+<div id="banner"></div>
+<main>
+  <div class="col">
+    <section class="s-game"><h2>Game</h2><img id="frame" alt="game screen"><h3>Audio</h3><button id="sound" type="button">Sound off</button><p class="mute">PCM s16le, stereo, 32,768 Hz from the local stream addon.</p></section>
+    <section class="s-now"><h2>Now</h2><dl class="kv" id="now"></dl></section>
+    <section class="s-party"><h2>Party</h2><div id="party"></div></section>
+    <section id="battle-box" class="s-battle" hidden><h2>Battle</h2><div id="battle"></div></section>
+  </div>
+  <div class="col">
+    <section class="s-dec"><h2>System One decisions</h2><div id="decisions"><div class="empty">no decision yet</div></div></section>
+  </div>
+  <div class="col">
+    <section class="s-model"><h2>What the model was sent <span class="mute" id="modelFor"></span></h2><pre class="model" id="modelView">nothing yet</pre></section>
+    <section class="s-act"><h2>Recent choices</h2><ul class="log" id="actions"></ul></section>
+    <section class="s-ev"><h2>Events</h2><ul class="log" id="events"></ul></section>
+    <section class="s-hi"><h2>Highlights</h2><ul class="log" id="highlights"></ul></section>
+    <section class="s-prob"><h2>Problems</h2><ul class="log" id="problems"></ul></section>
+  </div>
+</main>
+<script nonce="__NONCE__">
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var streamBase = atob('__STREAM_URL_B64__'), latest = null, etag = null, skew = 0, busy = false, lastOk = 0, frameBusy = false, frameUrl = null;
+  var audioContext = null, audioSocket = null, audioGain = null, nextStartTime = 0, soundOn = false;
+  var AUDIO_RATE = 32768, AUDIO_LATENCY = 0.12, AUDIO_LATE_TOLERANCE = 0.05;
+  function streamPath(path) { return streamBase ? streamBase + path : path; }
+  function streamSocket(path) {
+    var url = streamPath(path);
+    return url.charAt(0) === '/' ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + url : url.replace(/^http/, 'ws');
+  }
+
+  function playPcm(event) {
+    var input = new Int16Array(event.data), buffer = audioContext.createBuffer(2, input.length / 2, AUDIO_RATE);
+    for (var channel = 0; channel < 2; channel++) {
+      var output = buffer.getChannelData(channel);
+      for (var i = 0; i < output.length; i++) output[i] = input[i * 2 + channel] / 32768;
+    }
+    var now = audioContext.currentTime;
+    if (nextStartTime < now - AUDIO_LATE_TOLERANCE) nextStartTime = now + AUDIO_LATENCY;
+    nextStartTime = Math.max(nextStartTime, now + AUDIO_LATENCY);
+    var source = audioContext.createBufferSource(); source.buffer = buffer; source.connect(audioGain); source.start(nextStartTime);
+    nextStartTime += buffer.duration;
+  }
+  function startAudio() {
+    var url = streamSocket('/ws/audio');
+    if (audioSocket || !url) return;
+    audioSocket = new WebSocket(url);
+    audioSocket.binaryType = 'arraybuffer';
+    audioSocket.onmessage = playPcm;
+    audioSocket.onclose = function () { audioSocket = null; };
+  }
+  $('sound').addEventListener('click', function () {
+    soundOn = !soundOn;
+    if (!audioContext) {
+      audioContext = new AudioContext({sampleRate: AUDIO_RATE});
+      audioGain = audioContext.createGain(); audioGain.connect(audioContext.destination);
+    }
+    if (audioContext.state === 'suspended') audioContext.resume();
+    audioGain.gain.value = soundOn ? 1 : 0;
+    $('sound').textContent = soundOn ? 'Sound on' : 'Sound off';
+    if (soundOn) startAudio();
+  });
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); return n; }
+  function pct(p) { return p == null ? '' : Math.round(p * 1000) / 10 + '%'; }
+  function ago(ts) {
+    if (!ts) return '';
+    var a = Math.max(0, Date.now() / 1000 - skew - ts);
+    return a < 3 ? 'now' : a < 90 ? Math.round(a) + 's' : a < 5400 ? Math.round(a / 60) + 'm' : Math.round(a / 3600) + 'h';
+  }
+  function clock(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+    return (h ? h + ':' : '') + (m < 10 && h ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function chip(text, cls) { return el('span', 'chip' + (cls ? ' ' + cls : ''), text); }
+  function hpBar(hp, max) {
+    var p = max > 0 ? Math.max(0, Math.min(100, hp / max * 100)) : 0;
+    var track = el('span', 'track'), fill = el('i', p <= 20 ? 'low' : p <= 50 ? 'mid' : '');
+    fill.style.width = p + '%'; track.appendChild(fill);
+    return track;
+  }
+
+  function renderHeader(t) {
+    var run = t.run || {}, srv = t.server || {};
+    var live = $('live');
+    var stopped = run.status === 'stopped';
+    live.textContent = stopped ? 'STOPPED' : srv.emulator_ready ? 'LIVE' : 'NO GAME';
+    live.className = 'pill ' + (stopped ? 'stopped' : srv.emulator_ready ? 'live' : 'off');
+    $('run').textContent = run.run_id ? 'run ' + run.run_id : '';
+    $('step').textContent = 'step ' + (run.step || 0) + '/' + (run.max_steps || '?') + ' · ' + (run.decider || '') +
+      (run.realtime ? ' · realtime' : ' · fast');
+    $('scene').textContent = t.scene && t.scene.id ? 'scene ' + t.scene.id + (t.scene.busy ? ' (busy)' : '') : '';
+    $('clock').textContent = 'wall ' + clock(run.wall_seconds) + (run.emulator_frame != null ? ' · frame ' + run.emulator_frame : '');
+    $('dash').hidden = !(t.viewer && t.viewer.dashboard);
+    var b = $('banner');
+    if (stopped) {
+      b.style.display = 'block'; b.className = run.exit_code ? 'bad' : '';
+      b.textContent = 'Run stopped: ' + (run.stop_reason || 'unknown') + (run.exit_code != null ? ' (exit ' + run.exit_code + ')' : '');
+    } else { b.style.display = 'none'; }
+  }
+
+  function renderNow(t) {
+    var st = t.state || {}, map = st.map || {}, pos = st.position || {}, obj = (t.objectives || {}).display || {};
+    var rows = [
+      ['Objective', obj.current || '—'],
+      ['Next', obj.next || '—'],
+      ['Map', map.name ? map.name + ' (' + map.id + ')' : '—'],
+      ['Position', pos.x != null ? 'x ' + pos.x + ' · y ' + pos.y : '—'],
+      ['Badges', (st.badges || []).length + '/8' + ((st.badges || []).length ? ' · ' + st.badges.join(', ') : '')],
+      ['Money', st.player && st.player.money != null ? '$' + st.player.money : '—'],
+      ['Battles', (t.run_stats || {}).battles + ' · blackouts ' + (t.run_stats || {}).blackouts]
+    ];
+    var dl = clear($('now'));
+    rows.forEach(function (r) { dl.appendChild(el('dt', null, r[0])); dl.appendChild(el('dd', null, r[1])); });
+  }
+
+  function renderParty(t) {
+    var st = t.state || {}, party = st.party || [], battle = st.battle || {};
+    var active = battle.in_battle ? (battle.active_party_indexes || []) : [];
+    var box = clear($('party'));
+    if (!party.length) { box.appendChild(el('div', 'empty', 'no party read yet')); return; }
+    party.forEach(function (m, i) {
+      var row = el('div', 'mon' + (active.indexOf(i) >= 0 ? ' active' : '') + (m.hp === 0 ? ' fainted' : ''));
+      var name = el('div'); name.appendChild(el('b', null, m.nickname && m.nickname !== m.species ? m.nickname + ' (' + m.species + ')' : m.species));
+      name.appendChild(el('span', 'lv', 'Lv' + m.level));
+      (m.types || []).forEach(function (ty) { name.appendChild(chip(ty)); });
+      var right = el('div', 'mute', m.hp + '/' + m.max_hp);
+      if (m.hp === 0) right.appendChild(chip('FNT', 'stat'));
+      else if (m.status && m.status !== 'OK') right.appendChild(chip(m.status, 'stat'));
+      var hp = el('div', 'hp'); hp.appendChild(hpBar(m.hp, m.max_hp));
+      row.appendChild(name); row.appendChild(right); row.appendChild(hp); box.appendChild(row);
+    });
+  }
+
+  function renderBattle(t) {
+    var b = ((t.state || {}).battle) || {};
+    $('battle-box').hidden = !b.in_battle;
+    if (!b.in_battle) return;
+    var box = clear($('battle')), foe = b.enemy, me = b.player;
+    var head = el('div'); head.appendChild(el('b', null, (b.is_trainer ? 'Trainer' : 'Wild') + ' battle'));
+    head.appendChild(el('span', 'lv', 'turn ' + (b.turn != null ? b.turn + 1 : '?')));
+    box.appendChild(head);
+    if (foe) {
+      var f = el('div', 'mon'); var n = el('div'); n.appendChild(el('b', null, foe.species)); n.appendChild(el('span', 'lv', 'Lv' + foe.level));
+      (foe.types || []).forEach(function (ty) { n.appendChild(chip(ty)); });
+      var r = el('div', 'mute', foe.hp_percent + '%'); if (foe.status && foe.status !== 'OK') r.appendChild(chip(foe.status, 'stat'));
+      var hp = el('div', 'hp'); hp.appendChild(hpBar(foe.hp, foe.max_hp));
+      f.appendChild(n); f.appendChild(r); f.appendChild(hp); box.appendChild(f);
+    }
+    if (me && me.moves && me.moves.length) {
+      var mv = el('div', 'mute', 'moves: ' + me.moves.map(function (m) { return m.name + ' (' + m.pp + ')'; }).join(' · '));
+      box.appendChild(mv);
+    }
+  }
+
+  function shownChoices(d, big) {
+    var all = d.choices || [];
+    if (big) return all;
+    var top = all.slice(0, 3);
+    all.forEach(function (c) { if (c.selected && top.indexOf(c) < 0) top[top.length - 1] = c; });
+    return top;
+  }
+
+  function decisionNode(d, big) {
+    var box = el('div', 'decision' + (big ? ' big' : ' compact'));
+    var meta = el('div', 'meta');
+    meta.appendChild(chip(d.family_label || d.family || ''));
+    meta.appendChild(el('span', 'st-' + (d.run_status || ''), (d.run_status || '').toUpperCase()));
+    meta.appendChild(el('span', null, d.model || 'configured provider'));
+    if (d.latency_ms != null) meta.appendChild(el('span', null, Math.round(d.latency_ms) + ' ms'));
+    if (d.confidence != null) meta.appendChild(el('span', null, 'conf ' + pct(d.confidence)));
+    meta.appendChild(el('span', null, ago(d.ts)));
+    if (d.repeat > 1) meta.appendChild(chip('\u00d7' + d.repeat + ' in a row', 'stat'));
+    box.appendChild(meta);
+    box.appendChild(el('div', 'q', d.question || ''));
+    var rows = shownChoices(d, big);
+    rows.forEach(function (c) {
+      var row = el('div', 'opt' + (c.selected ? ' sel' : '') + (c.probability == null ? ' noprob' : ''));
+      row.title = c.text || '';
+      row.appendChild(el('span', 'name', (c.selected ? '\u2713 ' : '') + c.label));
+      var bar = el('span', 'bar'), fill = el('i'); fill.style.width = (c.probability == null ? 0 : c.probability * 100) + '%';
+      bar.appendChild(fill); row.appendChild(bar);
+      row.appendChild(el('span', 'pct', pct(c.probability)));
+      box.appendChild(row);
+    });
+    if (d.options_total > rows.length) box.appendChild(el('div', 'mute', '+' + (d.options_total - rows.length) + ' more options'));
+    if (d.selected_label || d.fact_sentence) {
+      var fact = el('div', 'fact'); fact.appendChild(el('b', null, 'Chose: ' + (d.selected_label || '\u2014')));
+      if (d.fact_sentence) fact.appendChild(el('div', null, d.fact_sentence));
+      box.appendChild(fact);
+    }
+    if (d.error) box.appendChild(el('div', 'st-error', 'decider error: ' + d.error));
+    if (d.result && d.result.error_code) box.appendChild(el('div', 'st-error', 'result: ' + d.result.status + ' ' + d.result.error_code));
+    return box;
+  }
+
+  function renderDecisions(t) {
+    var pv = t.pokegent || {}, list = (pv.decisions || []).slice(0, 10), box = clear($('decisions'));
+    var first = pv.decision;
+    if (first && first.run_status === 'thinking') list = [first].concat(list.slice(0, 9));
+    if (!list.length) { box.appendChild(el('div', 'empty', 'no decision yet (single-option steps are not decisions)')); return; }
+    list.forEach(function (d, i) { box.appendChild(decisionNode(d, i === 0)); });
+  }
+
+  function logList(id, rows, fmt, empty) {
+    var ul = clear($(id));
+    if (!rows || !rows.length) { ul.appendChild(el('li', 'empty', empty)); return; }
+    rows.slice(0, 14).forEach(function (r) {
+      var li = el('li'); li.appendChild(el('time', null, ago(r.ts)));
+      var body = fmt(r); li.appendChild(body); ul.appendChild(li);
+    });
+  }
+
+  function render(t) {
+    latest = t;
+    renderHeader(t); renderNow(t); renderParty(t); renderBattle(t); renderDecisions(t);
+    logList('actions', (t.recent_actions || []), function (a) {
+      var s = el('span'); s.appendChild(el('span', 'st-' + a.status, a.status)); s.appendChild(document.createTextNode(' ' + (a.label || a.option || '') + ' · ' + (a.source || '')));
+      if (a.error_code) s.appendChild(chip(a.error_code, 'stat'));
+      return s;
+    }, 'no action yet');
+    logList('highlights', (t.highlights || []).slice().reverse(), function (h) { return el('span', null, h.text); }, 'nothing yet');
+    logList('problems', (t.problems || []), function (p) {
+      return el('span', null, p.what + (p.scene ? ' · ' + p.scene : '') + (p.error_code ? ' · ' + p.error_code : '') + (p.outcome ? ' · ' + p.outcome : ''));
+    }, 'none');
+  }
+
+  function poll() {
+    if (busy) return; busy = true;
+    var headers = {}; if (etag) headers['If-None-Match'] = etag;
+    fetch('/ops/telemetry', {cache: 'no-store', headers: headers}).then(function (r) {
+      if (r.status === 304) { lastOk = Date.now(); return null; }
+      if (!r.ok) throw new Error('telemetry ' + r.status);
+      etag = r.headers.get('ETag') || etag; return r.json();
+    }).then(function (t) {
+      lastOk = Date.now();
+      if (!t) return;
+      if (typeof t.generated_at === 'number') skew = Date.now() / 1000 - t.generated_at;
+      render(t);
+    }).catch(function () {
+      var live = $('live'); live.textContent = 'DISCONNECTED'; live.className = 'pill off';
+    }).then(function () { busy = false; });
+  }
+
+  function pollFrame() {
+    var url = streamPath('/frame.png?_t=' + Date.now());
+    if (!url || frameBusy) return; frameBusy = true;
+    fetch(url, {cache: 'no-store'}).then(function (r) {
+      if (!r.ok) throw new Error('frame ' + r.status);
+      return r.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob), img = $('frame'), old = frameUrl;
+      img.src = url; frameUrl = url; if (old) setTimeout(function () { URL.revokeObjectURL(old); }, 500);
+    }).catch(function () {}).then(function () { frameBusy = false; });
+  }
+
+  var lastEventSeq = 0, events = [], modelFor = null, eventsBusy = false, modelBusy = false;
+
+  function renderEvents() {
+    var rows = events.slice(-40).reverse();
+    logList('events', rows, function (e) {
+      var li = el('span');
+      li.appendChild(el('span', 'ty', e.type));
+      var bits = [e.scene, e.outcome, e.request_id].filter(Boolean);
+      Object.keys(e.details || {}).forEach(function (k) { bits.push(k + '=' + JSON.stringify(e.details[k])); });
+      li.appendChild(document.createTextNode(bits.join(' \u00b7 ')));
+      return li;
+    }, 'no events yet');
+  }
+
+  function pollEvents() {
+    if (eventsBusy) return; eventsBusy = true;
+    fetch('/ops/events?after=' + lastEventSeq, {cache: 'no-store'}).then(function (r) {
+      if (!r.ok) throw new Error('events ' + r.status);
+      return r.json();
+    }).then(function (b) {
+      if (b.events && b.events.length) { events = events.concat(b.events).slice(-200); lastEventSeq = b.last_seq; renderEvents(); }
+    }).catch(function () {}).then(function () { eventsBusy = false; });
+  }
+
+  function pollModel() {
+    var d = latest && latest.pokegent && latest.pokegent.decision;
+    if (!d || d.id === modelFor || modelBusy) return;
+    modelBusy = true;
+    fetch('/ops/decisions', {cache: 'no-store'}).then(function (r) {
+      if (!r.ok) throw new Error('decisions ' + r.status);
+      return r.json();
+    }).then(function (b) {
+      var rec = b.pending || (b.decisions || [])[0];
+      if (!rec || !rec.model_view) return;
+      modelFor = rec.id;
+      $('modelFor').textContent = rec.id + ' \u00b7 ' + rec.scene;
+      $('modelView').textContent = 'INSTRUCTIONS\n' + rec.model_view.instructions + '\n\nSTATE\n' +
+        JSON.stringify(rec.model_view.state, null, 2) + '\n\nCRITERIA (' + (rec.options || []).length + ')\n' +
+        (rec.options || []).map(function (o) { return o.key + ': ' + o.text; }).join('\n');
+    }).catch(function () {}).then(function () { modelBusy = false; });
+  }
+
+  poll(); pollFrame(); pollEvents();
+  setInterval(poll, 500);
+  setInterval(pollFrame, 100);
+  setInterval(pollEvents, 1000);
+  setInterval(pollModel, 700);
+  setInterval(function () { if (latest) { renderDecisions(latest); } }, 1000);
+})();
+</script>
+</body>
+</html>

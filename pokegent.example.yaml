@@ -1,0 +1,26 @@
+# Copy to pokegent.yaml. Environment variables override this file; CLI flags win.
+rom_path: /path/to/your/FireRed.gba
+decider: hybrid   # hybrid | agent | system1 | first
+system1:
+  base_url: http://127.0.0.1:8799 # placeholder; set to your System One endpoint
+  api_key_env: SYSTEM1_API_KEY
+  # api_key: never commit real keys
+  model: null
+  timeouts: 8
+external:
+  port: 19760 # must be 19700-19799
+hybrid:
+  escalate_below_confidence: 0.35 # or {default: 0.35, battle: 0.5}
+  override_window_s: 0
+battle:
+  opponent_knowledge: guide # guide | fair_play
+field:
+  menus: false
+output:
+  run_dir: runs
+stream:
+  enabled: false
+  port: 19700
+dashboard:
+  enabled: false
+  port: 19701

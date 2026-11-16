@@ -1,0 +1,20 @@
+name: Bug report
+description: Report a reproducible runtime problem
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps and version
+      description: Use synthetic examples. Do not attach ROMs, saves, credentials or private run data.
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Relevant checks and redacted diagnostics

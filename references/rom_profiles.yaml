@@ -1,0 +1,1611 @@
+# Technical address and struct profile for the FireRed reader.
+# ROM identity requires matching hashes and header; unknown revisions fail closed.
+# Address values were cross-checked with the earlier AIMD Labs runtime
+# (MIT fork of NousResearch/pokemon-agent). Struct descriptions and constants use
+# pret/pokefirered as an interoperability reference, at the revision below.
+# Source notes describe technical facts, not a bundled game dataset.
+# Historical validation notes are not claims that those checks ship or ran here.
+schema_version: 1
+pret_commit: 037335f4c725d7c9aecdac87066f2002b4bd7e14
+
+layouts:
+  firered_us_saveblocks:
+    description: SaveBlock1 / SaveBlock2 field offsets (pret/pokefirered include/global.h) plus the map structs of include/global.fieldmap.h (M2.2)
+    structs:
+      SaveBlock1:
+        size: 0x3D68
+        source: "include/global.h:759-822 struct SaveBlock1"
+        fields:
+          pos:               {offset: 0x0000, size: 4,     source: "global.h:761 struct Coords16 pos (s16 x, s16 y)"}
+          location:          {offset: 0x0004, size: 8,     source: "global.h:762 struct WarpData location (s8 mapGroup, s8 mapNum, s8 warpId, s16 x, s16 y)"}
+          continueGameWarp:  {offset: 0x000C, size: 8,     source: "global.h:763 struct WarpData"}
+          dynamicWarp:       {offset: 0x0014, size: 8,     source: "global.h:764 struct WarpData"}
+          lastHealLocation:  {offset: 0x001C, size: 8,     source: "global.h:765 struct WarpData"}
+          escapeWarp:        {offset: 0x0024, size: 8,     source: "global.h:766 struct WarpData"}
+          flashLevel:        {offset: 0x0030, size: 1,     source: "global.h:770 u8 flashLevel"}
+          mapLayoutId:       {offset: 0x0032, size: 2,     source: "global.h:771 u16 mapLayoutId"}
+          playerPartyCount:  {offset: 0x0034, size: 1,     source: "global.h:772 u8 playerPartyCount (reader contract: 0x0034, not the upstream stub's 0x0234)"}
+          playerParty:       {offset: 0x0038, size: 600,   source: "global.h:773 struct Pokemon playerParty[PARTY_SIZE] (6 x 100)"}
+          money:             {offset: 0x0290, size: 4,     source: "global.h:774 u32 money; src/money.c GetMoney: value ^ SaveBlock2.encryptionKey"}
+          coins:             {offset: 0x0294, size: 2,     source: "global.h:775 u16 coins; encrypted with the low 16 bits of the key (load_save.c ApplyNewEncryptionKeyToHword)"}
+          registeredItem:    {offset: 0x0296, size: 2,     source: "global.h:776 u16 registeredItem; item registered for use with SELECT (src/item_menu.c UseRegisteredKeyItemOnField)"}
+          pcItems:           {offset: 0x0298, size: 120,   source: "pret pokefirered 037335f4 include/global.h:777 ItemSlot[PC_ITEMS_COUNT=30]; src/item.c:31-39 GetPcItemQuantity/SetPcItemQuantity XOR quantities with zero"}
+          bagPocket_Items:     {offset: 0x0310, size: 168, source: "global.h:778 struct ItemSlot[BAG_ITEMS_COUNT=42]; quantity ^ (encryptionKey & 0xFFFF), src/item.c GetBagItemQuantity"}
+          bagPocket_KeyItems:  {offset: 0x03B8, size: 120, source: "global.h:779 struct ItemSlot[BAG_KEYITEMS_COUNT=30]"}
+          bagPocket_PokeBalls: {offset: 0x0430, size: 52,  source: "global.h:780 struct ItemSlot[BAG_POKEBALLS_COUNT=13]"}
+          bagPocket_TMHM:      {offset: 0x0464, size: 232, source: "global.h:781 struct ItemSlot[BAG_TMHM_COUNT=58]"}
+          bagPocket_Berries:   {offset: 0x054C, size: 172, source: "global.h:782 struct ItemSlot[BAG_BERRIES_COUNT=43]"}
+          flags:             {offset: 0x0EE0, size: 288,   source: "global.h:790 u8 flags[NUM_FLAG_BYTES=0x120] (FLAGS_COUNT 0x900)"}
+          vars:              {offset: 0x1000, size: 512,   source: "global.h:791 u16 vars[VARS_COUNT=0x100] (VARS_START 0x4000)"}
+      SaveBlock2:
+        size: 0x0F24
+        source: "include/global.h:327-359 struct SaveBlock2"
+        fields:
+          playerName:        {offset: 0x0000, size: 8, source: "global.h:329 u8 playerName[PLAYER_NAME_LENGTH+1]"}
+          playerGender:      {offset: 0x0008, size: 1, source: "global.h:330 u8 playerGender (MALE 0, FEMALE 1)"}
+          playerTrainerId:   {offset: 0x000A, size: 4, source: "global.h:332 u8 playerTrainerId[4] (TID u16, SID u16)"}
+          optionsButtonMode: {offset: 0x0013, size: 1, source: "global.h:337 u8 optionsButtonMode; OPTIONS_BUTTON_MODE_HELP/LR/L_EQUALS_A"}
+          pokedexOwned:      {offset: 0x0028, size: 52, source: "global.h:344 struct Pokedex owned[DEX_FLAGS_NO], BPRE Rev0 decomp"}
+          pokedexSeen:       {offset: 0x005C, size: 52, source: "global.h:344 struct Pokedex seen[DEX_FLAGS_NO], BPRE Rev0 decomp"}
+          encryptionKey:     {offset: 0x0F20, size: 4, source: "global.h:358 u32 encryptionKey"}
+      # ---- map structs (M2.2): pret/pokefirered include/global.fieldmap.h, include/fieldmap.h ----
+      MapHeader:
+        size: 0x1C
+        source: "include/global.fieldmap.h struct MapHeader (ROM data; gMapHeader in EWRAM is a copy)"
+        fields:
+          mapLayout:          {offset: 0x00, size: 4, source: "global.fieldmap.h const struct MapLayout *mapLayout"}
+          events:             {offset: 0x04, size: 4, source: "global.fieldmap.h const struct MapEvents *events"}
+          mapScripts:         {offset: 0x08, size: 4, source: "global.fieldmap.h const u8 *mapScripts"}
+          connections:        {offset: 0x0C, size: 4, source: "global.fieldmap.h const struct MapConnections *connections (may be NULL)"}
+          music:              {offset: 0x10, size: 2, source: "global.fieldmap.h u16 music"}
+          mapLayoutId:        {offset: 0x12, size: 2, source: "global.fieldmap.h u16 mapLayoutId (equals SaveBlock1.mapLayoutId)"}
+          regionMapSectionId: {offset: 0x14, size: 1, source: "global.fieldmap.h u8 regionMapSectionId"}
+          cave:               {offset: 0x15, size: 1, source: "global.fieldmap.h u8 cave"}
+          weather:            {offset: 0x16, size: 1, source: "global.fieldmap.h u8 weather"}
+          mapType:            {offset: 0x17, size: 1, source: "global.fieldmap.h u8 mapType (constants/map_types.h)"}
+          bikingAllowed:      {offset: 0x18, size: 1, source: "global.fieldmap.h bool8 bikingAllowed"}
+          flags:              {offset: 0x19, size: 1, source: "global.fieldmap.h allowEscaping:1 allowRunning:1 showMapName:6"}
+          floorNum:           {offset: 0x1A, size: 1, source: "global.fieldmap.h s8 floorNum"}
+          battleType:         {offset: 0x1B, size: 1, source: "global.fieldmap.h u8 battleType"}
+      MapLayout:
+        size: 0x1C
+        source: "include/global.fieldmap.h struct MapLayout (ROM data)"
+        fields:
+          width:            {offset: 0x00, size: 4, source: "s32 width"}
+          height:           {offset: 0x04, size: 4, source: "s32 height"}
+          border:           {offset: 0x08, size: 4, source: "const u16 *border"}
+          map:              {offset: 0x0C, size: 4, source: "const u16 *map (width*height u16 blocks)"}
+          primaryTileset:   {offset: 0x10, size: 4, source: "const struct Tileset *primaryTileset"}
+          secondaryTileset: {offset: 0x14, size: 4, source: "const struct Tileset *secondaryTileset"}
+          borderWidth:      {offset: 0x18, size: 1, source: "u8 borderWidth"}
+          borderHeight:     {offset: 0x19, size: 1, source: "u8 borderHeight"}
+      Tileset:
+        size: 0x18
+        source: "include/global.fieldmap.h struct Tileset (ROM data)"
+        fields:
+          isCompressed:      {offset: 0x00, size: 1, source: "bool8 isCompressed"}
+          isSecondary:       {offset: 0x01, size: 1, source: "bool8 isSecondary"}
+          metatileAttributes: {offset: 0x14, size: 4, source: "const u32 *metatileAttributes (u32 per metatile in FireRed: behavior bits 0-8, terrain 9-13, encounter 24-26, layer 29-30; fieldmap.c sMetatileAttrMasks)"}
+      BackupMapLayout:
+        size: 12
+        source: "include/global.fieldmap.h struct BackupMapLayout (VMap, IWRAM)"
+        fields:
+          Xsize: {offset: 0x00, size: 4, source: "s32 Xsize = layout.width + MAP_OFFSET_W (15)"}
+          Ysize: {offset: 0x04, size: 4, source: "s32 Ysize = layout.height + MAP_OFFSET_H (14)"}
+          map:   {offset: 0x08, size: 4, source: "u16 *map = gBackupMapData"}
+      MapEvents:
+        size: 0x14
+        source: "include/global.fieldmap.h struct MapEvents (ROM data)"
+        fields:
+          objectEventCount: {offset: 0x00, size: 1, source: "u8 objectEventCount"}
+          warpCount:        {offset: 0x01, size: 1, source: "u8 warpCount"}
+          coordEventCount:  {offset: 0x02, size: 1, source: "u8 coordEventCount"}
+          bgEventCount:     {offset: 0x03, size: 1, source: "u8 bgEventCount"}
+          objectEvents:     {offset: 0x04, size: 4, source: "const struct ObjectEventTemplate *objectEvents"}
+          warps:            {offset: 0x08, size: 4, source: "const struct WarpEvent *warps"}
+          coordEvents:      {offset: 0x0C, size: 4, source: "const struct CoordEvent *coordEvents"}
+          bgEvents:         {offset: 0x10, size: 4, source: "const struct BgEvent *bgEvents"}
+      ObjectEventTemplate:
+        size: 0x18
+        source: "include/global.fieldmap.h struct ObjectEventTemplate; asm/macros/map.inc object_event"
+        fields:
+          localId:       {offset: 0x00, size: 1, source: "u8 localId"}
+          graphicsId:    {offset: 0x01, size: 1, source: "u8 graphicsId"}
+          kind:          {offset: 0x02, size: 1, source: "u8 kind (OBJ_KIND_NORMAL 0, OBJ_KIND_CLONE 255)"}
+          x:             {offset: 0x04, size: 2, source: "s16 x"}
+          y:             {offset: 0x06, size: 2, source: "s16 y"}
+          elevation:     {offset: 0x08, size: 1, source: "objUnion.normal.elevation (clone: targetLocalId)"}
+          movementType:  {offset: 0x09, size: 1, source: "objUnion.normal.movementType"}
+          range:         {offset: 0x0A, size: 1, source: "movementRangeX:4 (low) movementRangeY:4 (high); map.inc (y_radius << 4) | x_radius"}
+          trainerType:   {offset: 0x0C, size: 2, source: "objUnion.normal.trainerType (clone: targetMapNum)"}
+          trainerRange:  {offset: 0x0E, size: 2, source: "objUnion.normal.trainerRange_berryTreeId (clone: targetMapGroup)"}
+          script:        {offset: 0x10, size: 4, source: "const u8 *script"}
+          flagId:        {offset: 0x14, size: 2, source: "u16 flagId (object is not spawned while the flag is set)"}
+      WarpEvent:
+        size: 8
+        source: "include/global.fieldmap.h struct WarpEvent; asm/macros/map.inc warp_def"
+        fields:
+          x:         {offset: 0x00, size: 2, source: "s16 x"}
+          y:         {offset: 0x02, size: 2, source: "s16 y"}
+          elevation: {offset: 0x04, size: 1, source: "u8 elevation"}
+          warpId:    {offset: 0x05, size: 1, source: "u8 warpId (destination warp index)"}
+          mapNum:    {offset: 0x06, size: 1, source: "u8 mapNum"}
+          mapGroup:  {offset: 0x07, size: 1, source: "u8 mapGroup"}
+      CoordEvent:
+        size: 0x10
+        source: "include/global.fieldmap.h struct CoordEvent; asm/macros/map.inc coord_event"
+        fields:
+          x:         {offset: 0x00, size: 2, source: "u16 x"}
+          y:         {offset: 0x02, size: 2, source: "u16 y"}
+          elevation: {offset: 0x04, size: 1, source: "u8 elevation"}
+          trigger:   {offset: 0x06, size: 2, source: "u16 trigger (the var id)"}
+          index:     {offset: 0x08, size: 2, source: "u16 index (the var value)"}
+          script:    {offset: 0x0C, size: 4, source: "const u8 *script (NULL = weather event)"}
+      BgEvent:
+        size: 0x0C
+        source: "include/global.fieldmap.h struct BgEvent; asm/macros/map.inc bg_event"
+        fields:
+          x:         {offset: 0x00, size: 2, source: "u16 x"}
+          y:         {offset: 0x02, size: 2, source: "u16 y"}
+          elevation: {offset: 0x04, size: 1, source: "u8 elevation"}
+          kind:      {offset: 0x05, size: 1, source: "u8 kind (constants/event_bg.h)"}
+          script:    {offset: 0x08, size: 4, source: "bgUnion.script, or hiddenItem: item u16 @8, flag-1000 u8 @0xA, quantity|underfoot<<7 u8 @0xB"}
+      MapConnections:
+        size: 8
+        source: "include/global.fieldmap.h struct MapConnections"
+        fields:
+          count:       {offset: 0x00, size: 4, source: "s32 count"}
+          connections: {offset: 0x04, size: 4, source: "const struct MapConnection *connections"}
+      MapConnection:
+        size: 0x0C
+        source: "include/global.fieldmap.h struct MapConnection"
+        fields:
+          direction: {offset: 0x00, size: 1, source: "u8 direction (CONNECTION_SOUTH 1, NORTH 2, WEST 3, EAST 4)"}
+          offset:    {offset: 0x04, size: 4, source: "u32 offset (signed in use)"}
+          mapGroup:  {offset: 0x08, size: 1, source: "u8 mapGroup"}
+          mapNum:    {offset: 0x09, size: 1, source: "u8 mapNum"}
+      ObjectEvent:
+        size: 0x24
+        source: "include/global.fieldmap.h struct ObjectEvent (gObjectEvents[16], EWRAM)"
+        fields:
+          flags0:           {offset: 0x00, size: 1, source: "bit0 active, bit1 singleMovementActive, bit6 heldMovementActive"}
+          flags1:           {offset: 0x01, size: 1, source: "bit5 invisible, bit6 offScreen, bit7 trackedByCamera"}
+          flags2:           {offset: 0x02, size: 1, source: "bit0 isPlayer"}
+          graphicsId:       {offset: 0x05, size: 1, source: "u8 graphicsId"}
+          movementType:     {offset: 0x06, size: 1, source: "u8 movementType"}
+          trainerType:      {offset: 0x07, size: 1, source: "u8 trainerType"}
+          localId:          {offset: 0x08, size: 1, source: "u8 localId"}
+          mapNum:           {offset: 0x09, size: 1, source: "u8 mapNum"}
+          mapGroup:         {offset: 0x0A, size: 1, source: "u8 mapGroup"}
+          elevation:        {offset: 0x0B, size: 1, source: "currentElevation:4 (low) previousElevation:4 (high)"}
+          initialCoords:    {offset: 0x0C, size: 4, source: "struct Coords16 initialCoords (+7 offset)"}
+          currentCoords:    {offset: 0x10, size: 4, source: "struct Coords16 currentCoords (+7 offset)"}
+          previousCoords:   {offset: 0x14, size: 4, source: "struct Coords16 previousCoords (+7 offset)"}
+          directions:       {offset: 0x18, size: 1, source: "facingDirection:4 (low) movementDirection:4 (high)"}
+          range:            {offset: 0x19, size: 1, source: "rangeX:4 (low) rangeY:4 (high); position inferred from the u16 bitfield rules, proven against template ranges in tests"}
+          trainerRange:     {offset: 0x1D, size: 1, source: "u8 trainerRange_berryTreeId"}
+          currentBehavior:  {offset: 0x1E, size: 1, source: "u8 currentMetatileBehavior"}
+
+profiles:
+  firered-us-rev0:
+    display_name: Pokemon FireRed (USA) Rev 0 (v1.0)
+    supported: true
+    rom:
+      sha1: 41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc   # pret/pokefirered README, reader contract
+      sha256: 3d0c79f1627022e18765766f6cb5ea067f6b5bf7dca115552189ad65a5c3a8ac  # measured on the host ROM (read-only)
+      game_code: BPRE
+      version: 0
+      size: 16777216
+    layout: firered_us_saveblocks
+    # --- M2b mechanics data tables (additive). Separate from `symbols` on purpose: `symbols` in the ROM
+    # region are function entry points (historical local validation), these are data. Read by
+    # pokegent/games/firered/rom_tables.py. ROM addresses were located by pattern scan of the host ROM (no symbol map).
+      # Method: the decomp layout of each table (src/data/*.h, struct size incl. the 4-byte padding agbcc
+      # applies) was searched in the read-only host ROM; the base is the unique hit minus the index of the
+      # matching entry. Each base is proven by historical local validation (names, ids, structural
+      # scans of every entry, known-answer entries), run on the host ROM, 2026-10-08.
+    rom_tables:
+      gTrainers:
+        address: 0x0823EAC8
+        size: 29720
+        source: "ROM structural scan: gTrainers[0] is the empty TRAINER_NONE row, 40-byte struct Trainer rows point forward to aligned party records; pret src/data/trainers.h and include/global.h"
+        verified_by: ["world-domain ROM tests: every trainer id referenced by current-map trainerbattle scripts has a readable party and levels in 1..100"]
+      gTrainerClassNames:
+        address: 0x0823E558
+        size: 1300
+        source: "observed: unique 100x13 Gen-3 text table sequence in the host ROM; earlier AIMD Labs runtime reference: const u8 gTrainerClassNames[][13] (pret/pokefirered src/data/text/trainer_class_names.h)"
+        verified_by: ["ROM decode: trainer class ids 84, 87, and 90 resolve to LEADER, ELITE FOUR, and CHAMPION, matching the in-game trainer text"]
+      gWildMonHeaders:
+        address: 0x083C9CB8
+        size: 3400
+        source: "ROM structural scan: 20-byte WildPokemonHeader rows (map group/number plus four ROM pointers), terminated by 0xFF/0xFF; pret src/data/wild_encounters.json and src/wild_encounter.c"
+        verified_by: ["world-domain ROM tests: Route 1 ROM rows decode Pidgey and Rattata with the expected level ranges"]
+      gBattleMoves:
+        address: 0x08250C04
+        size: 4260
+        source: "scan: gBattleMoves[0] = 12 zero bytes immediately before MOVE_POUND {effect 0, power 40, type 0, acc 100, pp 35}; decomp: src/data/battle_moves.h const struct BattleMove gBattleMoves[MOVES_COUNT=355], ROM stride 12 (9 u8 fields padded to 4)"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: Tackle (33) power 35 / acc 95 / pp 35 / Normal; Ember, Water Gun, Thunderbolt, Psycho Boost (354) match the decomp; all 355 entries have type < 18, target in the known masks, pp 0..40, accuracy 0..100; every move name of gMoveNames agrees with its id"]
+      gSpeciesInfo:
+        address: 0x08254784
+        size: 11536
+        source: "scan: Bulbasaur base stats {45,49,49,45,65,65,types 12/3,catch 45,exp 64} at 0x082547A0, species 0 = 28 bytes before; decomp: src/data/pokemon/species_info.h const struct SpeciesInfo gSpeciesInfo[] (named gBaseStats in older decomps), ROM stride 28"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: Squirtle (7) base 44/48/65/43/50/64 Water; Pikachu, Charizard, Gengar, Chansey spot checks; every species 1..411 has types < 18, base stats 1..255 for real species; species names agree with ids"]
+      gTypeEffectiveness:
+        address: 0x0824F050
+        size: 336
+        source: "scan: bytes {NORMAL,ROCK,5, NORMAL,STEEL,5, FIRE,FIRE,5, FIRE,WATER,5} are unique in the ROM; decomp: src/battle_main.c const u8 gTypeEffectiveness[336] (111 triples incl. the TYPE_FORESIGHT 0xFE marker, ends with TYPE_ENDTABLE 0xFF)"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: Water vs Fire = 20, Electric vs Ground = 0, Ghost vs Normal = 0, Fire vs Steel = 20; the table is byte-identical to the entries parsed from the decomp source; ends with the 0xFF marker; one 0xFE marker; every multiplier in {0,5,10,20}"]
+      gItems:
+        address: 0x083DB028
+        size: 16500
+        source: "scan: the text MASTER BALL (item 1) found at 0x083DB054 = gItems[1].name; decomp: src/data/items.json -> struct Item gItems[ITEMS_COUNT=375], 44 bytes each (include/item.h)"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: every gItems[i].itemId == i (i >= 1), Potion price 300, Master Ball in the ball pocket, holdEffect of Choice Band / Leftovers / Quick Claw match the decomp constants"]
+      gItemEffectTable:
+        address: 0x082528BC
+        size: 652
+        source: "scan: the u32 pointer to sItemEffect_Potion bytes {0,0,0,0,4,0,20} at 0x082526EC, followed by a pointer to the Antidote bytes; decomp: src/data/pokemon/item_effects.h const u8 *const gItemEffectTable[] for ITEM_POTION(13)..ITEM_ENIGMA_BERRY(175) = 163 entries"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: Potion heals 20, Super Potion 50, Hyper Potion 200, Max Potion full, Revive half + revive, Full Restore cures all + full, Antidote cures poison, Ether 10 PP one move, Elixir 10 PP all, X Attack +1 atk, Dire Hit"]
+      gMoveNames:
+        address: 0x08247094
+        size: 4615
+        source: "scan: the text POUND (move 1) at 0x082470A1, move 0 is '-' 13 bytes earlier; decomp: src/data/text/move_names.h gMoveNames[MOVES_COUNT][MOVE_NAME_LENGTH+1=13]"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: ids 33 TACKLE, 165 STRUGGLE, 354 PSYCHO BOOST; names are non-empty for every id"]
+      gSpeciesNames:
+        address: 0x08245EE0
+        size: 4532
+        source: "scan: the text BULBASAUR (species 1) at 0x08245EEB, species 0 is ?????????? 11 bytes earlier; decomp: src/data/text/species_names.h gSpeciesNames[][POKEMON_NAME_LENGTH+1=11]"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: ids 1 BULBASAUR, 7 SQUIRTLE, 25 PIKACHU, 411 CHIMECHO"]
+      gAbilityNames:
+        address: 0x0824FC40
+        size: 1014
+        source: "scan: the text STENCH (ability 1) at 0x0824FC4D, ability 0 is ------- 13 bytes earlier; decomp: src/data/text/abilities.h gAbilityNames[ABILITIES_COUNT=78][ABILITY_NAME_LENGTH+1=13]"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: every ABILITY_* constant of games/firered/mechanics_ids.py that the damage code uses names the expected ability (HUGE POWER, THICK FAT, LEVITATE, ...)"]
+      gTypeNames:
+        address: 0x0824F1A0
+        size: 126
+        source: "scan: the text NORMAL at 0x0824F1A0 followed by FIGHT FLYING POISON ...; decomp: src/battle_main.c gTypeNames[NUMBER_OF_MON_TYPES=18][TYPE_NAME_LENGTH+1=7]"
+        verified_by: ["rom_scan: historical local validation on the host ROM, 2026-10-08: the 18 names in order NORMAL FIGHT FLYING POISON GROUND ROCK BUG GHOST STEEL ??? FIRE WATER GRASS ELECTR PSYCHC ICE DRAGON DARK"]
+      gTMHMLearnsets:
+        address: 0x08252BC8
+        size: 3296
+        source: "scan: gTMHMLearnsets[412][8], one bit per TM01..TM50 then HM01..HM08; BPRE Rev0 data table"
+        verified_by: ["rom_scan: host ROM, 2026-10-09: Charizard/Pidgeot/Zubat/Doduo learn HM02; Graveler/Clefairy/Lapras/Rattata/Tangela do not"]
+      gTMHMMoves:
+        address: 0x0845A80C
+        size: 116
+        source: "scan: referenced 58-entry u16 TM01..TM50/HM01..HM08 move-id table; pointers at 0x08125A8C and 0x08125AAC; decomp: gTMHMMoves"
+        verified_by: ["rom_scan: host ROM, 2026-10-10: TM38 -> FIRE BLAST (126), HM02 -> FLY (19), all 58 ids name valid ROM moves"]
+      gEvolutionTable:
+        address: 0x0825973C
+        size: 16480
+        source: "scan: gEvolutionTable[412][5] struct Evolution records; Clefairy record is EVO_ITEM/MOON_STONE/CLEFABLE; decomp: src/data/pokemon/evolution.h"
+        verified_by: ["rom_scan: host ROM, 2026-10-10: Clefairy evolves with Moon Stone into Clefable; Eevee has Fire/Thunder/Water Stone records"]
+      gTrainers:
+        address: 0x0823EAC8
+        size: 29720
+        source: "scan: unique common base from embedded gTrainers names BROCK (id 414), MISTY (415), LORELEI (410), SABRINA (420); decomp: src/data/trainers.h, 743 struct Trainer rows, ROM stride 40"
+        verified_by: ["rom_scan: host ROM, 2026-10-10: all gym, Elite Four and starter-dependent Champion parties follow in-ROM pointers and yield decompile-known ace levels"]
+    symbols:
+      CB2_SetUpSeagallopScene:
+        address: 0x08146E94
+        source: "observed: BPRE Rev0 callback2 at the Seagallop ferry scene; decomp: src/seagallop.c static CB2_SetUpSeagallopScene"
+        verified_by: ["rom_fixture: cinnabar-seagallop-unknown.state, real mGBA callback trace, 2026-10-25"]
+      MainCB2_SeaGallop:
+        address: 0x0814706C
+        source: "observed: BPRE Rev0 callback2 during the Seagallop ferry scene; decomp: src/seagallop.c static MainCB2_SeaGallop"
+        verified_by: ["rom_fixture: cinnabar-seagallop-unknown.state, real mGBA callback trace, 2026-10-25"]
+      gSaveBlock1Ptr:
+        address: 0x03005008
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_SAVEBLOCK1_PTR (claims pokefirered.sym); decomp: COMMON_DATA struct SaveBlock1 *gSaveBlock1Ptr (src/load_save.c)"
+        verified_by: ["ram_conformance: 55 raw mGBA states audit-20261004, offline RAM images, 2026-10-08 (not a live emulator)", "wp1c: the same 55 states loaded into the real mGBA core through EmulatorActor, live reader result == offline result, historical local validation, 2026-10-08"]
+      gSaveBlock2Ptr:
+        address: 0x0300500C
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_SAVEBLOCK2_PTR; decomp: COMMON_DATA struct SaveBlock2 *gSaveBlock2Ptr (src/load_save.c)"
+        verified_by: ["ram_conformance: 55 raw mGBA states audit-20261004, offline RAM images, 2026-10-08 (not a live emulator)", "wp1c: the same 55 states loaded into the real mGBA core through EmulatorActor, live reader result == offline result, historical local validation, 2026-10-08"]
+      gPlayerPartyCount:
+        address: 0x02024029
+        size: 1
+        source: "earlier AIMD Labs runtime reference: b49c8d9 symbols.py G_PLAYER_PARTY_COUNT; decomp: EWRAM_DATA u8 gPlayerPartyCount (src/pokemon.c:59). The live party; SaveBlock1.playerPartyCount is only a copy made by SavePlayerParty (src/load_save.c:160)"
+        verified_by: ["ram_conformance: 55 raw mGBA states audit-20261004, offline RAM images, 2026-10-08 (not a live emulator)", "wp1c: the same 55 states loaded into the real mGBA core through EmulatorActor, live reader result == offline result, historical local validation, 2026-10-08"]
+      gPlayerParty:
+        address: 0x02024284
+        size: 600
+        source: "earlier AIMD Labs runtime reference: b49c8d9 symbols.py G_PLAYER_PARTY; decomp: EWRAM_DATA struct Pokemon gPlayerParty[PARTY_SIZE] (src/pokemon.c:62)"
+        verified_by: ["ram_conformance: 55 raw mGBA states audit-20261004, offline RAM images, 2026-10-08 (not a live emulator)", "wp1c: the same 55 states loaded into the real mGBA core through EmulatorActor, live reader result == offline result, historical local validation, 2026-10-08"]
+      gStorage:
+        address: 0x020397B0
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent reverse reference from Task_PokeStorageMain literal pool; decomp: EWRAM_DATA struct PokemonStorageSystemData *gStorage (src/pokemon_storage_system.c)"
+        verified_by: ["pc_storage_ram: real FireRed PC fixture, pointer resolves to PokemonStorageSystemData and its boxOption/cursor fields, 2026-10-10"]
+      sStorageCursorArea:
+        address: 0x02039820
+        size: 1
+        source: "pret pokefirered 037335f4: pokemon_storage_system_data EWRAM linker layout places sCursorArea after the 100-byte static sMonBeingCarried"
+        verified_by: ["rom_disassembly: BPRE Rev0 SHA1 41cb23d8, GetBoxCursorPosition at 0x08094CC8 loads adjacent sCursorPosition 0x02039821, 2026-10-12"]
+      sStorageCursorPosition:
+        address: 0x02039821
+        size: 1
+        source: "pret pokefirered 037335f4: static sCursorPosition immediately follows sCursorArea; updated by DoCursorNewPosUpdate only after cursor movement finishes"
+        verified_by: ["rom_disassembly: BPRE Rev0 SHA1 41cb23d8, GetBoxCursorPosition at 0x08094CC8 loads literal 0x02039821, 2026-10-12"]
+      sStorageIsMonBeingMoved:
+        address: 0x02039822
+        size: 1
+        source: "pret pokefirered 037335f4 src/pokemon_storage_system_data.c: sIsMonBeingMoved immediately follows sCursorPosition and is the authoritative carried-Pokemon flag"
+        verified_by: ["live ROM ckpt-0000050 MOVE pick/place: byte changes 0 -> 1 on Task_MoveMon and 1 -> 0 on Task_PlaceMon, 2026-10-20"]
+      sStorageMovingMonOrigBoxId:
+        address: 0x02039823
+        size: 1
+        source: "pret pokefirered 037335f4 src/pokemon_storage_system_data.c: sMovingMonOrigBoxId immediately follows sIsMonBeingMoved; SetMovedMonData records the source"
+        verified_by: ["live ROM ckpt-0000050 MOVE pick: byte identifies Raticate source box 1, 2026-10-20"]
+      sStorageMovingMonOrigBoxPos:
+        address: 0x02039824
+        size: 1
+        source: "pret pokefirered 037335f4 src/pokemon_storage_system_data.c: sMovingMonOrigBoxPos immediately follows sMovingMonOrigBoxId; SetMovedMonData records the source"
+        verified_by: ["live ROM ckpt-0000050 MOVE pick: byte identifies Raticate source slot 0, 2026-10-20"]
+      gObjectEvents:
+        address: 0x02036E38
+        size: 576
+        source: "earlier AIMD Labs runtime reference: b49c8d9 symbols.py G_OBJECT_EVENTS; decomp: struct ObjectEvent gObjectEvents[16] (16 x 0x24); ends exactly at gPlayerAvatar"
+        verified_by: ["ram_conformance: 55 raw mGBA states audit-20261004, offline RAM images, 2026-10-08 (not a live emulator)", "wp1c: the same 55 states loaded into the real mGBA core through EmulatorActor, live reader result == offline result, historical local validation, 2026-10-08", "m22: 159 live object slots of the 55 states agree with their ROM templates (range, movement, graphics), and the avatar tracks the real player through steps, warps and ledge jumps (historical local validation), 2026-10-08"]
+      gPlayerAvatar:
+        address: 0x02037078
+        size: 8
+        source: "earlier AIMD Labs runtime reference: b49c8d9 symbols.py G_PLAYER_AVATAR; decomp: struct PlayerAvatar gPlayerAvatar (include/global.fieldmap.h:365)"
+        verified_by: ["ram_conformance: 55 raw mGBA states audit-20261004, offline RAM images, 2026-10-08 (not a live emulator)", "wp1c: the same 55 states loaded into the real mGBA core through EmulatorActor, live reader result == offline result, historical local validation, 2026-10-08", "m22: 159 live object slots of the 55 states agree with their ROM templates (range, movement, graphics), and the avatar tracks the real player through steps, warps and ledge jumps (historical local validation), 2026-10-08"]
+      gMapHeader:
+        address: 0x02036DFC
+        size: 28
+        source: "earlier AIMD Labs runtime reference: live symbols.py @ b49c8d9 G_MAP_HEADER; decomp: EWRAM_DATA struct MapHeader gMapHeader (src/fieldmap.c). RAM copy of the active map's ROM header"
+        verified_by: ["m22: the RAM copy equals the ROM header of gMapHeader-location (SaveBlock1.location) in all 55 states: MapReader identity_verified, historical local validation, 2026-10-08", "m22: real mGBA core through EmulatorActor, historical local validation prediction-vs-reality run, 2026-10-08"]
+      VMap:
+        address: 0x03005040
+        size: 12
+        source: "earlier AIMD Labs runtime reference: live symbols.py @ b49c8d9 G_VMAP; decomp: COMMON_DATA struct BackupMapLayout VMap (src/fieldmap.c)"
+        verified_by: ["m22: Xsize/Ysize == layout width+15 / height+14 and map == gBackupMapData in all 55 states, historical local validation, 2026-10-08", "m22: real mGBA core through EmulatorActor, historical local validation prediction-vs-reality run, 2026-10-08"]
+      gBackupMapData:
+        address: 0x02031DFC
+        size: 20480
+        source: "derived here (not in live symbols.py): the value of VMap.map read from RAM; decomp: EWRAM_DATA u16 gBackupMapData[VIRTUAL_MAP_SIZE = 0x2800] (src/fieldmap.c). The reader follows VMap.map and checks it equals this address"
+        verified_by: ["m22: VMap.map equals this address in all 55 states; the grid it points to equals the ROM layout map data except a few runtime-rewritten metatiles, historical local validation, 2026-10-08", "m22: real mGBA core through EmulatorActor, historical local validation prediction-vs-reality run, 2026-10-08"]
+      gMapGroups:
+        address: 0x083526A8
+        size: 172
+        source: "found here by a ROM search (not in live symbols.py): header copy bytes -> pointer in a group array -> pointer in this table. decomp: const struct MapHeader *const *const gMapGroups[] (data/maps/map_groups.h), 43 pointers to the per-group header pointer arrays"
+        verified_by: ["m22: 43 group arrays back to back with the lengths of pret map_groups.json (425 maps), every header pointer valid, all 425 maps parse and 1294 warps land on real maps and warp ids, historical local validation, 2026-10-08"]
+      gStdScripts:
+        address: 0x08160450
+        size: 40
+        source: "pret pokefirered 037335f4 data/event_scripts.s gStdScripts; sha1-locked ROM"
+        verified_by: ["historical local validation"]
+      gSpecials:
+        address: 0x0815FD60
+        size: 1776
+        source: "pret pokefirered 037335f4 data/specials.inc gSpecials; sha1-locked ROM"
+        verified_by: ["historical local validation"]
+      sSeag:
+        address: 0x0846AEFC
+        size: 44
+        source: "pret pokefirered 037335f4 src/seagallop.c sSeag; sha1-locked ROM"
+        verified_by: ["historical local validation"]
+
+      # --- M2.1 UI evidence symbols (additive; data from the earlier AIMD Labs runtime, proven by historical local validation) ---
+      gMain:
+        address: 0x030030F0
+        size: 1082
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_MAIN (claims pret pokefirered.sym 338ec9d95); decomp: COMMON_DATA struct Main gMain (src/main.c; include/main.h)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: callback2/callback1/savedCallback are Thumb ROM pointers in all states; callback2 resolves to named callbacks (CB2_Overworld x910, CB2_BattleMain x287, ...); inBattle bit set in 311 states: callback2 is CB2_BattleMain in 287, a party menu opened from battle in 18, bag 2, evolution scene 2, battle init 2; CB2_BattleMain never occurs with the bit clear"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_Overworld, WaitForMonSelection, CompleteWhenChoseItem, Task_BagMenu_HandleInput holds 0x030030F0"
+      gTasks:
+        address: 0x03005090
+        size: 640
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_TASKS (claims pret pokefirered.sym 338ec9d95); decomp: COMMON_DATA struct Task gTasks[NUM_TASKS=16] (src/task.c), 16 x 0x28"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: every active slot (isActive==1) has a Thumb ROM func and prev/next in 0..15|0xFE|0xFF in all states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of Task_YesNoMenu_HandleInput, Task_BagMenu_HandleInput, Task_PCMainMenu, Task_DrawFieldMessageBox, Task_WarpAndLoadMap holds 0x03005090"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu/bag/dialog_advance: tasks appear and vanish with the UI they belong to"
+      sGlobalScriptContextStatus:
+        address: 0x03000EA8
+        size: 1
+        source: "derived: src/script.c IWRAM declaration order, 8 bytes before sGlobalScriptContext@0x03000EB0 (u8, then u32 sUnusedVariable1); consistent with the earlier runtime's sGlobalScriptContext and sLockFieldControls anchors (0xEB0 + 0x74 + 4 + 0x74 == 0xF9C); decomp: static u8 sGlobalScriptContextStatus (src/script.c): CONTEXT_RUNNING 0 / WAITING 1 / SHUTDOWN 2"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: values only 0/1/2; status shutdown(2) occurs exactly with mode stopped(0) in all states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario dialog_advance: waiting -> running -> shutdown while a field script finishes"
+      sGlobalScriptContext:
+        address: 0x03000EB0
+        size: 116
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_GLOBAL_SCRIPT_CONTEXT (claims pret pokefirered.sym 338ec9d95); decomp: static struct ScriptContext sGlobalScriptContext (src/script.c; include/script.h, size 0x74)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: mode only 0/1/2; in mode 2 the native pointer resolves to WaitForAorBPress (20 states) or IsFieldMessageBoxHidden (64 states), the earlier runtime's two script waits"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario dialog_script_wait: native wait changes IsFieldMessageBoxHidden -> (none) -> WaitForAorBPress with the text"
+      sLockFieldControls:
+        address: 0x03000F9C
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_LOCK_FIELD_CONTROLS (claims pret pokefirered.sym 338ec9d95); decomp: static bool8 sLockFieldControls (src/script.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: only 0/1"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario overworld_walk, start_menu, dialog_advance: 0 while walking idle, 1 while a script runs or the START menu is open"
+      gBattlerControllerFuncs:
+        address: 0x03004FE0
+        size: 16
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_BATTLER_CONTROLLER_FUNCS (claims pret pokefirered.sym 338ec9d95); decomp: COMMON_DATA BattleControllerFunc gBattlerControllerFuncs[MAX_BATTLERS_COUNT] (src/battle_controllers.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus, battle_fight: slot 0 moves through HandleInputChooseAction -> PlayerBufferRunCommand -> HandleChooseMoveAfterDma3 -> HandleInputChooseMove and OpenPartyMenuToChooseMon -> WaitForMonSelection with the on-screen menu"
+          - "rom_disassembly: OpenPartyMenuToChooseMon (0x08030628) stores 0x08030685 at 0x03004FE0 + 4*gActiveBattler"
+      gMultiUsePlayerCursor:
+        address: 0x03004FF4
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_MULTIUSE_PLAYER_CURSOR (claims pret pokefirered.sym 338ec9d95); decomp: COMMON_DATA u8 gMultiUsePlayerCursor (src/battle_controllers.c): target cursor"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseTarget and HandleInputChooseMove holds 0x03004FF4 (no double-battle target menu was available to observe it live)"
+      sTextPrinters:
+        address: 0x02020034
+        size: 1152
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_TEXT_PRINTERS (claims pret pokefirered.sym 338ec9d95); decomp: static EWRAM_DATA struct TextPrinter sTextPrinters[NUM_TEXT_PRINTERS=32] (src/text.c), 32 x 0x24; ends exactly at gWindows"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: for every active printer windowId == slot index and state <= 6 in all states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario dialog_advance, dialog_script_wait, battle_fight: states handle_char / clear / scroll_start / scroll / wait / pause observed with the matching on-screen phases"
+      gWindows:
+        address: 0x020204B4
+        size: 384
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_WINDOWS (claims pret pokefirered.sym 338ec9d95); decomp: static struct Window sWindows[WINDOWS_MAX=32] (src/window.c), 32 x 0xC; starts exactly where sTextPrinters ends"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: allocated windows have bg <= 3, free ones 0xFF in all states; sTextPrinters ends exactly at this address (32 x 0x24)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu, save_prompt: the START window and the yes/no window appear and are freed (bg 0xFF) as the menus open and close"
+      sMenu:
+        address: 0x0203ADE4
+        size: 12
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static EWRAM_DATA struct Menu sMenu (src/menu.c), size 0xC"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu, yes_no_script, multichoice, save_prompt: cursorPos follows DOWN/UP, min/max = item count-1, windowId = the owning window"
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: window id < 32 and cursor within [min,max] for the menus that are open"
+      sYesNoWindowId:
+        address: 0x0203ADF3
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_YESNO_WINDOW_ID (claims pret pokefirered.sym 338ec9d95); cross-check: src/menu.c EWRAM order sMenu(0xC) sTileNum(u16) sPaletteNum(u8) sYesNoWindowId(u8) gives 0x0203ADE4+0xC+2+1 = 0x0203ADF3; decomp: static EWRAM_DATA u8 sYesNoWindowId (src/menu.c). A stale value stays after the window closed"
+        verified_by:
+          - "ui_probe: incident-3_40 (script yes/no, read-only corpus state) holds the prompt window id (1) next to sMenu.windowId=1 with Task_YesNoMenu_HandleInput active; yes_no_script/start_menu probes show the stale value left behind after the box closed"
+          - "derived-address cross-check: src/menu.c EWRAM order puts it at sMenu+0xC+2+1 == 0x0203ADF3 (the oracle value)"
+      gPaletteFade:
+        address: 0x02037AB8
+        size: 16
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_PALETTE_FADE (claims pret pokefirered.sym 338ec9d95); decomp: COMMON/EWRAM struct PaletteFadeControl gPaletteFade (src/palette.c; include/palette.h)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of OpenPartyMenuToChooseMon / WaitForMonSelection / CB2_Overworld holds 0x02037AB8; disassembly of OpenPartyMenuToChooseMon at 0x08030628 reads ldrb [r0,#7] & 0x80 (active)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario overworld_warp: active fade to black (y 2..16, target 16) then fade in (y 16..0, target 0)"
+      gBattleTypeFlags:
+        address: 0x02022B4C
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_BATTLE_TYPE_FLAGS (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u32 gBattleTypeFlags (src/battle_main.c). Stale after a battle ends (not a battle-active signal)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: first_battle flag only together with the Oak/Old Man controller (7 states), safari flag with the Safari controller (1 state), double flag with 4 battlers (45 states)"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseAction / HandleInputChooseMove / CB2_BattleMain holds 0x02022B4C"
+      gNumSafariBalls:
+        address: 0x02039994
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live FireRed Safari battle state; decomp: EWRAM_DATA u8 gNumSafariBalls (src/safari_zone.c)"
+        verified_by:
+          - "rom_probe: safari-unicode.state loaded in mGBA; Safari Ball action changed this byte from 30 to 29"
+      gTrainerBattleOpponent_A:
+        address: 0x020386AE
+        size: 2
+        source: "observed: live mGBA EWRAM diff while entering trainer battles; earlier AIMD Labs runtime reference: EWRAM_DATA u16 gTrainerBattleOpponent_A (pret/pokefirered src/battle_setup.c)"
+        verified_by: ["live two-trainer measurement: Bruno fixture changes 410 to 411 and Agatha-room fixture changes 411 to 412 at this address"]
+      gActiveBattler:
+        address: 0x02023BC4
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_ACTIVE_BATTLER (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u8 gActiveBattler (src/battle_main.c)"
+        verified_by:
+          - "rom_disassembly: PlayerBufferRunCommand at 0x0802E3B4 indexes gBattlerControllerFuncs/gBattleBufferA with the byte at 0x02023BC4"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: the value is the dispatch loop variable: 2 at rest (gBattlersCount), 0 for a few frames while a command runs"
+      gBattleControllerExecFlags:
+        address: 0x02023BC8
+        size: 4
+        source: "derived: src/battle_main.c EWRAM order gActiveBattler(u8)@0x02023BC4, then u32 gBattleControllerExecFlags aligned to +4 = 0x02023BC8; anchored by the earlier runtime's gActiveBattler and gBattlerPartyIndexes (0x02023BCE) values; decomp: EWRAM_DATA u32 gBattleControllerExecFlags (src/battle_main.c): one bit per battler still executing a command"
+        verified_by:
+          - "rom_disassembly: PlayerBufferRunCommand at 0x0802E3B4 and OpponentBufferRunCommand load 0x02023BC8 and AND it with gBitTable[gActiveBattler]; derived address confirmed by the ROM code"
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: non-zero in 288 of 311 battle states (the bit of the executing battler is set while its command runs)"
+      gBattlersCount:
+        address: 0x02023BCC
+        size: 1
+        source: "derived: src/battle_main.c EWRAM order gBattleControllerExecFlags(u32)@0x02023BC8, then u8 gBattlersCount = 0x02023BCC, then u16 gBattlerPartyIndexes[4] aligned = 0x02023BCE (oracle value); decomp: EWRAM_DATA u8 gBattlersCount (src/battle_main.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: 2 in every single battle, 4 in every double battle (45 states, flag double set)"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseTarget holds 0x02023BCC"
+      gBattlerPartyIndexes:
+        address: 0x02023BCE
+        size: 8
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_BATTLER_PARTY_INDEXES (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u16 gBattlerPartyIndexes[MAX_BATTLERS_COUNT] (src/battle_main.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseTarget holds 0x02023BCE"
+      gBattlerPositions:
+        address: 0x02023BD6
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_BATTLER_POSITIONS (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u8 gBattlerPositions[MAX_BATTLERS_COUNT] (src/battle_main.c)"
+        verified_by: []
+      gAbsentBattlerFlags:
+        address: 0x02023D70
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_ABSENT_BATTLER_FLAGS (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u8 gAbsentBattlerFlags (src/battle_main.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseAction / HandleInputChooseTarget holds 0x02023D70"
+      gActionSelectionCursor:
+        address: 0x02023FF8
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_ACTION_SELECTION_CURSOR (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u8 gActionSelectionCursor[MAX_BATTLERS_COUNT] (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: RIGHT -> 1, DOWN -> 2, UP -> 0 in slot 0 with the action menu on screen"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseAction holds 0x02023FF8"
+      gMoveSelectionCursor:
+        address: 0x02023FFC
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_MOVE_SELECTION_CURSOR (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u8 gMoveSelectionCursor[MAX_BATTLERS_COUNT] (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: RIGHT in the move menu -> slot 0 becomes 1, LEFT -> 0"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of HandleInputChooseTarget / HandleInputChooseMove holds 0x02023FFC"
+      gPartyMenu:
+        address: 0x0203B0A0
+        size: 20
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_PARTY_MENU (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA struct PartyMenu gPartyMenu (src/party_menu.c; include/party_menu.h, size 0x14). Persists after the screen closed"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario party_summary, battle_menus, battle_fight: slotId follows the party cursor (0,1,2; 7 on CANCEL), menuType 0 in the field and 1 in battle, action 0 for the voluntary switch and 1 (SEND_OUT) for the forced switch after a faint"
+      sPartyMenuInternal:
+        address: 0x0203B09C
+        size: 4
+        source: "derived: pret pokefirered src/party_menu.c EWRAM_DATA order; pointer to struct PartyMenuInternal"
+        verified_by:
+          - "pret_source: struct PartyMenuInternal actions[8] at +0x0F and numActions at +0x17"
+      gBagMenuState:
+        address: 0x0203ACFC
+        size: 20
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_BAG_MENU_STATE (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA struct BagStruct gBagMenuState (src/item_menu.c; include/item_menu.h, size 0x14). Persists after the bag closed"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario bag: pocket 0 -> 1 on RIGHT, bagOpen 1 while the bag is up and 0 after closing"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of Task_BagMenu_HandleInput holds 0x0203ACFC"
+      gSpecialVar_ItemId:
+        address: 0x0203AD30
+        size: 2
+        source: "derived: pret pokefirered src/item_menu.c EWRAM_DATA order after gBagMenuState; selected bag/TM item handed to party use-item flow"
+        verified_by:
+          - "rom_pool_refs: host ROM literal pool of Task_BagMenu_HandleInput holds 0x0203AD30"
+      sMonSummaryScreen:
+        address: 0x0203B140
+        size: 4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_MON_SUMMARY_SCREEN (claims pret pokefirered.sym 338ec9d95); decomp: static EWRAM_DATA struct PokemonSummaryScreenData *sMonSummaryScreen (src/pokemon_summary_screen.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario party_summary: non-null from the summary set-up callback (0x08135C34) through the summary screen, null after leaving"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of the summary set-up function at 0x08135C34 holds 0x0203B140"
+      sStartMenuCursorPos:
+        address: 0x020370F4
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_START_MENU_CURSOR_POS (claims pret pokefirered.sym 338ec9d95); decomp: static EWRAM_DATA u8 sStartMenuCursorPos (src/start_menu.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu: follows DOWN/UP (2,3,4,3)"
+      sNumStartMenuItems:
+        address: 0x020370F5
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_START_MENU_NUM_ITEMS (claims pret pokefirered.sym 338ec9d95); decomp: static EWRAM_DATA u8 sNumStartMenuItems (src/start_menu.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu: 7 entries, sMenu.maxCursorPos == 6"
+      sStartMenuWindowId:
+        address: 0x0203ABE0
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py S_START_MENU_WINDOW_ID (claims pret pokefirered.sym 338ec9d95); decomp: start-menu window id; 0xFF = not visible (oracle note)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu, save_prompt: 1 while the START menu is open, equal to sMenu.windowId of the START menu"
+      gQuestLogState:
+        address: 0x0203ADFA
+        size: 1
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py G_QUEST_LOG_STATE (claims pret pokefirered.sym 338ec9d95); decomp: EWRAM_DATA u8 gQuestLogState (src/quest_log.c): 0 off, 1 recording, 2 playback, 3 last playback"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of WaitForAorBPress and Task_DrawFieldMessageBox holds 0x0203ADFA; value 0 in all states"
+      CB2_Overworld:
+        address: 0x080565B4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_OVERWORLD (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_Overworld (src/overworld.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 910 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_Overworld holds gPaletteFade, gMain; CB2_LoadMap2, CB2_ReturnToFieldLocal and CB2_WhiteOut hold its pointer (SetMainCallback2(CB2_Overworld))"
+      CB2_NewGame:
+        address: 0x08056644
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: void CB2_NewGame (src/overworld.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      CB2_OverworldBasic:
+        address: 0x080565A8
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_OVERWORLD comment: 'the wild-encounter intro switches to CB2_OverworldBasic (0x080565A9)'; decomp: void CB2_OverworldBasic (src/overworld.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 1 states"
+      CB2_BattleMain:
+        address: 0x08011100
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py BATTLE_MAIN_CB2 (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_BattleMain? (src/battle_main.c: the battle's main callback2)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 287 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of WaitForMonSelection and CompleteWhenChoseItem hold 0x08011101 (decompile: gMain.callback2 == BattleMainCB2); CB2_BattleMain holds gMain, gBattleTypeFlags"
+      CB2_InitBattle:
+        address: 0x0800FD9C
+        source: "discovered here (not in the oracle symbol table) by the live callback chain and the ROM call graph; decomp: void CB2_InitBattle (src/battle_main.c: MoveSaveBlocks_ResetHeap, AllocateBattleResources, AllocateBattleSpritesData, AllocateMonSpritesGfx, HandleLinkBattleSetup, CB2_InitBattleInternal). The name is the decompile's, matched by structure, not read from a .sym"
+        verified_by:
+          - "rom_first_halfword: host ROM (read-only), first halfword 0xB510 (push {r4, lr}), the range test of historical local validation"
+          - "rom_call_graph: host ROM (read-only), its bl targets are 0x0804C0A4 (literal pool: gMain and the save-block pointers = MoveSaveBlocks_ResetHeap), 0x0802E03C (pool: gBattleTypeFlags, gBattleStruct, 0x02023FF4 = AllocateBattleResources), 0x08033DB8 / 0x080358D4 (pools 0x02024018 / 0x0202401C = the battle sprite and mon sprite buffers), 0x0800D230 (pool: gBattleTypeFlags and the link tables = HandleLinkBattleSetup), 0x08000544 (SetMainCallback2: pool gMain), 0x0800FE24 (pool: the BG scroll globals 0x02022974-0x0202297A = CB2_InitBattleInternal); its own literal pool holds gBattleTypeFlags, gBattleCommunication and 0x080109C9 (CB2_PreInitMultiBattle, the BATTLE_TYPE_MULTI branch)"
+          - "ui_probe: league state lorelei-6x7 (local RAM fixtures, read-only) loaded into the real emulator, 2026-10-08: the A that closes the speech of an Elite Four member runs CB2_OverworldBasic with the battle-transition tasks for about 205 frames, then callback2 is this function for about 8 frames with gMain.inBattle clear, then CB2_HandleStartBattle"
+      CB2_HandleStartBattle:
+        address: 0x08010508
+        source: "discovered here (not in the oracle symbol table) by the live callback chain and its literal pool; decomp: static void CB2_HandleStartBattle (src/battle_main.c: RunTasks, switch on gBattleCommunication[MULTIUSE_STATE], sets gBattleMainFunc and SetMainCallback2(BattleMainCB2)). Previously carried as the bare pointer 0x08010508 ('battle start', historical local validation)"
+        verified_by:
+          - "rom_first_halfword: host ROM (read-only), first halfword 0xB570 (push {r4, r5, r6, lr})"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool holds gBattleStruct, gBattleCommunication, gTasks, gPlayerParty, gEnemyParty, gMain, gBattleTypeFlags and 0x08011101 (CB2_BattleMain: SetMainCallback2(BattleMainCB2))"
+          - "ui_probe: league state lorelei-6x7 loaded into the real emulator, 2026-10-08: callback2 for the 44 frames after CB2_InitBattle (inBattle clear for the first stretch, set inside it), then CB2_BattleMain; the controllers still sit on their set-up functions 0x0802E310 / 0x0802E314 / 0x08035A7C (historical local validation section 3, 'Battle, entering')"
+      CB2_LoadMap:
+        address: 0x0805671C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_LOAD_MAP (claims pret pokefirered.sym 338ec9d95); decomp: void CB2_LoadMap (src/overworld.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_LoadMap holds CB2_DoChangeMap, CB2_LoadMap2, gMain (decompile: SetMainCallback2(CB2_DoChangeMap); gMain.savedCallback = CB2_LoadMap2)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario overworld_warp: callback2 runs CB2_LoadMap -> CB2_DoChangeMap -> CB2_LoadMap2 -> CB2_Overworld"
+      CB2_LoadMap2:
+        address: 0x0805674C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_LOAD_MAP2 (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_LoadMap2 (src/overworld.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 1 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_LoadMap holds its pointer; CB2_LoadMap2 holds CB2_Overworld"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario overworld_warp: callback2 for the frames before the field resumes"
+      CB2_DoChangeMap:
+        address: 0x080C9BFC
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_DO_CHANGE_MAP (claims pret pokefirered.sym 338ec9d95); decomp: CB2_DoChangeMap (src/field_fadetransition.c?)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario overworld_warp: callback2 between CB2_LoadMap and CB2_LoadMap2 for one frame"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_LoadMap holds its pointer"
+      CB2_ReturnToField:
+        address: 0x080567DC
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_RETURN_TO_FIELD (claims pret pokefirered.sym 338ec9d95); decomp: void CB2_ReturnToField (src/overworld.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_ReturnToField holds CB2_ReturnToFieldLocal"
+      CB2_ReturnToFieldLocal:
+        address: 0x08056808
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_RETURN_TO_FIELD_LOCAL (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_ReturnToFieldLocal (src/overworld.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 2 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_ReturnToFieldLocal holds CB2_Overworld"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario bag: callback2 after closing the bag"
+      CB2_ReturnToFieldWithOpenMenu:
+        address: 0x080568A8
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_RETURN_TO_FIELD_WITH_OPEN_MENU (claims pret pokefirered.sym 338ec9d95); decomp: void CB2_ReturnToFieldWithOpenMenu (src/overworld.c)"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario bag: callback2 for one frame when the bag closes back into the START menu"
+      CB2_ReturnToPartyMenuFromFlyMap:
+        address: 0x08124AB0
+        source: "discovered: pret pokefirered.sym (FireRed USA Rev 0); decomp: CB2_ReturnToPartyMenuFromFlyMap (src/party_menu.c)"
+        verified_by:
+          - "live_rom: pv-51 FireRed Rev0 open Fly-map cancel reaches this callback before the party returns to field.free"
+      CB2_ReturnToFieldContinueScript:
+        address: 0x080568C4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_RETURN_TO_FIELD_CONTINUE_SCRIPT (claims pret pokefirered.sym 338ec9d95); decomp: void CB2_ReturnToFieldContinueScript (src/overworld.c)"
+        verified_by: []
+      CB2_ContinueSavedGame:
+        address: 0x08056938
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_CONTINUE_SAVED_GAME (claims pret pokefirered.sym 338ec9d95); decomp: void CB2_ContinueSavedGame (src/overworld.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_ContinueSavedGame holds CB2_LoadMap"
+      CB2_WhiteOut:
+        address: 0x080566A4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_WHITE_OUT (claims pret pokefirered.sym 338ec9d95); decomp: void CB2_WhiteOut (src/overworld.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of CB2_WhiteOut holds gMain and CB2_Overworld"
+      CB2_BagMenuRun:
+        address: 0x08107EE0
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_BAG_MENU_RUN (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_BagMenuRun (src/item_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 5 states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario bag: callback2 while the bag screen is up"
+      CB2_PSA:
+        address: 0x0811C6FC
+        source: "observed live: callback2 0x0811C6FC during field Potion use; pret pokefirered 037335f4 src/pokemon_special_anim.c:105 CB2_PSA"
+        verified_by:
+          - "live ROM field Potion replay: callback2 0x0811C6FC with Task_UseItem_Normal while the item-use animation waits for acknowledgment, 2026-10-16"
+      CB2_PokedexScreen:
+        address: 0x081024D4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_POKEDEX_SCREEN (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_PokedexScreen (src/pokedex_screen.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 2 states"
+      sPokedexScreenData:
+        address: 0x0203ACF0
+        size: 4
+        source: "pret pokefirered 037335f4 src/pokedex_screen.c:94 static struct PokedexScreenData *sPokedexScreenData"
+        verified_by:
+          - "live ROM newly caught GEODUDE replay: pointer resolves to a 112-byte PokedexScreenData with state 11 and dexSpecies 74 while the registration page waits for A/B, 2026-10-16"
+      CB2_EasyChatScreen:
+        address: 0x080FEC0C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_EASY_CHAT_SCREEN (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_EasyChatScreen (src/easy_chat.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 2 states"
+      CB2_BuyMenu:
+        address: 0x0809ADE4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_BUY_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_BuyMenu (src/shop.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 3 states"
+      CB2_PokeStorage:
+        address: 0x0808CDC4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_POKE_STORAGE (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_PokeStorage (src/pokemon_storage_system.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 37 states"
+      CB2_UpdatePartyMenu:
+        address: 0x0811EBA0
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_UPDATE_PARTY_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_UpdatePartyMenu (src/party_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 20 states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario party_summary, battle_menus: callback2 while the party screen is up (field and from battle)"
+      CB2_InitPartyMenu:
+        address: 0x0811EBD0
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_INIT_PARTY_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_InitPartyMenu (src/party_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 1 states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario party_summary, battle_menus: callback2 for the first ~25 frames of the party screen"
+      CB2_EvolutionSceneUpdate:
+        address: 0x080CE710
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_EVOLUTION_SCENE_UPDATE (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_EvolutionSceneUpdate (src/evolution_scene.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gMain.callback2 in 2 states"
+      CB2_LoadNamingScreen:
+        address: 0x0809D9E0
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_LOAD_NAMING_SCREEN (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_LoadNamingScreen (src/naming_screen.c)"
+        verified_by: []
+      CB2_NamingScreen:
+        address: 0x0809FB70
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_NAMING_SCREEN (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_NamingScreen (src/naming_screen.c)"
+        verified_by: []
+      CB2_RegionMap:
+        address: 0x080C08B4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py CB2_REGION_MAP (claims pret pokefirered.sym 338ec9d95); decomp: static void CB2_RegionMap (src/region_map.c)"
+        verified_by: []
+      Task_StartMenuHandleInput:
+        address: 0x0806F1F0
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_START_MENU_HANDLE_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_StartMenuHandleInput (src/start_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 3 states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu, save_prompt: the task that reads the START menu input"
+      Task_YesNoMenu_HandleInput:
+        address: 0x0809CE54
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_YESNO_MENU_HANDLE_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_YesNoMenu_HandleInput (src/script_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 1 states"
+          - "ui_probe: incident-3_40 script yes/no state (read-only corpus state) loaded live: DOWN/UP moves sMenu.cursorPos 0<->1, B closes, the task ends and the script resumes (scenario yes_no_script)"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of Task_YesNoMenu_HandleInput holds gTasks"
+      Task_ScriptShowMonPic:
+        address: 0x0809D288
+        source: "observed: pret pokefirered 037335f4 src/script_menu.c Task_ScriptShowMonPic, created by ScriptMenu_ShowPokemonPic for showmonpic"
+        verified_by:
+          - "ui_probe: oak-lab-starter-table.state with the normal field/dialog executors, 2026-10-13: active pointer 0x0809D289 owns picture window 1 in task data[0], while Task_YesNoMenu_HandleInput owns YES/NO window 2"
+          - "rom_disassembly: BPRE Rev0 SHA1 41cb23d8, function entry 0x0809D288 is the task created by ScriptMenu_ShowPokemonPic"
+      Task_MultichoiceMenu_HandleInput:
+        address: 0x0809CC98
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_MULTICHOICE_MENU_HANDLE_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_MultichoiceMenu_HandleInput (src/script_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 18 states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario multichoice (corpus state gap-3b7ed5477a, read-only): DOWN/UP moves sMenu.cursorPos, B closes it; task data[6] == sMenu.windowId in all 18 states"
+      sMultichoiceLists:
+        address: 0x083E04B0
+        size: 0x208
+        source: "pret pokefirered 037335f4 src/script_menu.c:505-571 sMultichoiceLists; selected by mcId and checked against count in DrawVerticalMultichoiceMenu at lines 713-749"
+        verified_by:
+          - "pret origin/symbols pokefirered.sym: 083e04b0 l 00000208 sMultichoiceLists; BPRE Rev0 ROM test decodes table pointers and labels"
+      gText_SomeoneSPc:
+        address: 0x08417B9F
+        size: 0x0D
+        source: "pret pokefirered 037335f4 src/script_menu.c:1027-1030 CreatePCMenuWindow selects gText_SomeoneSPc when FLAG_SYS_NOT_SOMEONES_PC is unset"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]
+      gText_BillSPc:
+        address: 0x08417BAC
+        size: 0x0A
+        source: "pret pokefirered 037335f4 src/script_menu.c:1027-1030 CreatePCMenuWindow selects gText_BillSPc when FLAG_SYS_NOT_SOMEONES_PC is set"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]
+      gText_SPc:
+        address: 0x08417BB6
+        size: 0x08
+        source: "pret pokefirered 037335f4 src/script_menu.c:1031-1032 expands gText_SPc with the live player name"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]
+      gText_HallOfFame_2:
+        address: 0x08417BBE
+        size: 0x0D
+        source: "pret pokefirered 037335f4 src/script_menu.c:1006-1013 adds gText_HallOfFame_2 only when FLAG_SYS_GAME_CLEAR is set"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]
+      gText_LogOff:
+        address: 0x08417BCB
+        size: 0x08
+        source: "pret pokefirered 037335f4 src/script_menu.c:1013,1025 adds gText_LogOff as the final PC row"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]
+      gText_ProfOakSPc:
+        address: 0x08417BD3
+        size: 0x0F
+        source: "pret pokefirered 037335f4 src/script_menu.c:996-1024 adds gText_ProfOakSPc only when FLAG_SYS_POKEDEX_GET is set"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]
+      ListMenuDummyTask:
+        address: 0x08106ECC
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py LIST_MENU_DUMMY_TASK (claims pret pokefirered.sym 338ec9d95); decomp: static void ListMenuDummyTask (src/list_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 10 states"
+      Task_FieldListMenuHandleInput:
+        address: 0x080CBB28
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_FIELD_LIST_MENU_HANDLE_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_ListMenuHandleInput (src/field_specials.c)"
+        verified_by: []
+      Task_ShopMenu:
+        address: 0x0809AC10
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_SHOP_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_ShopMenu (src/shop.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 2 states"
+      Task_ReturnToShopMenu:
+        address: 0x0809AD8C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_RETURN_TO_SHOP_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_ReturnToShopMenu (src/shop.c)"
+        verified_by: []
+      Task_BuyMenu:
+        address: 0x0809BBC0
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_BUY_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_BuyMenu (src/shop.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gPaletteFade, gSaveBlock1Ptr"
+      Task_BuyHowManyDialogueHandleInput:
+        address: 0x0809BD8C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_BUY_HOW_MANY (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_BuyHowManyDialogueHandleInput (src/shop.c)"
+        verified_by: []
+      Task_ReturnToItemListAfterItemPurchase:
+        address: 0x0809BF68
+        source: "observed: Rev0 live task pointer after purchase (pret src/shop.c Task_ReturnToItemListAfterItemPurchase)"
+        verified_by:
+          - "real_rom_replay: POKEGENT_CERULEAN_MART_STATE, Rev0 active shop task pointer 0x0809BF69 after money/bag update and before returning to Task_BuyMenu, 2026-10-23"
+      Task_ExitBuyMenu:
+        address: 0x0809C04C
+        source: "observed: Rev0 live task pointer after list B (pret src/shop.c Task_ExitBuyMenu)"
+        verified_by:
+          - "real_rom_replay: POKEGENT_CERULEAN_MART_STATE, Rev0 active shop task pointer 0x0809C04D after B on Task_BuyMenu, 2026-10-23"
+      Task_BuyConfirmInput:
+        address: 0x080BF560
+        source: "discovered by family shop: native buy-confirm task reached after quantity A; decompile symbol name pending shared UI catalogue extension"
+        verified_by:
+          - "real_rom_replay: shop_qty_prompt_cycle fixture loaded into mGBA, quantity:1 A produced the in-use shop yes/no window with active task pointer 0x080BF560, 2026-10-08"
+      Task_ContinueTaskAfterMessagePrints:
+        address: 0x080BF534
+        source: "discovered by live incident 2026-10-09: unnamed task pointer 0x080BF535 of a stuck battle-bag state, named from pret pokefirered.sym (080bf534 l Task_ContinueTaskAfterMessagePrints, src/menu_helpers.c)"
+        verified_by:
+          - "live_stuck_state: live-0050..0052 (2026-10-09) sat 6 hours on the battle bag after Guard Spec.: bag open, no printer, tasks 0x080BF535 + ListMenuDummyTask, message 'Ally became shrouded in MIST!' on screen; one A or B (4 frames) released it into the battle"
+      Task_BagMenu_HandleInput:
+        address: 0x08108F0C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_BAG_MENU_HANDLE_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_BagMenu_HandleInput (src/item_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 3 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of Task_BagMenu_HandleInput holds gBagMenuState, gSpecialVar_ItemId, gPaletteFade, gMain, gTasks"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario bag: active while the bag list is navigated"
+      Task_FieldItemContextMenuHandleInput:
+        address: 0x08109BE4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_FIELD_ITEM_CONTEXT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_FieldItemContextMenuHandleInput (src/item_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 1 states"
+      Task_HandleChooseMonInput:
+        address: 0x0811FB28
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_CHOOSE_MON_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: void Task_HandleChooseMonInput (src/party_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 15 states"
+      Task_TryCreateSelectionWindow:
+        address: 0x08122C30
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_PARTY_SELECTION_WINDOW (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_TryCreateSelectionWindow (src/party_menu.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds Task_HandleSelectionMenuInput (decompile: SetTaskFuncWithFollowup)"
+      Task_HandleSelectionMenuInput:
+        address: 0x08122C5C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_PARTY_SELECTION_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_HandleSelectionMenuInput (src/party_menu.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of Task_TryCreateSelectionWindow holds its pointer (decompile: it installs this function as the task func); Task_HandleSelectionMenuInput itself holds gPaletteFade"
+      Task_UseItem_Normal:
+        address: 0x0811C834
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_USE_ITEM_NORMAL (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_UseItem_Normal (src/party_menu.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 3 states"
+      Task_DisplayLevelUpStatsPg1:
+        address: 0x081264C8
+        source: "observed: pret pokefirered 037335f4 src/party_menu.c:5080 Task_DisplayLevelUpStatsPg1"
+        verified_by:
+          - "live ROM synthesized Rare Candy replay: sole active party-menu task pointer 0x081264C9 after the level-up message and PSA return, 2026-10-16"
+      Task_DisplayLevelUpStatsPg2:
+        address: 0x08126528
+        source: "observed: pret pokefirered 037335f4 src/party_menu.c:5090 Task_DisplayLevelUpStatsPg2"
+        verified_by:
+          - "BPRE Rev0 ROM disassembly: Task_DisplayLevelUpStatsPg1 installs Thumb pointer 0x08126529 after its accepted A/B input, 2026-10-16"
+      Task_TryLearnNewMoves:
+        address: 0x081265F8
+        source: "observed: pret pokefirered 037335f4 src/party_menu.c:5110 Task_TryLearnNewMoves"
+        verified_by:
+          - "BPRE Rev0 ROM disassembly: Task_DisplayLevelUpStatsPg2 installs Thumb pointer 0x081265F9 after its accepted A/B input, 2026-10-16"
+      sFanfareCounter:
+        address: 0x03000FC6
+        size: 2
+        source: "earlier AIMD Labs runtime reference: pret pokefirered 037335f4 src/sound.c:30 sFanfareCounter; read by WaitFanfare"
+        verified_by:
+          - "BPRE Rev0 ROM disassembly: WaitFanfare at 0x08071C10 loads and decrements halfword 0x03000FC6, 2026-10-16"
+      Task_PCMainMenu:
+        address: 0x0808C39C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_PC_MAIN_MENU (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_PCMainMenu (src/pokemon_storage_system.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 1 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gTasks, gMain, gPaletteFade"
+      sMainMenuTexts:
+        address: 0x083CDA20
+        size: 0x28
+        source: "pret pokefirered 037335f4 src/pokemon_storage_system_menu.c:37-43 sMainMenuTexts (withdraw, deposit, move Pokemon, move items, see ya)"
+        verified_by:
+          - "pret origin/symbols pokefirered.sym: 083cda20 l 00000028 sMainMenuTexts; BPRE Rev0 ROM test decodes all text pointers"
+      gText_WithdrawPokemon: {address: 0x0841856C, size: 0x11, source: "pret 037335f4 src/pokemon_storage_system_menu.c:38 sMainMenuTexts[OPTION_WITHDRAW]", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_DepositPokemon: {address: 0x0841857D, size: 0x10, source: "pret 037335f4 src/pokemon_storage_system_menu.c:39 sMainMenuTexts[OPTION_DEPOSIT]", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_MovePokemon: {address: 0x0841858D, size: 0x0D, source: "pret 037335f4 src/pokemon_storage_system_menu.c:40 sMainMenuTexts[OPTION_MOVE_MONS]", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_MoveItems: {address: 0x0841859A, size: 0x0B, source: "pret 037335f4 src/pokemon_storage_system_menu.c:41 sMainMenuTexts[OPTION_MOVE_ITEMS]", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_SeeYa: {address: 0x084185A5, size: 0x08, source: "pret 037335f4 src/pokemon_storage_system_menu.c:42 sMainMenuTexts[OPTION_EXIT]", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      Task_PokeStorageMain:
+        address: 0x0808D2BC
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_POKE_STORAGE_MAIN (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_PokeStorageMain (src/pokemon_storage_system.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 18 states"
+      Task_OnSelectedMon:
+        address: 0x0808D878
+        source: "observed in live Rev0 RAM; pret pokefirered 037335f4 src/pokemon_storage_system_tasks.c: Task_PokeStorageMain installs Task_OnSelectedMon for INPUT_IN_MENU; state 2 calls HandleMenuInput"
+        verified_by:
+          - "live ROM ckpt-0000050 MOVE screen: selecting Raticate exposes Thumb task pointer 0x0808D879 with gStorage->state 2 and sMenu cursor row 0, 2026-10-20"
+      Task_OnBPressed:
+        address: 0x0808ECE4
+        source: "observed in live Rev0 RAM; pret pokefirered 037335f4 src/pokemon_storage_system_tasks.c: B in Task_PokeStorageMain installs Task_OnBPressed; state 2 owns the Continue BOX operations yes/no"
+        verified_by:
+          - "live ROM ckpt-0000050 MOVE screen: active Thumb task pointer 0x0808ECE5 with gStorage->state 2 and a corroborated two-row menu after B, 2026-10-17"
+      Task_RunEasyChat:
+        address: 0x080FEC90
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_RUN_EASY_CHAT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_RunEasyChat (src/easy_chat.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 2 states"
+      Task_TopMenuHandleInput:
+        address: 0x080EB81C
+        source: "observed live: selecting Player's PC from ckpt-0000050 reaches this input task with a 3-row sMenu; decomp: static void Task_TopMenuHandleInput (src/player_pc.c)"
+        verified_by:
+          - "live_rom: ckpt-0000050, Saffron Pokemon Center, 2026-10-11: task pointer 0x080EB81D with sMenu rows 0..2 after the Accessed Player's PC message"
+      Task_TopMenu_ItemStorageSubmenu_HandleInput:
+        address: 0x080EBAB8
+        source: "discovered: pret pokefirered 037335f4 src/player_pc.c:287-316 handles the three-row withdraw/deposit/cancel item-storage submenu"
+        verified_by: ["pret origin/symbols pokefirered.sym; live ROM acceptance traverses Player PC item storage"]
+      sMenuActions_TopMenu:
+        address: 0x084021E8
+        size: 0x18
+        source: "pret pokefirered 037335f4 src/player_pc.c:85-89 top menu actions (item storage, mailbox, turn off)"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM pointer decode"]
+      sMenuActions_ItemPc:
+        address: 0x08402208
+        size: 0x18
+        source: "pret pokefirered 037335f4 src/player_pc.c:94-98 item PC actions (withdraw item, deposit item, cancel)"
+        verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM pointer decode"]
+      gText_TurnOff: {address: 0x084176E2, size: 0x09, source: "pret 037335f4 src/player_pc.c:85-89 sMenuActions_TopMenu", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_ItemStorage: {address: 0x084176F1, size: 0x0D, source: "pret 037335f4 src/player_pc.c:85-89 sMenuActions_TopMenu", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_Mailbox: {address: 0x084176FE, size: 0x08, source: "pret 037335f4 src/player_pc.c:85-89 sMenuActions_TopMenu", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_DepositItem2: {address: 0x08417706, size: 0x0D, source: "pret 037335f4 src/player_pc.c:94-98 sMenuActions_ItemPc", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gText_WithdrawItem2: {address: 0x08417713, size: 0x0E, source: "pret 037335f4 src/player_pc.c:94-98 sMenuActions_ItemPc", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      gFameCheckerText_Cancel: {address: 0x084161C1, size: 0x07, source: "pret 037335f4 src/player_pc.c:94-98 sMenuActions_ItemPc cancel row", verified_by: ["pret origin/symbols pokefirered.sym and BPRE Rev0 ROM text decode"]}
+      Task_EvolutionScene:
+        address: 0x080CE8DC
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_EVOLUTION_SCENE (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_EvolutionScene (src/evolution_scene.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 2 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gTasks, gPlayerParty, gMain, gPaletteFade"
+      Task_NamingScreen:
+        address: 0x0809DD88
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_NAMING_SCREEN (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_NamingScreen (src/naming_screen.c)"
+        verified_by: []
+      sNamingScreen:
+        address: 0x0203998C
+        size: 4
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: static struct NamingScreenData *sNamingScreen (src/naming_screen.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      sRegionMap:
+        address: 0x020399D4
+        size: 4
+        source: "pret pokefirered.sym (FireRed USA Rev 0); decomp: static struct RegionMap *sRegionMap (src/region_map.c)"
+        verified_by:
+          - "live_rom: pv-51 FireRed Rev0 region-map fixture, pointer resolves into EWRAM while CB2_RegionMap is active"
+      sMapCursor:
+        address: 0x020399E4
+        size: 4
+        source: "pret pokefirered.sym (FireRed USA Rev 0); decomp: static struct MapCursor *sMapCursor (src/region_map.c)"
+        verified_by:
+          - "live_rom: pv-51 FireRed Rev0 region-map fixture, cursor coordinates/mapsec change with D-pad input"
+      sFlyMap:
+        address: 0x020399FC
+        size: 4
+        source: "pret pokefirered.sym (FireRed USA Rev 0); decomp: static struct FlyMap *sFlyMap (src/region_map.c)"
+        verified_by:
+          - "live_rom: pv-51 FireRed Rev0 region-map fixture, state is 4 when Task_FlyMap accepts input"
+      gSprites:
+        address: 0x0202063C
+        size: 0x1144
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: struct Sprite gSprites[MAX_SPRITES] (src/sprite.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_FlyMap:
+        address: 0x080C4F08
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_FLY_MAP (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_FlyMap (src/region_map.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gPaletteFade, gSaveBlock1Ptr"
+      HandleRegionMapInput:
+        address: 0x080C31C0
+        source: "discovered: pret pokefirered.sym (FireRed USA Rev 0); decomp: static u8 HandleRegionMapInput (src/region_map.c)"
+        verified_by:
+          - "live_rom: pv-51 FireRed Rev0 region-map fixture, sMapCursor inputHandler while the Fly map accepts D-pad input"
+      WaitForAorBPress:
+        address: 0x0806B898
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py WAIT_FOR_A_OR_B_PRESS (claims pret pokefirered.sym 338ec9d95); decomp: bool8 WaitForAorBPress (src/scrcmd.c): script native wait"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as the field script's native wait in 20 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMain, gQuestLogState (decompile: JOY_NEW(A|B), quest-log branch)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario dialog_script_wait: native wait while a message waits for A/B"
+      IsFieldMessageBoxHidden:
+        address: 0x0806951C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py IS_FIELD_MESSAGE_BOX_HIDDEN (claims pret pokefirered.sym 338ec9d95); decomp: bool8 IsFieldMessageBoxHidden (src/field_message_box.c): script native wait"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as the field script's native wait in 64 states"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario dialog_script_wait: native wait while the field message box text runs"
+      HandleInputChooseAction:
+        address: 0x0802E438
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_ACTION_ALT (claims pret pokefirered.sym 338ec9d95); decomp: static void HandleInputChooseAction (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 57 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMain, gActionSelectionCursor, gBattleTypeFlags, gAbsentBattlerFlags"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: gBattlerControllerFuncs[0] exactly while the FIGHT/BAG/POKEMON/RUN menu is on screen; cursor moves with the D-pad"
+      HandleInputChooseTarget:
+        address: 0x0802E674
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_TARGET (claims pret pokefirered.sym 338ec9d95); decomp: static void HandleInputChooseTarget (src/battle_controller_player.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMultiUsePlayerCursor, gBattlersCount, gBattlerPartyIndexes, HandleInputChooseMove (decompile: B returns to the move menu)"
+          - "mutual structure: HandleInputChooseMove holds this pointer and this function holds HandleInputChooseMove; no double-battle target menu state was available to observe it live"
+      HandleInputChooseMove:
+        address: 0x0802EA10
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_MOVE (claims pret pokefirered.sym 338ec9d95); decomp: static void HandleInputChooseMove (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 40 states, gBattlerControllerFuncs[2] in 1 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMoveSelectionCursor, gMultiUsePlayerCursor, gBattlerControllerFuncs, HandleInputChooseTarget"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus, battle_fight: gBattlerControllerFuncs[0] exactly while the move menu is on screen"
+      OakOldManHandleInputChooseAction:
+        address: 0x080E763C
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_ACTION (claims pret pokefirered.sym 338ec9d95); decomp: static void HandleInputChooseAction (src/battle_controller_oak_old_man.c); the oracle comment calls it a 'player copy'"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 4 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMain, gActionSelectionCursor, gBattleTypeFlags, gAbsentBattlerFlags (same shape as the player's)"
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: gBattlerControllerFuncs[0] only in battles with the first_battle flag"
+      OakOldManHandleInputChooseMove:
+        address: 0x080E7988
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_MOVE_FIRST (claims pret pokefirered.sym 338ec9d95); decomp: static void OakOldManHandleInputChooseMove (src/battle_controller_oak_old_man.c)"
+        verified_by: []
+      OakOldManBufferRunCommand:
+        address: 0x080E75EC
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py OAK_OLD_MAN_BUFFER_RUN_COMMAND (claims pret pokefirered.sym 338ec9d95); decomp: static void OakOldManBufferRunCommand (src/battle_controller_oak_old_man.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 3 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gBattleControllerExecFlags, gActiveBattler (dispatcher shape)"
+      SafariHandleInputChooseAction:
+        address: 0x080DD5A4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_ACTION_SAFARI (claims pret pokefirered.sym 338ec9d95); decomp: static void HandleInputChooseAction (src/battle_controller_safari.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 1 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMain, gActionSelectionCursor, gActiveBattler"
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: gBattlerControllerFuncs[0] in the one battle with the safari flag"
+      PokedudeHandleInputChooseMove:
+        address: 0x081564E4
+        source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py HANDLE_INPUT_CHOOSE_MOVE_ALT (claims pret pokefirered.sym 338ec9d95); decomp: static void HandleInputChooseMove (src/battle_controller_pokedude.c)"
+        verified_by: []
+      PlayerBufferRunCommand:
+        address: 0x0802E3B4
+        source: "discovered on the host ROM (not in the oracle table): disassembled: gBattleControllerExecFlags & gBitTable[gActiveBattler], then gBattleBufferA[battler][0] <= 0x38 indexes sPlayerBufferCommands; observed as gBattlerControllerFuncs[0] between commands; decomp: static void PlayerBufferRunCommand (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 53 states, gBattlerControllerFuncs[2] in 44 states"
+          - "rom_disassembly: dispatcher shape confirmed (see source)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: between every command"
+      CompleteOnInactiveTextPrinter:
+        address: 0x08030610
+        source: "discovered on the host ROM (not in the oracle table): disassembled: IsTextPrinterActive(0) then PlayerBufferExecCompleted(); observed as controller[0] while the battle text printer (window 0) is active; decomp: static void CompleteOnInactiveTextPrinter (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 62 states"
+          - "rom_disassembly: IsTextPrinterActive(0) then PlayerBufferExecCompleted (see source)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_fight: controller[0] exactly while the battle message printer (window 0) is active"
+      HandleChooseActionAfterDma3:
+        address: 0x08032B94
+        source: "discovered on the host ROM (not in the oracle table): pool holds gBattlerControllerFuncs and HandleInputChooseAction; observed as controller[0] for ~3 frames after B in the move menu while 'What will X do?' is printed; decomp: static void HandleChooseActionAfterDma3 (src/battle_controller_player.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds HandleInputChooseAction"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: one hand-over state before the action menu"
+      HandleChooseMoveAfterDma3:
+        address: 0x08032C4C
+        source: "discovered on the host ROM (not in the oracle table): pool holds gBattlerControllerFuncs and HandleInputChooseMove; observed as controller[0] for 1 frame after FIGHT, right before the move menu; decomp: static void HandleChooseMoveAfterDma3 (src/battle_controller_player.c)"
+        verified_by:
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds HandleInputChooseMove"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus, battle_fight: one hand-over state before the move menu"
+      OpenPartyMenuToChooseMon:
+        address: 0x08030628
+        source: "discovered on the host ROM (not in the oracle table): disassembled: waits for gPaletteFade.active (byte+7 & 0x80), then stores 0x08030685 into gBattlerControllerFuncs[gActiveBattler]; observed as controller[0] for ~21 frames after POKEMON in the action menu; decomp: static void OpenPartyMenuToChooseMon (src/battle_controller_player.c)"
+        verified_by:
+          - "rom_disassembly: fade check then store of 0x08030685 into gBattlerControllerFuncs (see source)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus: ~21 frames after POKEMON, before the party screen"
+      WaitForMonSelection:
+        address: 0x08030684
+        source: "discovered on the host ROM (not in the oracle table): pool holds gMain, CB2_BattleMain, gPaletteFade (callback2 == BattleMainCB2 check); stored by OpenPartyMenuToChooseMon; observed as controller[0] while the in-battle party screen is up (callback2 = CB2_InitPartyMenu/CB2_UpdatePartyMenu); decomp: static void WaitForMonSelection (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 18 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMain, CB2_BattleMain, gPaletteFade; OpenPartyMenuToChooseMon holds its pointer"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario battle_menus, battle_fight: controller[0] for the whole time the in-battle party screen is up (voluntary and forced)"
+      OpenBagAndChooseItem:
+        address: 0x08030700
+        source: "discovered on the host ROM (not in the oracle table): disassembled: waits for gPaletteFade.active, then stores 0x0803073D (CompleteWhenChoseItem) into gBattlerControllerFuncs[gActiveBattler]; observed as controller[0] in the survey right before the bag opens from battle; decomp: static void OpenBagAndChooseItem (src/battle_controller_player.c)"
+        verified_by:
+          - "rom_disassembly: gPaletteFade.active check, then store of 0x0803073D (CompleteWhenChoseItem) into gBattlerControllerFuncs (see source)"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gPaletteFade, gBattlerControllerFuncs, CompleteWhenChoseItem"
+      CompleteWhenChoseItem:
+        address: 0x0803073C
+        source: "discovered on the host ROM (not in the oracle table): pool holds gMain, CB2_BattleMain, gPaletteFade and gSpecialVar_ItemId; stored by OpenBagAndChooseItem; decomp: static void CompleteWhenChoseItem (src/battle_controller_player.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[0] in 2 states"
+          - "rom_pool_refs: historical local validation on the host ROM (read-only), literal pool of holds gMain, CB2_BattleMain, gPaletteFade, gSpecialVar_ItemId"
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: gBattlerControllerFuncs[0] while the bag was open from battle (2 states)"
+      OpponentBufferRunCommand:
+        address: 0x08035A98
+        source: "discovered on the host ROM (not in the oracle table): same dispatch shape as PlayerBufferRunCommand (pool: gBattleControllerExecFlags, gActiveBattler); gBattlerControllerFuncs[1] in every single-battle state of the survey; decomp: static void OpponentBufferRunCommand (src/battle_controller_opponent.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as gBattlerControllerFuncs[1] in 229 states, gBattlerControllerFuncs[3] in 45 states"
+          - "rom_disassembly: same dispatcher shape as PlayerBufferRunCommand (see source)"
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: gBattlerControllerFuncs[1] in 229 battle states"
+      Task_DrawFieldMessageBox:
+        address: 0x08069370
+        source: "discovered on the host ROM (not in the oracle table): pool holds gTasks, gQuestLogState and gTextFlags (as the decompile body); a priority-80 task that lives exactly while the field message printer (window 0) runs, observed live; decomp: static void Task_DrawFieldMessageBox (src/field_message_box.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 84 states"
+          - "rom_pool_refs: holds gTasks, gQuestLogState, gTextFlags (see source)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario dialog_advance, dialog_script_wait: exists exactly while the message printer is active; ends when the text ended"
+      Task_WarpAndLoadMap:
+        address: 0x0807E718
+        source: "discovered on the host ROM (not in the oracle table): pool holds gTasks and CB2_LoadMap; appears when the player steps on a warp tile, together with a gPaletteFade fade to black (y 2..16, target 16), ~23 frames before callback2 becomes CB2_LoadMap; observed live; decomp: static void Task_WarpAndLoadMap (src/field_fadetransition.c)"
+        verified_by:
+          - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 1 states"
+          - "rom_pool_refs: holds gTasks, CB2_LoadMap (see source)"
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario overworld_warp: appears with the fade to black before the warp, gone when CB2_LoadMap runs"
+      obs_cb2_pokemon_summary_screen:
+        address: 0x08137EE8
+        source: "observed signature, not a decomp-verified name: gMain.callback2 for the whole time the Pokemon summary screen is on screen (live probe party_summary, frames 232-313), sMonSummaryScreen non-null; the decompile name is not verified; decomp: n/a"
+        verified_by:
+          - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario party_summary: callback2 for the whole time the summary screen is up (frames 232-313), with sMonSummaryScreen non-null"
+      # --- end M2.1 UI evidence symbols ---
+      # --- M2b battle block symbols (moved from actions/battle/symbols.py by M2.5; `source` + `verified_by` unchanged) ---
+      gBattleMons:
+        address: 0x02023BE4
+        size: 352
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart); struct BattlePokemon 0x58 (include/pokemon.h)"
+        verified_by:
+          - "actions/battle tests: gBattleMons[0..1] decode equal the lead party mon (species, level, hp, max hp, moves, pp) in the audit fixtures"
+          - "anchor check: the same chain lands exactly on the profile's gActionSelectionCursor 0x02023FF8, gMoveSelectionCursor 0x02023FFC and gAbsentBattlerFlags 0x02023D70"
+      gBattlescriptCurrInstr:
+        address: 0x02023D74
+        size: 4
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests: a Thumb-free ROM pointer in all 311 corpus battle states; the byte behind it is the battle script opcode (0x3E end2 at the action menu, 0x10 printstring, 0x12 waitmessage, 0x23 getexp ...)"
+      gLastUsedItem:
+        address: 0x02023D68
+        size: 2
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus): equals 4 (POKE BALL) in the states printing 'used POKe BALL!'"
+      gChosenActionByBattler:
+        address: 0x02023D7C
+        size: 4
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus): 0 (B_ACTION_USE_MOVE) whenever the player's move text prints"
+      gLastMoves:
+        address: 0x02023D98
+        size: 8
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus, 311 battle states): the string ENIGMA sits exactly at the derived gEnigmaBerries (0x02023F54) in every state, which pins the whole declaration chain from the verified gAbsentBattlerFlags to it (every size in between)"
+          - "anchor check: the same chain lands exactly on the profile's gActionSelectionCursor 0x02023FF8, gMoveSelectionCursor 0x02023FFC and gAbsentBattlerFlags 0x02023D70"
+      gChosenMoveByBattler:
+        address: 0x02023DC4
+        size: 8
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus): equals the move named in '<NICKNAME> used <MOVE>!' in all 14 states where the player's move text prints"
+      gStatuses3:
+        address: 0x02023DFC
+        size: 16
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus, 311 battle states): the string ENIGMA sits exactly at the derived gEnigmaBerries (0x02023F54) in every state, which pins the whole declaration chain from the verified gAbsentBattlerFlags to it (every size in between)"
+          - "anchor check: the same chain lands exactly on the profile's gActionSelectionCursor 0x02023FF8, gMoveSelectionCursor 0x02023FFC and gAbsentBattlerFlags 0x02023D70"
+      gDisableStructs:
+        address: 0x02023E0C
+        size: 112
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart); struct DisableStruct 0x1C"
+        verified_by:
+          - "actions/battle tests (corpus, 311 battle states): the string ENIGMA sits exactly at the derived gEnigmaBerries (0x02023F54) in every state, which pins the whole declaration chain from the verified gAbsentBattlerFlags to it (every size in between)"
+          - "anchor check: the same chain lands exactly on the profile's gActionSelectionCursor 0x02023FF8, gMoveSelectionCursor 0x02023FFC and gAbsentBattlerFlags 0x02023D70"
+      gRandomTurnNumber:
+        address: 0x02023E80
+        size: 2
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "pret src/battle_main.c: assigned Random() in TurnValuesCleanUp/BattleTurnPassed, i.e. a new value at every turn boundary (live: differs between consecutive action menus)"
+      gBattleCommunication:
+        address: 0x02023E82
+        size: 8
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests: [4,4,0,0,0,0,0,1] while a battle text waits, [1,4,0,0,1,..] at the action menu (cursor mirror), [0..] during the intro"
+      gBattleOutcome:
+        address: 0x02023E8A
+        size: 1
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests: 4 (B_OUTCOME_RAN) with 'Got away safely!' in the corpus"
+      gBattleWeather:
+        address: 0x02023F1C
+        size: 2
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus): 'The sandstorm rages.' states carry the sandstorm bits, the hail state the hail bit; the chain is pinned by the ENIGMA string check"
+      gBattleScripting:
+        address: 0x02023FC4
+        size: 36
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart); struct BattleScripting 0x24"
+        verified_by:
+          - "actions/battle tests: drawlvlupboxState (+0x1E) is 10 (the command's final state) in every corpus battle after a level-up and 0 in the Oak battle; the struct ends exactly at gBattleStruct 0x02023FE8"
+          - "anchor check: the same chain lands exactly on the profile's gActionSelectionCursor 0x02023FF8, gMoveSelectionCursor 0x02023FFC and gAbsentBattlerFlags 0x02023D70"
+      gBattleStruct:
+        address: 0x02023FE8
+        size: 4
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests: holds a heap pointer (0x02000010) in every battle state, gBattleResources 0x02023FF4 holds 0x02000220 = +0x210 (struct 0x200 + malloc header)"
+      gDisplayedStringBattle:
+        address: 0x0202298C
+        size: 300
+        source: "derived: decl: src/battle_main.c EWRAM, 300 bytes before the text buffers and gBattleTypeFlags"
+        verified_by:
+          - "actions/battle tests: decodes to the on-screen battle text in the corpus ('What will CHARMELEON do?', 'Wild PARAS appeared!', 'PARAS fainted!')"
+      gMoveToLearn:
+        address: 0x02024022
+        size: 2
+        source: "derived: decl: src/battle_main.c EWRAM declaration order from gActiveBattler=0x02023BC4 (profile, verified); struct sizes include/battle.h (BattleEnigmaBerry measured as 0x1C: gEnigmaBerries[0] and [2] hold the ENIGMA name 0x38 apart)"
+        verified_by:
+          - "actions/battle tests (corpus): equals 17 (WING ATTACK) in the state printing 'CHARMELEON is trying to learn WING ATTACK.'"
+      gEnemyParty:
+        address: 0x0202402C
+        size: 600
+        source: "derived: decl: src/pokemon.c EWRAM order; ends exactly at the profile's gPlayerParty 0x02024284"
+        verified_by:
+          - "actions/battle tests: valid mon structs (checksum ok) that are the opponent's party in the audit battle fixtures"
+      gBattleMainFunc:
+        address: 0x03004F84
+        size: 4
+        source: "discovered: scan: the IWRAM word that is a Thumb ROM pointer in all 311 corpus battle states and holds a battle_main.c function (0x0801xxxx); gPreBattleCallback1 sits before it at 0x03004F80"
+        verified_by:
+          - "actions/battle tests: 0x08014041 in every action/move/party/bag state, 0x080155C9 while turn actions run, 0x08015C01 at end-turn text (observed table, names unresolved)"
+      gBattleResults:
+        address: 0x03004F90
+        size: 66
+        source: "discovered: found by diffing IWRAM at four consecutive action menus of a live trainer battle: the byte at 0x03004FA3 = +0x13 (struct BattleResults.battleTurnCounter, include/battle.h) read 2, 3, 4, 5; the struct sits after gBattleMainFunc (0x03004F84) in battle_main.c COMMON order"
+        verified_by:
+          - "actions/battle live run: battleTurnCounter +1 per turn over four turns"
+          - "actions/battle tests (corpus): 0 in the fresh-battle states, 17 in the long checkpoint-1 battle"
+      gNumberOfMovesToChoose:
+        address: 0x03004FF8
+        size: 1
+        source: "derived: decl: src/battle_main.c COMMON after gMultiUsePlayerCursor (profile 0x03004FF4)"
+        verified_by:
+          - "actions/battle tests: equals the number of known moves (4, or 2 for a 2-move mon) in the move menus"
+      # --- end M2b battle block symbols ---
+      # --- M2.5: side conditions (screens, spikes, safeguard), read by the battle block ---
+      gSideStatuses:
+        address: 0x02023DDE
+        size: 4
+        source: "derived: src/battle_main.c EWRAM order (u16 gSideStatuses[2], index = battler side: 0 player, 1 opponent) from the verified anchor gActiveBattler; flag bits from include/constants/battle.h SIDE_STATUS_* (REFLECT 1<<0, LIGHTSCREEN 1<<1, SPIKES 1<<4, SAFEGUARD 1<<5, MIST 1<<8). Reflect, Light Screen and Mist bits are decompile constants only: no corpus state has them set"
+        verified_by:
+          - "m25 corpus scan (every raw state in local RAM fixtures, 311 of them in battle): the word is non-zero in exactly 5 battle states and always agrees with gSideTimers: SPIKES (0x0010) on side 0 with spikesAmount 1 in pre-deploy-ca990bb92c73 (and in checkpoint-0/1/2 of games/20260930_010354_1d0c1d/saves until the live run overwrote those three files on 2026-10-08), SAFEGUARD (0x0020) on side 1 with safeguardTimer 3 and safeguardBattlerId 1 in pre-deploy-a7fa547332bc; every other battle state has 0 flags and no timer without its flag (historical local validation::test_side_words_agree_with_the_timers_in_every_corpus_battle)"
+      gSideTimers:
+        address: 0x02023DE4
+        size: 24
+        source: "derived: struct SideTimer gSideTimers[2] (include/battle.h: reflectTimer@0 reflectBattlerId@1 lightscreenTimer@2 lightscreenBattlerId@3 mistTimer@4 mistBattlerId@5 safeguardTimer@6 safeguardBattlerId@7 followmeTimer@8 followmeTarget@9 spikesAmount@10 fieldB@11, 12 bytes per side). Placed by the data, not by the declaration-order chain (which says 0x02023DE2): the array must END at gStatuses3 0x02023DFC, and at +2 the Safeguard and Spikes fields line up with the flags of gSideStatuses"
+        verified_by:
+          - "m25 corpus scan: in pre-deploy-a7fa547332bc side 1 reads safeguardTimer 3 and safeguardBattlerId 1 (the opponent cast it) next to the SAFEGUARD flag of gSideStatuses[1]; in the SPIKES states side 0 reads spikesAmount 1 next to the SPIKES flag of gSideStatuses[0]. At the chain's 0x02023DE2 the same bytes would read as reflectTimer 1 without a Reflect flag and as followmeTimer 3 (Follow Me sets 1)"
+          - "m25: the array ends exactly at gStatuses3 (0x02023DFC), a symbol the battle family verified through the ENIGMA-string chain"
+      # --- end M2.5 side conditions ---
+      # --- WP-C system_flow symbols (pret pokefirered.sym 338ec9d95, same commit as the earlier runtime names above) ---
+      CB2_NewGameScene:
+        address: 0x0812EB10
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: CB2_NewGameScene (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      sOakSpeechResources:
+        address: 0x0203B108
+        size: 4
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: static struct OakSpeechResources *sOakSpeechResources (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_NewGameScene:
+        address: 0x0812EB58
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_NewGameScene (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_ControlsGuide_HandleInput:
+        address: 0x0812F0B0
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_ControlsGuide_HandleInput (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_PikachuIntro_HandleInput:
+        address: 0x0812F4A8
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_PikachuIntro_HandleInput (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_OakSpeech_HandleGenderInput:
+        address: 0x0812FFA4
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_OakSpeech_HandleGenderInput (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_OakSpeech_HandleRivalNameInput:
+        address: 0x08130324
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_OakSpeech_HandleRivalNameInput (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_OakSpeech_ConfirmName:
+        address: 0x08130464
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_OakSpeech_ConfirmName (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      Task_OakSpeech_HandleConfirmNameInput:
+        address: 0x08130554
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: Task_OakSpeech_HandleConfirmNameInput (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      CB2_ReturnFromNamingScreen:
+        address: 0x08130C64
+        source: "discovered: pret pokefirered.sym (pret/pokefirered symbols branch, FireRed USA Rev 0); decomp: CB2_ReturnFromNamingScreen (src/oak_speech.c)"
+        verified_by:
+          - "pret pokefirered.sym (public FireRed USA Rev 0 symbol map)"
+      CB2_DoHallOfFameScreen:
+        address: 0x080F1EFC
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_DoHallOfFameScreen (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_DoHallOfFameScreen holds Task_Hof_InitMonData|1 (decompile: it installs Task_Hof_InitMonData)"
+      CB2_DoHallOfFameScreenDontSaveData:
+        address: 0x080F1F40
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_DoHallOfFameScreenDontSaveData (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_DoHallOfFameScreenDontSaveData holds Task_Hof_InitMonData|1 (decompile: it installs Task_Hof_InitMonData)"
+      CB2_HofIdle:
+        address: 0x080F1DC0
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_HofIdle (src/hall_of_fame.c)"
+        verified_by: []
+      Task_Hof_InitMonData:
+        address: 0x080F1F74
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_InitMonData (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_InitMonData holds Task_Hof_InitTeamSaveData|1 (decompile: it installs Task_Hof_InitTeamSaveData)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_InitMonData holds Task_Hof_StartDisplayingMons|1 (decompile: it installs Task_Hof_StartDisplayingMons)"
+      Task_Hof_InitTeamSaveData:
+        address: 0x080F2114
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_InitTeamSaveData (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_InitTeamSaveData holds Task_Hof_TrySaveData|1 (decompile: it installs Task_Hof_TrySaveData)"
+      Task_Hof_TrySaveData:
+        address: 0x080F2220
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_TrySaveData (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_TrySaveData holds Task_Hof_DelayAfterSave|1 (decompile: it installs Task_Hof_DelayAfterSave)"
+      Task_Hof_DelayAfterSave:
+        address: 0x080F2264
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_DelayAfterSave (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_DelayAfterSave holds Task_Hof_StartDisplayingMons|1 (decompile: it installs Task_Hof_StartDisplayingMons)"
+      Task_Hof_DisplayMon:
+        address: 0x080F22B0
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_DisplayMon (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_DisplayMon holds Task_Hof_PlayMonCryAndPrintInfo|1 (decompile: it installs Task_Hof_PlayMonCryAndPrintInfo)"
+      Task_Hof_PlayMonCryAndPrintInfo:
+        address: 0x080F23A0
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_PlayMonCryAndPrintInfo (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_PlayMonCryAndPrintInfo holds Task_Hof_TryDisplayAnotherMon|1 (decompile: it installs Task_Hof_TryDisplayAnotherMon)"
+      Task_Hof_TryDisplayAnotherMon:
+        address: 0x080F2424
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_TryDisplayAnotherMon (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_TryDisplayAnotherMon holds Task_Hof_DisplayMon|1 (decompile: it installs Task_Hof_DisplayMon)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_TryDisplayAnotherMon holds Task_Hof_PaletteFadeAndPrintWelcomeText|1 (decompile: it installs Task_Hof_PaletteFadeAndPrintWelcomeText)"
+      Task_Hof_PaletteFadeAndPrintWelcomeText:
+        address: 0x080F2514
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_PaletteFadeAndPrintWelcomeText (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_PaletteFadeAndPrintWelcomeText holds Task_Hof_ApplauseAndConfetti|1 (decompile: it installs Task_Hof_ApplauseAndConfetti)"
+      Task_Hof_ApplauseAndConfetti:
+        address: 0x080F25B0
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_ApplauseAndConfetti (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_ApplauseAndConfetti holds Task_Hof_WaitBorderFadeAway|1 (decompile: it installs Task_Hof_WaitBorderFadeAway)"
+      Task_Hof_WaitBorderFadeAway:
+        address: 0x080F2694
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_WaitBorderFadeAway (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_WaitBorderFadeAway holds Task_Hof_SpawnPlayerPic|1 (decompile: it installs Task_Hof_SpawnPlayerPic)"
+      Task_Hof_SpawnPlayerPic:
+        address: 0x080F26D4
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_SpawnPlayerPic (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_SpawnPlayerPic holds Task_Hof_WaitAndPrintPlayerInfo|1 (decompile: it installs Task_Hof_WaitAndPrintPlayerInfo)"
+      Task_Hof_WaitAndPrintPlayerInfo:
+        address: 0x080F2760
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_WaitAndPrintPlayerInfo (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_WaitAndPrintPlayerInfo holds Task_Hof_ExitOnKeyPressed|1 (decompile: it installs Task_Hof_ExitOnKeyPressed)"
+      Task_Hof_ExitOnKeyPressed:
+        address: 0x080F2804
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_ExitOnKeyPressed (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_ExitOnKeyPressed holds Task_Hof_HandlePaletteOnExit|1 (decompile: it installs Task_Hof_HandlePaletteOnExit)"
+      Task_Hof_HandlePaletteOnExit:
+        address: 0x080F283C
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_HandlePaletteOnExit (src/hall_of_fame.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_Hof_HandlePaletteOnExit holds Task_Hof_HandleExit|1 (decompile: it installs Task_Hof_HandleExit)"
+      Task_Hof_HandleExit:
+        address: 0x080F288C
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_Hof_HandleExit (src/hall_of_fame.c)"
+        verified_by: []
+      CB2_Credits:
+        address: 0x080F39E8
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_Credits (src/credits.c)"
+        verified_by: []
+      Task_MovePlayerAndGroundSprites:
+        address: 0x080F47F8
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_MovePlayerAndGroundSprites (src/credits.c)"
+        verified_by: []
+      CB2_InitCopyrightScreenAfterBootup:
+        address: 0x080EC820
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_InitCopyrightScreenAfterBootup (src/intro.c)"
+        verified_by: []
+      CB2_InitCopyrightScreenAfterTitleScreen:
+        address: 0x080EC864
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_InitCopyrightScreenAfterTitleScreen (src/intro.c)"
+        verified_by: []
+      CB2_WaitFadeBeforeSetUpIntro:
+        address: 0x080EC5B8
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_WaitFadeBeforeSetUpIntro (src/intro.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_WaitFadeBeforeSetUpIntro holds CB2_SetUpIntro|1 (decompile: it installs CB2_SetUpIntro)"
+      CB2_SetUpIntro:
+        address: 0x080EC870
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_SetUpIntro (src/intro.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_SetUpIntro holds CB2_Intro|1 (decompile: it installs CB2_Intro)"
+      CB2_Intro:
+        address: 0x080EC9D4
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_Intro (src/intro.c)"
+        verified_by: []
+      CB2_InitTitleScreen:
+        address: 0x08078914
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_InitTitleScreen (src/title_screen.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_InitTitleScreen holds CB2_TitleScreenRun|1 (decompile: it installs CB2_TitleScreenRun)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_InitTitleScreen holds Task_TitleScreenMain|1 (decompile: it installs Task_TitleScreenMain)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_InitTitleScreen holds Task_TitleScreenTimer|1 (decompile: it installs Task_TitleScreenTimer)"
+      CB2_TitleScreenRun:
+        address: 0x08078B9C
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_TitleScreenRun (src/title_screen.c)"
+        verified_by: []
+      Task_TitleScreenMain:
+        address: 0x08078C24
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_TitleScreenMain (src/title_screen.c)"
+        verified_by: []
+      Task_TitleScreenTimer:
+        address: 0x08078BEC
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_TitleScreenTimer (src/title_screen.c)"
+        verified_by: []
+      Task_TitleScreen_SlideWin0:
+        address: 0x080792C8
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_TitleScreen_SlideWin0 (src/title_screen.c)"
+        verified_by: []
+      Task_TitleScreen_BlinkPressStart:
+        address: 0x0807941C
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_TitleScreen_BlinkPressStart (src/title_screen.c)"
+        verified_by: []
+      CB2_InitMainMenu:
+        address: 0x0800C300
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_InitMainMenu (src/main_menu.c)"
+        verified_by: []
+      CB2_MainMenu:
+        address: 0x0800C2D4
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_MainMenu (src/main_menu.c)"
+        verified_by: []
+      Task_SetWin0BldRegsAndCheckSaveFile:
+        address: 0x0800C4D0
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_SetWin0BldRegsAndCheckSaveFile (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_SetWin0BldRegsAndCheckSaveFile holds Task_SetWin0BldRegsNoSaveFileCheck|1 (decompile: it installs Task_SetWin0BldRegsNoSaveFileCheck)"
+      Task_SaveErrorStatus_RunPrinterThenWaitButton:
+        address: 0x0800C688
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_SaveErrorStatus_RunPrinterThenWaitButton (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_SaveErrorStatus_RunPrinterThenWaitButton holds Task_PrintMainMenuText|1 (decompile: it installs Task_PrintMainMenuText)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_SaveErrorStatus_RunPrinterThenWaitButton holds Task_SetWin0BldRegsNoSaveFileCheck|1 (decompile: it installs Task_SetWin0BldRegsNoSaveFileCheck)"
+      Task_SetWin0BldRegsNoSaveFileCheck:
+        address: 0x0800C704
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_SetWin0BldRegsNoSaveFileCheck (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_SetWin0BldRegsNoSaveFileCheck holds Task_ExecuteMainMenuSelection|1 (decompile: it installs Task_ExecuteMainMenuSelection)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_SetWin0BldRegsNoSaveFileCheck holds Task_WaitFadeAndPrintMainMenuText|1 (decompile: it installs Task_WaitFadeAndPrintMainMenuText)"
+      Task_WaitFadeAndPrintMainMenuText:
+        address: 0x0800C780
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_WaitFadeAndPrintMainMenuText (src/main_menu.c)"
+        verified_by: []
+      Task_PrintMainMenuText:
+        address: 0x0800C7A0
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_PrintMainMenuText (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_PrintMainMenuText holds Task_WaitDma3AndFadeIn|1 (decompile: it installs Task_WaitDma3AndFadeIn)"
+      Task_WaitDma3AndFadeIn:
+        address: 0x0800C9CC
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_WaitDma3AndFadeIn (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_WaitDma3AndFadeIn holds Task_UpdateVisualSelection|1 (decompile: it installs Task_UpdateVisualSelection)"
+      Task_UpdateVisualSelection:
+        address: 0x0800CA28
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_UpdateVisualSelection (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_UpdateVisualSelection holds Task_HandleMenuInput|1 (decompile: it installs Task_HandleMenuInput)"
+      Task_HandleMenuInput:
+        address: 0x0800CA54
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_HandleMenuInput (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_HandleMenuInput holds Task_UpdateVisualSelection|1 (decompile: it installs Task_UpdateVisualSelection)"
+      Task_ExecuteMainMenuSelection:
+        address: 0x0800CA94
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_ExecuteMainMenuSelection (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_ExecuteMainMenuSelection holds CB2_InitMysteryGift|1 (decompile: it installs CB2_InitMysteryGift)"
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_ExecuteMainMenuSelection holds Task_MysteryGiftError|1 (decompile: it installs Task_MysteryGiftError)"
+      Task_MysteryGiftError:
+        address: 0x0800CB90
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_MysteryGiftError (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_MysteryGiftError holds Task_ReturnToTileScreen|1 (decompile: it installs Task_ReturnToTileScreen)"
+      Task_ReturnToTileScreen:
+        address: 0x0800CC68
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_ReturnToTileScreen (src/main_menu.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of Task_ReturnToTileScreen holds CB2_InitTitleScreen|1 (decompile: it installs CB2_InitTitleScreen)"
+      CB2_BeginEvolutionScene:
+        address: 0x080CDD18
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_BeginEvolutionScene (src/evolution_scene.c)"
+        verified_by: []
+      Task_BeginEvolutionScene:
+        address: 0x080CDD28
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: Task_BeginEvolutionScene (src/evolution_scene.c)"
+        verified_by: []
+      CB2_EvolutionSceneLoadGraphics:
+        address: 0x080CE0E8
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_EvolutionSceneLoadGraphics (src/evolution_scene.c)"
+        verified_by:
+          - "rom_pool_refs: literal pool scan of the host ROM (read-only, historical local validation function_extent), the pool of CB2_EvolutionSceneLoadGraphics holds CB2_EvolutionSceneUpdate|1 (decompile: it installs CB2_EvolutionSceneUpdate)"
+      CB2_SetUpPSS:
+        address: 0x08135C34
+        source: "discovered: pret pokefirered.sym 338ec9d95 (read-only file of the third-party pokefirered checkout, the commit the earlier runtime names above claim), checked against the ROM (Thumb prologue); decomp: CB2_SetUpPSS (src/pokemon_summary_screen.c)"
+        verified_by: []
+      # --- end WP-C system_flow symbols ---
+  firered-us-rev1:
+    display_name: Pokemon FireRed (USA) Rev 1 (v1.1)
+    # Known revision, but no verified symbol table here. The reader refuses it (UNSUPPORTED_ROM);
+    # addresses are never assumed to carry over from Rev 0.
+    supported: false
+    rom:
+      sha1: dd5945db9b930750cb39d00c84da8571feebf417   # pret/pokefirered README, reader contract
+      sha256: null                                       # not recorded: no Rev 1 image on this host
+      game_code: BPRE
+      version: 1
+      size: 16777216
+    layout: null
+    symbols: {}

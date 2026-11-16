@@ -1,0 +1,100 @@
+# Hand-written mechanics rules for when a generated ROM item class can change battle state.
+# Handler roles and effect traits are derived from the user's ROM; this file intentionally contains
+# no item ids, item names, pointers, addresses, or extracted table rows.
+#
+# Applicability ("rule") is the game's own condition read from RAM (src/pokemon.c
+# PokemonUseItemEffects, src/item_use.c): a use that provably changes nothing is UNAVAILABLE with a
+# reason (a diagnostic, not in the model's choice space); anything not provable stays LEGAL. The
+# consequence of a class is what its facts say (mechanics.facts.item_option_facts, rendered by
+# options/render.py).
+#
+schema_version: 1
+
+provenance:
+  decomp: "pret/pokefirered src/item_use.c (BattleUseFunc_* handlers), src/pokemon.c PokemonUseItemEffects, src/data/pokemon/item_effects.h"
+  verified_by:
+    - "historical local validation derives and verifies handler coverage from the user's ROM"
+
+# target: party_member = one option per party member (the party screen picks it); active = no target
+# (the item acts on the Pokemon on the field); field = no target, acts on both sides.
+# rule: hurt | has_status | fainted | boost_possible | wild_only | someone_asleep | unsupported
+classes:
+  hp:
+    label: restore HP
+    handler: medicine
+    requires: [heals_hp]
+    excludes: [revive]
+    target: party_member
+    rule: hurt
+    no_effect: {full_hp: "the Pokemon has full HP"}
+    consequence: "restores N HP (HP before -> after, percent)"
+  cure:
+    label: cure a status
+    handler: medicine
+    requires: [cures]
+    target: party_member
+    rule: has_status
+    no_effect: {no_status_to_cure: "the Pokemon has no status this item cures"}
+    consequence: "cures <status>"
+  revive:
+    label: revive a fainted Pokemon
+    handler: medicine
+    requires: [revive]
+    target: party_member
+    rule: fainted
+    no_effect: {not_fainted: "the Pokemon has not fainted"}
+    consequence: "revives a fainted Pokemon (HP it returns with)"
+  pp:
+    label: restore PP
+    handler: pp_restore
+    target: active
+    rule: unsupported
+    unsupported: "extra menu steps (which move)"
+    consequence: "restores PP"
+  sacred_ash:
+    label: revive the whole party
+    handler: sacred_ash
+    target: active
+    rule: unsupported
+    unsupported: "extra menu steps"
+    consequence: "revives every fainted Pokemon"
+  boost:
+    label: raise a stat, critical-hit rate or protect the stats
+    handler: stat_booster
+    target: active
+    rule: boost_possible
+    no_effect: {already_in_effect: "every stat it raises is already at +6, or its effect is already active"}
+    consequence: "raises <stat> by N / raises the critical-hit stage / protects the stats for 5 turns"
+  escape:
+    label: escape from a wild battle
+    handler: poke_doll
+    target: active
+    rule: wild_only
+    no_effect: {trainer_battle: "a trainer battle cannot be escaped"}
+    consequence: "escapes for sure"
+  wake:
+    label: wake the sleeping Pokemon on the field
+    handler: poke_flute
+    target: field
+    rule: someone_asleep
+    # Rollout decision (2026-10-08): key items are not offered, like in the pre-fork constructor
+    # (b35a-items). The rule, the facts and the tests stay; `offer: true` offers the flute while
+    # someone sleeps (and keeps it a diagnostic, `nobody_asleep`, otherwise).
+    offer: false
+    no_effect: {nobody_asleep: "nobody in the battle is asleep"}
+    consequence: "wakes up your X and the foe's Y; or: nobody is asleep, no effect (the turn is still spent)"
+  berry_pouch:
+    label: berry pouch
+    handler: berry_pouch
+    target: active
+    rule: unsupported
+    unsupported: "extra menu steps"
+    consequence: "none (not offered)"
+  ball:
+    label: throw a ball
+    handler: ball
+    target: field
+    offer: false  # a ball is a ball:* option (THROW_BALL), never an item option
+    rule: unsupported
+    unsupported: "a ball is a ball:* option (THROW_BALL), not an item option"
+    consequence: "catch chance"

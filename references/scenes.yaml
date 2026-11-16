@@ -1,0 +1,2636 @@
+catalog_version: 1
+scene_count: 225
+scenes:
+- scene_id: system.boot
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: WAIT_FOR_BOOT
+  verbs:
+  - WAIT_FOR_BOOT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: system.logo
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: WAIT, ADVANCE_WHEN_READY
+  verbs:
+  - WAIT
+  - ADVANCE_WHEN_READY
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: title.press_start
+  family: title
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: PRESS_START
+  verbs:
+  - PRESS_START
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: title.main
+  family: title
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: NEW_GAME, CONTINUE, OPTIONS
+  verbs:
+  - NEW_GAME
+  - CONTINUE
+  - OPTIONS
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: title.continue
+  family: title
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: CONTINUE_GAME, CANCEL
+  verbs:
+  - CONTINUE_GAME
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: title.options
+  family: title
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: SET_OPTION, RETURN
+  verbs:
+  - SET_OPTION
+  - RETURN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.professor_text
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: ADVANCE_TEXT
+  verbs:
+  - ADVANCE_TEXT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.gender
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: CHOOSE_BOY, CHOOSE_GIRL
+  verbs:
+  - CHOOSE_BOY
+  - CHOOSE_GIRL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.player_name
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: SET_PLAYER_NAME
+  verbs:
+  - SET_PLAYER_NAME
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.rival_name
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: SET_RIVAL_NAME
+  verbs:
+  - SET_RIVAL_NAME
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: naming.keyboard
+  family: naming
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: TYPE_CHARACTER, CHANGE_KEYBOARD_PAGE, BACKSPACE, CONFIRM_NAME, CANCEL
+  verbs:
+  - TYPE_CHARACTER
+  - CHANGE_KEYBOARD_PAGE
+  - BACKSPACE
+  - CONFIRM_NAME
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.starter_choice
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: CHOOSE_STARTER
+  verbs:
+  - CHOOSE_STARTER
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.starter_confirm
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: intro.script_movement
+  family: intro
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: WAIT
+  verbs:
+  - WAIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: system.quest_log_playback
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: WAIT, SKIP_OR_EXIT
+  verbs:
+  - WAIT
+  - SKIP_OR_EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: system.whiteout
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: ACKNOWLEDGE, WAIT_FOR_RECOVERY
+  verbs:
+  - ACKNOWLEDGE
+  - WAIT_FOR_RECOVERY
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: system.credits
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: WAIT, ADVANCE_IF_PROMPTED
+  verbs:
+  - WAIT
+  - ADVANCE_IF_PROMPTED
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: system.game_clear
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: ARCHIVE_RUN, CONTINUE_POSTGAME
+  verbs:
+  - ARCHIVE_RUN
+  - CONTINUE_POSTGAME
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: system.unsupported_rom
+  family: system
+  section: A
+  section_title: System and runtime
+  phases:
+  - P0
+  options: SAFE_PAUSE, REPORT
+  verbs:
+  - SAFE_PAUSE
+  - REPORT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.free
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: MOVE_NORTH, MOVE_SOUTH, MOVE_WEST, MOVE_EAST, OPEN_START, INTERACT, USE_REGISTERED_ITEM
+  verbs:
+  - MOVE_NORTH
+  - MOVE_SOUTH
+  - MOVE_WEST
+  - MOVE_EAST
+  - OPEN_START
+  - INTERACT
+  - USE_REGISTERED_ITEM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.face
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: FACE_DIRECTION
+  verbs:
+  - FACE_DIRECTION
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.path_target
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: NAVIGATE_TO
+  verbs:
+  - NAVIGATE_TO
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.npc
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: TALK_TO
+  verbs:
+  - TALK_TO
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.sign
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: READ_SIGN
+  verbs:
+  - READ_SIGN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.interactive_object
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: INTERACT_WITH
+  verbs:
+  - INTERACT_WITH
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.item_ball
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: PICK_UP
+  verbs:
+  - PICK_UP
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.hidden_item
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: SEARCH_WITH_ITEMFINDER, INTERACT_HIDDEN_TILE
+  verbs:
+  - SEARCH_WITH_ITEMFINDER
+  - INTERACT_HIDDEN_TILE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.warp
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ENTER_WARP
+  verbs:
+  - ENTER_WARP
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.door
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ENTER_DOOR
+  verbs:
+  - ENTER_DOOR
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.ladder_stairs
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: TAKE_LADDER_OR_STAIRS
+  verbs:
+  - TAKE_LADDER_OR_STAIRS
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.hole
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: DROP_THROUGH
+  verbs:
+  - DROP_THROUGH
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.map_connection
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: TRAVEL_TO_CONNECTED_MAP
+  verbs:
+  - TRAVEL_TO_CONNECTED_MAP
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.trainer_vision
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: WAIT_FOR_SCRIPT, BATTLE
+  verbs:
+  - WAIT_FOR_SCRIPT
+  - BATTLE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.grass
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: TRAVERSE_GRASS, SEEK_ENCOUNTER
+  verbs:
+  - TRAVERSE_GRASS
+  - SEEK_ENCOUNTER
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.ledge
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: JUMP_LEDGE
+  verbs:
+  - JUMP_LEDGE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.ice_slide
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: SLIDE_TO
+  verbs:
+  - SLIDE_TO
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.current
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ENTER_CURRENT
+  verbs:
+  - ENTER_CURRENT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.conveyor_spinner
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: TRAVERSE_FORCED_MOVEMENT
+  verbs:
+  - TRAVERSE_FORCED_MOVEMENT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.bicycle
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: MOUNT_BICYCLE, DISMOUNT_BICYCLE, RIDE_PATH
+  verbs:
+  - MOUNT_BICYCLE
+  - DISMOUNT_BICYCLE
+  - RIDE_PATH
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.surf_edge
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: START_SURF, DISMOUNT_SURF
+  verbs:
+  - START_SURF
+  - DISMOUNT_SURF
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.cut_tree
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: CUT_TREE
+  verbs:
+  - CUT_TREE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.smashable_rock
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ROCK_SMASH
+  verbs:
+  - ROCK_SMASH
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.strength_boulder
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ACTIVATE_STRENGTH, PUSH_BOULDER
+  verbs:
+  - ACTIVATE_STRENGTH
+  - PUSH_BOULDER
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.waterfall
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ASCEND_WATERFALL
+  verbs:
+  - ASCEND_WATERFALL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.darkness
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: USE_FLASH
+  verbs:
+  - USE_FLASH
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.fishing
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: USE_ROD, REEL_IN, WAIT_FOR_BITE
+  verbs:
+  - USE_ROD
+  - REEL_IN
+  - WAIT_FOR_BITE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.sweet_scent
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: USE_SWEET_SCENT
+  verbs:
+  - USE_SWEET_SCENT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.dig_teleport
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: USE_DIG, USE_TELEPORT, CANCEL
+  verbs:
+  - USE_DIG
+  - USE_TELEPORT
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.scripted_movement
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: WAIT_UNTIL_CONTROLLABLE
+  verbs:
+  - WAIT_UNTIL_CONTROLLABLE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.map_transition
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: WAIT_FOR_MAP
+  verbs:
+  - WAIT_FOR_MAP
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.bike_forced
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: WAIT_FOR_MOVEMENT_END
+  verbs:
+  - WAIT_FOR_MOVEMENT_END
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: field.unknown_obstacle
+  family: field
+  section: B
+  section_title: Field movement
+  phases:
+  - P0
+  - P1
+  options: ESCALATE_OR_REPLAN
+  verbs:
+  - ESCALATE_OR_REPLAN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.printing
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: WAIT_FOR_TEXT
+  verbs:
+  - WAIT_FOR_TEXT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.advance
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: ADVANCE_TEXT
+  verbs:
+  - ADVANCE_TEXT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.end
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: CLOSE_DIALOG
+  verbs:
+  - CLOSE_DIALOG
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.yes_no
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.multichoice
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: SELECT_CHOICE
+  verbs:
+  - SELECT_CHOICE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.grid_choice
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: SELECT_CHOICE
+  verbs:
+  - SELECT_CHOICE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.list
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: SELECT_ROW, SCROLL_UP, SCROLL_DOWN, CANCEL
+  verbs:
+  - SELECT_ROW
+  - SCROLL_UP
+  - SCROLL_DOWN
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.quantity
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.picture
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: CLOSE_PICTURE, WAIT
+  verbs:
+  - CLOSE_PICTURE
+  - WAIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.heal_offer
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: HEAL_TEAM, DECLINE_HEAL
+  verbs:
+  - HEAL_TEAM
+  - DECLINE_HEAL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.item_receive
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: ACKNOWLEDGE_ITEM, BAG_FULL_REPLAN
+  verbs:
+  - ACKNOWLEDGE_ITEM
+  - BAG_FULL_REPLAN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.starter_choice
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.trade_offer
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: ACCEPT_TRADE, DECLINE_TRADE
+  verbs:
+  - ACCEPT_TRADE
+  - DECLINE_TRADE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.move_tutor
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: ACCEPT_TUTOR, DECLINE, SELECT_MON
+  verbs:
+  - ACCEPT_TUTOR
+  - DECLINE
+  - SELECT_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.shop_prompt
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: BUY, SELL, QUIT
+  verbs:
+  - BUY
+  - SELL
+  - QUIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.save_prompt
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.ferry
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: TRAVEL_TO, CANCEL
+  verbs:
+  - TRAVEL_TO
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.elevator
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: SELECT_FLOOR, CANCEL
+  verbs:
+  - SELECT_FLOOR
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.script_puzzle
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: SELECT
+  verbs:
+  - SELECT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: dialog.unknown
+  family: dialog
+  section: C
+  section_title: Dialog
+  phases:
+  - P0
+  options: PAUSE_AND_ESCALATE
+  verbs:
+  - PAUSE_AND_ESCALATE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.entering
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: WAIT
+  verbs:
+  - WAIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.action
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: USE_MOVE, SWITCH_TO, USE_BATTLE_ITEM, THROW_BALL, ATTEMPT_ESCAPE
+  verbs:
+  - USE_MOVE
+  - SWITCH_TO
+  - USE_BATTLE_ITEM
+  - THROW_BALL
+  - ATTEMPT_ESCAPE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.command_ui
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: FIGHT, BAG, POKEMON, RUN
+  verbs:
+  - FIGHT
+  - BAG
+  - POKEMON
+  - RUN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.moves_ui
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: SELECT_MOVE, BACK
+  verbs:
+  - SELECT_MOVE
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.choose_target
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: TARGET_BATTLER, BACK
+  verbs:
+  - TARGET_BATTLER
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.party
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: SWITCH_TO, BACK
+  verbs:
+  - SWITCH_TO
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.forced_switch
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: SEND_OUT
+  verbs:
+  - SEND_OUT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.bag
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: SELECT_BATTLE_ITEM, CANCEL
+  verbs:
+  - SELECT_BATTLE_ITEM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.item_target
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: USE_ON
+  verbs:
+  - USE_ON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.capture
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: THROW_BALL
+  verbs:
+  - THROW_BALL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.escape
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ATTEMPT_ESCAPE
+  verbs:
+  - ATTEMPT_ESCAPE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.switch_offer
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ACCEPT_SWITCH, KEEP_CURRENT
+  verbs:
+  - ACCEPT_SWITCH
+  - KEEP_CURRENT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.double_turn
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: CHOOSE_FOR
+  verbs:
+  - CHOOSE_FOR
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.double_target
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: TARGET_BATTLER
+  verbs:
+  - TARGET_BATTLER
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.message
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ADVANCE_TEXT
+  verbs:
+  - ADVANCE_TEXT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.animation
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: WAIT_FOR_TURN_END
+  verbs:
+  - WAIT_FOR_TURN_END
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.faint
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: WAIT, SEND_OUT
+  verbs:
+  - WAIT
+  - SEND_OUT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.level_up
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ACKNOWLEDGE, WAIT
+  verbs:
+  - ACKNOWLEDGE
+  - WAIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.learn_move
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ''
+  verbs: []
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.ended
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ACKNOWLEDGE, UPDATE_GOAL
+  verbs:
+  - ACKNOWLEDGE
+  - UPDATE_GOAL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.trainer
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ''
+  verbs: []
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.wild
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ''
+  verbs: []
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.safari
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: SAFARI_BALL, SAFARI_BAIT, SAFARI_ROCK, SAFARI_RUN
+  verbs:
+  - SAFARI_BALL
+  - SAFARI_BAIT
+  - SAFARI_ROCK
+  - SAFARI_RUN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.ghost
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: ATTEMPT_ESCAPE
+  verbs:
+  - ATTEMPT_ESCAPE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.tutorial_scripted
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P0
+  - P1
+  options: WAIT, ADVANCE
+  verbs:
+  - WAIT
+  - ADVANCE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: battle.link
+  family: battle
+  section: D
+  section_title: Battle
+  phases:
+  - P2
+  options: UNSUPPORTED
+  verbs:
+  - UNSUPPORTED
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.list
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SELECT_MON, CANCEL
+  verbs:
+  - SELECT_MON
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.action
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SUMMARY, SWITCH, ITEM, MAIL, FIELD_MOVE, CANCEL
+  verbs:
+  - SUMMARY
+  - SWITCH
+  - ITEM
+  - MAIL
+  - FIELD_MOVE
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.reorder
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SWAP_WITH
+  verbs:
+  - SWAP_WITH
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.battle_pick
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SEND_OUT
+  verbs:
+  - SEND_OUT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.battle_switch_prompt
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SWITCH, CANCEL
+  verbs:
+  - SWITCH
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.summary
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: NEXT_PAGE, PREV_PAGE, NEXT_MON, PREV_MON, EXIT
+  verbs:
+  - NEXT_PAGE
+  - PREV_PAGE
+  - NEXT_MON
+  - PREV_MON
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.summary_moves
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SELECT_MOVE, BACK
+  verbs:
+  - SELECT_MOVE
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.held_item
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: GIVE_ITEM, TAKE_ITEM, SWAP_HELD_ITEM, CANCEL
+  verbs:
+  - GIVE_ITEM
+  - TAKE_ITEM
+  - SWAP_HELD_ITEM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.mail
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: READ_MAIL, TAKE_MAIL, BACK
+  verbs:
+  - READ_MAIL
+  - TAKE_MAIL
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.item_target
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: USE_ON_MON
+  verbs:
+  - USE_ON_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.pp_target
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: RESTORE_PP
+  verbs:
+  - RESTORE_PP
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.heal_other
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: HEAL_PARTY_MEMBER
+  verbs:
+  - HEAL_PARTY_MEMBER
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.tm_target
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: TEACH_TM_TO
+  verbs:
+  - TEACH_TM_TO
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.daycare
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: DEPOSIT_MON, WITHDRAW_MON
+  verbs:
+  - DEPOSIT_MON
+  - WITHDRAW_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: party.tutor_target
+  family: party
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: TEACH_TO_MON
+  verbs:
+  - TEACH_TO_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: move.new_offer
+  family: move
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: LEARN_MOVE, DECLINE_MOVE
+  verbs:
+  - LEARN_MOVE
+  - DECLINE_MOVE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: move.no_free_slot
+  family: move
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: REPLACE_MOVE, CANCEL_LEARNING
+  verbs:
+  - REPLACE_MOVE
+  - CANCEL_LEARNING
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: move.replace_confirm
+  family: move
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: move.relearner_list
+  family: move
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SELECT_MOVE, CANCEL
+  verbs:
+  - SELECT_MOVE
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: move.deleter
+  family: move
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: FORGET_MOVE, CANCEL
+  verbs:
+  - FORGET_MOVE
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: evolution.start
+  family: evolution
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: ALLOW_EVOLUTION, CANCEL_IF_POSSIBLE
+  verbs:
+  - ALLOW_EVOLUTION
+  - CANCEL_IF_POSSIBLE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: evolution.animation
+  family: evolution
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: WAIT
+  verbs:
+  - WAIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: evolution.move_learning
+  family: evolution
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: LEARN_MOVE, REPLACE_MOVE
+  verbs:
+  - LEARN_MOVE
+  - REPLACE_MOVE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: evolution.done
+  family: evolution
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: ACKNOWLEDGE
+  verbs:
+  - ACKNOWLEDGE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: egg.hatching
+  family: egg
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: WAIT, ADVANCE, NICKNAME
+  verbs:
+  - WAIT
+  - ADVANCE
+  - NICKNAME
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: naming.pokemon
+  family: naming
+  section: E
+  section_title: Items
+  phases:
+  - P0
+  - P1
+  options: SET_NICKNAME, DECLINE
+  verbs:
+  - SET_NICKNAME
+  - DECLINE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.pocket
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SELECT_POCKET, PREV_POCKET, NEXT_POCKET
+  verbs:
+  - SELECT_POCKET
+  - PREV_POCKET
+  - NEXT_POCKET
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.items
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SELECT_ITEM, SCROLL, CANCEL
+  verbs:
+  - SELECT_ITEM
+  - SCROLL
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.context
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE, GIVE, TOSS, REGISTER, CANCEL
+  verbs:
+  - USE
+  - GIVE
+  - TOSS
+  - REGISTER
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.use
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE_ITEM
+  verbs:
+  - USE_ITEM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.use_target
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE_ON_MON
+  verbs:
+  - USE_ON_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.toss_quantity
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SET_QUANTITY, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.toss_confirm
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.give_item
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: GIVE_TO_MON
+  verbs:
+  - GIVE_TO_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.register
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: REGISTER_ITEM, UNREGISTER_ITEM, CANCEL
+  verbs:
+  - REGISTER_ITEM
+  - UNREGISTER_ITEM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.sell
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SELL_ITEM
+  verbs:
+  - SELL_ITEM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.sell_quantity
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.deposit
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: DEPOSIT_ITEM
+  verbs:
+  - DEPOSIT_ITEM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.battle_item
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE_BATTLE_ITEM
+  verbs:
+  - USE_BATTLE_ITEM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: bag.error
+  family: bag
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: ACKNOWLEDGE, CANCEL_AND_REPLAN
+  verbs:
+  - ACKNOWLEDGE
+  - CANCEL_AND_REPLAN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: tm.list
+  family: tm
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SELECT_TMHM, CANCEL
+  verbs:
+  - SELECT_TMHM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: tm.context
+  family: tm
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE_TM, GIVE_TM, EXIT
+  verbs:
+  - USE_TM
+  - GIVE_TM
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: tm.teach_target
+  family: tm
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: TEACH_TO_MON
+  verbs:
+  - TEACH_TO_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: tm.replace_move
+  family: tm
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: REPLACE_MOVE, CANCEL
+  verbs:
+  - REPLACE_MOVE
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: tm.learn_confirm
+  family: tm
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: berry.list
+  family: berry
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SELECT_BERRY, CANCEL
+  verbs:
+  - SELECT_BERRY
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: berry.context
+  family: berry
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE, GIVE, TOSS, SELL, CANCEL
+  verbs:
+  - USE
+  - GIVE
+  - TOSS
+  - SELL
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: berry.target
+  family: berry
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: USE_ON_MON
+  verbs:
+  - USE_ON_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: berry.quantity
+  family: berry
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: berry.confirm
+  family: berry
+  section: F
+  section_title: Party
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.main
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: BUY, SELL, QUIT
+  verbs:
+  - BUY
+  - SELL
+  - QUIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.buy_list
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: BUY_ITEM, SCROLL, CANCEL
+  verbs:
+  - BUY_ITEM
+  - SCROLL
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.buy_quantity
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.buy_confirm
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.buy_done
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: CONTINUE_SHOPPING, QUIT
+  verbs:
+  - CONTINUE_SHOPPING
+  - QUIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.sell_list
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: SELL_ITEM, CANCEL
+  verbs:
+  - SELL_ITEM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.sell_quantity
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.sell_confirm
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.sell_done
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: CONTINUE_SHOPPING, QUIT
+  verbs:
+  - CONTINUE_SHOPPING
+  - QUIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.vending_machine
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: BUY_ITEM, CANCEL
+  verbs:
+  - BUY_ITEM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.game_corner_exchange
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: EXCHANGE_FOR, CANCEL
+  verbs:
+  - EXCHANGE_FOR
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: shop.special_service
+  family: shop
+  section: G
+  section_title: Inventory
+  phases:
+  - P0
+  - P1
+  options: SELECT_SERVICE, CANCEL
+  verbs:
+  - SELECT_SERVICE
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc.main
+  family: pc
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: POKEMON_STORAGE, ITEM_STORAGE, LOG_OFF
+  verbs:
+  - POKEMON_STORAGE
+  - ITEM_STORAGE
+  - LOG_OFF
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc.pokemon_mode
+  family: pc
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: WITHDRAW, DEPOSIT, MOVE, SEE_YA
+  verbs:
+  - WITHDRAW
+  - DEPOSIT
+  - MOVE
+  - SEE_YA
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc.item_mode
+  family: pc
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: WITHDRAW_ITEM, DEPOSIT_ITEM, TOSS_ITEM, LOG_OFF
+  verbs:
+  - WITHDRAW_ITEM
+  - DEPOSIT_ITEM
+  - TOSS_ITEM
+  - LOG_OFF
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.box_select
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SELECT_BOX, NEXT_BOX, PREV_BOX
+  verbs:
+  - SELECT_BOX
+  - NEXT_BOX
+  - PREV_BOX
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.box_slot
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SELECT_BOX_MON, CANCEL
+  verbs:
+  - SELECT_BOX_MON
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.party_slot
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SELECT_PARTY_MON, CANCEL
+  verbs:
+  - SELECT_PARTY_MON
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.withdraw
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: WITHDRAW_MON
+  verbs:
+  - WITHDRAW_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.deposit
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: DEPOSIT_MON
+  verbs:
+  - DEPOSIT_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.move_mon
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: MOVE_MON, CANCEL
+  verbs:
+  - MOVE_MON
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.place_mon
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: PLACE_HELD_MON
+  verbs:
+  - PLACE_HELD_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.shift_mon
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SWAP_WITH_MON
+  verbs:
+  - SWAP_WITH_MON
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.withdraw_deposit_confirm
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.summary
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: VIEW_SUMMARY, BACK
+  verbs:
+  - VIEW_SUMMARY
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.release
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: RELEASE_MON, CANCEL
+  verbs:
+  - RELEASE_MON
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.release_confirm
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.held_item
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: TAKE_ITEM, GIVE_ITEM, MOVE_HELD_ITEM
+  verbs:
+  - TAKE_ITEM
+  - GIVE_ITEM
+  - MOVE_HELD_ITEM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.markings
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SET_MARKINGS, BACK
+  verbs:
+  - SET_MARKINGS
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.box_options
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: RENAME_BOX, WALLPAPER, JUMP_BOX, CANCEL
+  verbs:
+  - RENAME_BOX
+  - WALLPAPER
+  - JUMP_BOX
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.rename_box
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SET_BOX_NAME, CANCEL
+  verbs:
+  - SET_BOX_NAME
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.change_wallpaper
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SELECT_WALLPAPER, CANCEL
+  verbs:
+  - SELECT_WALLPAPER
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: storage.exit
+  family: storage
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: CLOSE_BOX, RETURN_PC
+  verbs:
+  - CLOSE_BOX
+  - RETURN_PC
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc_items.list
+  family: pc_items
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SELECT_STORED_ITEM, CANCEL
+  verbs:
+  - SELECT_STORED_ITEM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc_items.context
+  family: pc_items
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: WITHDRAW, TOSS, CANCEL
+  verbs:
+  - WITHDRAW
+  - TOSS
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc_items.withdraw_qty
+  family: pc_items
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc_items.deposit_qty
+  family: pc_items
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: SET_QUANTITY, CONFIRM, CANCEL
+  verbs:
+  - SET_QUANTITY
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pc_items.toss_confirm
+  family: pc_items
+  section: H
+  section_title: Storage
+  phases:
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.start
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: POKEDEX, POKEMON, BAG, PLAYER_CARD, SAVE, OPTIONS, EXIT, RETIRE
+  verbs:
+  - POKEDEX
+  - POKEMON
+  - BAG
+  - PLAYER_CARD
+  - SAVE
+  - OPTIONS
+  - EXIT
+  - RETIRE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.open
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: EXIT, CONFIRM
+  verbs:
+  - EXIT
+  - CONFIRM
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.options
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SET_TEXT_SPEED, SET_BATTLE_SCENE, SET_BATTLE_STYLE, SET_SOUND, SET_BUTTON_MODE,
+    SET_FRAME, EXIT
+  verbs:
+  - SET_TEXT_SPEED
+  - SET_BATTLE_SCENE
+  - SET_BATTLE_STYLE
+  - SET_SOUND
+  - SET_BUTTON_MODE
+  - SET_FRAME
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.save
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SAVE, CANCEL
+  verbs:
+  - SAVE
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.save_overwrite
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: YES, NO
+  verbs:
+  - 'YES'
+  - 'NO'
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.trainer_card
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: VIEW_PAGE, EXIT
+  verbs:
+  - VIEW_PAGE
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.pokedex
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SELECT_MODE, OPEN_LIST, EXIT
+  verbs:
+  - SELECT_MODE
+  - OPEN_LIST
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pokedex.list
+  family: pokedex
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SELECT_SPECIES, SCROLL_UP, SCROLL_DOWN, CANCEL
+  verbs:
+  - SELECT_SPECIES
+  - SCROLL_UP
+  - SCROLL_DOWN
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pokedex.detail
+  family: pokedex
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: NEXT_SPECIES, PREV_SPECIES, VIEW_AREA, PLAY_CRY, BACK
+  verbs:
+  - NEXT_SPECIES
+  - PREV_SPECIES
+  - VIEW_AREA
+  - PLAY_CRY
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: pokedex.category
+  family: pokedex
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SELECT_CATEGORY, NEXT_PAGE, PREV_PAGE, BACK
+  verbs:
+  - SELECT_CATEGORY
+  - NEXT_PAGE
+  - PREV_PAGE
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.region_map
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: MOVE_MAP_CURSOR, VIEW_LOCATION, EXIT
+  verbs:
+  - MOVE_MAP_CURSOR
+  - VIEW_LOCATION
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.fly_map
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: FLY_TO, CANCEL
+  verbs:
+  - FLY_TO
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.help_controls
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: NEXT_PAGE, PREV_PAGE, EXIT
+  verbs:
+  - NEXT_PAGE
+  - PREV_PAGE
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.teachy_tv
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SELECT_TUTORIAL, ADVANCE, EXIT
+  verbs:
+  - SELECT_TUTORIAL
+  - ADVANCE
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.elevator
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SELECT_FLOOR, CANCEL
+  verbs:
+  - SELECT_FLOOR
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.ferry
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: SELECT_DESTINATION, CANCEL
+  verbs:
+  - SELECT_DESTINATION
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.bag_message
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: ADVANCE, BACK
+  verbs:
+  - ADVANCE
+  - BACK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: menu.blackout_message
+  family: menu
+  section: I
+  section_title: Menus
+  phases:
+  - P0
+  - P1
+  options: ADVANCE, WAIT
+  verbs:
+  - ADVANCE
+  - WAIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.gift_pokemon
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: ACCEPT_GIFT, DECLINE
+  verbs:
+  - ACCEPT_GIFT
+  - DECLINE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.npc_trade
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: ACCEPT_TRADE, SELECT_OFFERED_MON, DECLINE
+  verbs:
+  - ACCEPT_TRADE
+  - SELECT_OFFERED_MON
+  - DECLINE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.fossil_revive
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: SUBMIT_FOSSIL, COLLECT_POKEMON, CANCEL
+  verbs:
+  - SUBMIT_FOSSIL
+  - COLLECT_POKEMON
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.move_tutor
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: SELECT_MOVE, SELECT_MON, CONFIRM, CANCEL
+  verbs:
+  - SELECT_MOVE
+  - SELECT_MON
+  - CONFIRM
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.daycare
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: DEPOSIT, WITHDRAW, PAY, CANCEL
+  verbs:
+  - DEPOSIT
+  - WITHDRAW
+  - PAY
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.safari_field
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: CONTINUE, RETIRE, ACKNOWLEDGE_TIMEOUT
+  verbs:
+  - CONTINUE
+  - RETIRE
+  - ACKNOWLEDGE_TIMEOUT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.sevii_ferry
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: TRAVEL_TO_ISLAND, CANCEL
+  verbs:
+  - TRAVEL_TO_ISLAND
+  - CANCEL
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.sevii_quest
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: SELECT_SCRIPT_CHOICE, WAIT, REPLAN
+  verbs:
+  - SELECT_SCRIPT_CHOICE
+  - WAIT
+  - REPLAN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.strength_puzzle
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: PUSH_BOULDER, REPLAN
+  verbs:
+  - PUSH_BOULDER
+  - REPLAN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.switch_puzzle
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: PRESS_SWITCH, LEAVE, REPLAN
+  verbs:
+  - PRESS_SWITCH
+  - LEAVE
+  - REPLAN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.silph_scope_ghost
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: ESCAPE
+  verbs:
+  - ESCAPE
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.elite_four
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: ENTER_CHAMBER, BATTLE, ADVANCE_STORY
+  verbs:
+  - ENTER_CHAMBER
+  - BATTLE
+  - ADVANCE_STORY
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.hall_of_fame
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P1
+  options: ACKNOWLEDGE_CLEAR, ARCHIVE_RUN
+  verbs:
+  - ACKNOWLEDGE_CLEAR
+  - ARCHIVE_RUN
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.deoxys_triangle
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: INTERACT_WITH_TRIANGLE, NAVIGATE_TO_NEXT_POINT
+  verbs:
+  - INTERACT_WITH_TRIANGLE
+  - NAVIGATE_TO_NEXT_POINT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.trainer_tower
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: SELECT_CHALLENGE, CONTINUE, EXIT
+  verbs:
+  - SELECT_CHALLENGE
+  - CONTINUE
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.game_corner
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: SPIN_REELS, BET, STOP, EXIT
+  verbs:
+  - SPIN_REELS
+  - BET
+  - STOP
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.berry_crush
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: SELECT_BERRY, PLAY, VIEW_RESULTS, EXIT
+  verbs:
+  - SELECT_BERRY
+  - PLAY
+  - VIEW_RESULTS
+  - EXIT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.union_room
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: UNSUPPORTED_LINK
+  verbs:
+  - UNSUPPORTED_LINK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.link_trade_battle
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: UNSUPPORTED_LINK
+  verbs:
+  - UNSUPPORTED_LINK
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.mystery_gift
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P2
+  options: UNSUPPORTED_EVENT
+  verbs:
+  - UNSUPPORTED_EVENT
+  guards: Offer only when current RAM proves the action legal.
+- scene_id: special.unknown_script
+  family: special
+  section: J
+  section_title: Special actions
+  phases:
+  - P0
+  options: ESCALATE
+  verbs:
+  - ESCALATE
+  guards: Offer only when current RAM proves the action legal.

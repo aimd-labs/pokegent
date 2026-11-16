@@ -1,0 +1,7 @@
+:root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #10151c; color: #e7edf5; }
+body { margin: 0; } main { max-width: 1100px; margin: auto; padding: 2rem; }
+.eyebrow { color: #76d8ff; letter-spacing: .12em; font-size: .75rem; }
+h1 { margin: .2rem 0; } .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap: 1rem; }
+article { background: #192331; border: 1px solid #2b3d53; border-radius: .7rem; padding: 1rem; }
+img { width: 100%; image-rendering: pixelated; background: #000; } pre { white-space: pre-wrap; min-height: 8rem; }
+audio { width: 100%; } .hint { color: #9eb0c4; font-size: .85rem; } a { color: #76d8ff; }

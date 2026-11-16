@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "description": "Authored demo; no gameplay or run extraction.",
+  "run_id": "synthetic-demo",
+  "status": "waiting",
+  "scene": "scene.unknown",
+  "agent": {
+    "status": "idle"
+  },
+  "party": [],
+  "decisions": []
+}
