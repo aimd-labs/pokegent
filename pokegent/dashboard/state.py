@@ -191,6 +191,23 @@ class ViewerState:
             self._decision_status(env.request_id, "timeout")
         elif kind == EventType.DECISION_SYSTEMONE_INVALID.value and env.request_id:
             self._decision_status(env.request_id, "invalid")
+        if self.decider == "hybrid" and env.request_id:
+            record = (
+                self._pending
+                if self._pending and self._pending["id"] == env.request_id
+                else self._by_id.get(env.request_id)
+            )
+            if record is not None:
+                if kind == EventType.DECISION_AGENT_REQUESTED.value:
+                    record["awaiting_agent"] = True
+                elif kind in {
+                    EventType.DECISION_SYSTEMONE_COMPLETED.value,
+                    EventType.DECISION_AGENT_COMPLETED.value,
+                } and env.outcome == "accepted":
+                    decided_by = env.details.get("decided_by")
+                    if decided_by in {"system1", "agent"}:
+                        record["decided_by"] = decided_by
+                    record["awaiting_agent"] = False
         if kind in _PROBLEM_EVENTS:
             self._problems.append(
                 {
@@ -416,6 +433,8 @@ class ViewerState:
             self._stop_reason = stop_reason or self._stop_reason
             self._exit_code = exit_code
             self._ended_at = self._clock()
+            if self._pending is not None:
+                self._pending["awaiting_agent"] = False
 
     # -- tap output (HTTP threads) -----------------------------------------------------------
 

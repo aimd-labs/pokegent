@@ -130,6 +130,8 @@ def decision_view(
         "selected": record["selected"],
         "fact_sentence": record["fact_sentence"],
         "source": source,
+        "decided_by": record.get("decided_by"),
+        "awaiting_agent": record.get("awaiting_agent", False),
         "latency_ms": record["latency_ms"],
         # b21/b42c card fields
         "family_label": _family_label(record),

@@ -177,6 +177,8 @@ def decision_record(
         "selected_label": cap(pick.label, LABEL_CHARS) if pick is not None else None,
         "fact_sentence": fact,
         "source": source,
+        "decided_by": None,
+        "awaiting_agent": False,
         "provider": (result.provider_id or None) if result is not None else None,
         "model": (result.model_id or None) if result is not None else None,
         "latency_ms": None if elapsed_ms is None else round(elapsed_ms, 1),
