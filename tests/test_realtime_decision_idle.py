@@ -290,7 +290,7 @@ def test_live_forced_player_step_is_stale_even_before_saved_position_changes():
     read = composite()
     placement = PlayerPlacement(
         save_x=0, save_y=0, avatar_x=0, avatar_y=0, prev_x=0, prev_y=0, x=0, y=0,
-        position_consistent=True, facing="down", elevation=0, object_event_id=0,
+        position_consistent=True, facing="S", elevation=0, object_event_id=0,
         avatar_flags=0, surfing=False, underwater=False, biking=False,
         controllable_flag=False, forced=True, moving=False,
         tile_transition_state=0, running_state=0,
