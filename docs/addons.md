@@ -36,6 +36,13 @@ decider. It is an operator-only route on the local loopback dashboard, for the p
 run; it is not part of any public surface. `/telemetry`, `/agent/live`, and `/ws` are the public
 dashboard surface. Do not expose either listener through a tunnel or proxy.
 
+Public telemetry's `pokegent.decision` (also `pokejev.decision`) includes `decided_by`:
+`"system1"` or `"agent"` for an accepted hybrid decision, otherwise `null` (including
+non-hybrid runs and decisions still being considered). `awaiting_agent` is a boolean,
+true only while a hybrid escalation is waiting for the agent's choice; it is false
+after the call returns or the run stops. A non-escalated override window does not
+set it. Existing `source` and `source_label` fields retain their meanings.
+
 The old upstream REST server and its mutable `/action`, `/save`, `/load`, and `/control` API are
 removed. The run interface remains read-only, and the external `/screenshot` contract is unchanged.
 The one-release compatibility implementation in `addons/runtime.py` is the only addon listener

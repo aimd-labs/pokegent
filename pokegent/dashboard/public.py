@@ -104,6 +104,8 @@ def _decision(d: dict[str, Any] | None) -> dict[str, Any] | None:
         "options_total": d["options_total"],
         "status": d["status"],
         "source_label": d["source_label"],
+        "decided_by": d.get("decided_by"),
+        "awaiting_agent": d.get("awaiting_agent", False),
         "latency_ms": d["latency_ms"],
         "confidence": d["confidence"],
         "fact": d["fact"],
