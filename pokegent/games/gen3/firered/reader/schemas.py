@@ -142,6 +142,12 @@ class PartyMember(BoxMon):
 # -- player, bag, flags, vars -------------------------------------------------------------
 
 
+class PlayTime(_Frozen):
+    hours: int = Field(ge=0, le=999)
+    minutes: int = Field(ge=0, le=59)
+    seconds: int = Field(ge=0, le=59)
+
+
 class Player(_Frozen):
     name: str
     gender: Literal["male", "female"]
@@ -156,6 +162,7 @@ class Player(_Frozen):
     facing: Facing | None = None
     movement: Movement | None = None
     forced_movement: bool | None = None
+    play_time: PlayTime | None = None
     money: int
     coins: int
     badges: tuple[int, ...] = ()  # badge numbers 1..8, from FLAG_BADGE01_GET..08
@@ -244,7 +251,7 @@ class Pokedex(_Frozen):
         def decode(raw: bytes) -> tuple[int, ...]:
             if len(raw) != 52:
                 raise ValueError(f"expected 52 dex bytes, got {len(raw)}")
-            return tuple(i + 1 for i in range(411) if raw[i // 8] & (1 << (i % 8)))
+            return tuple(i + 1 for i in range(C.NATIONAL_DEX_COUNT) if raw[i // 8] & (1 << (i % 8)))
 
         return cls(owned=decode(owned_raw), seen=decode(seen_raw))
 

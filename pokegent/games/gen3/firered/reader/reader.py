@@ -52,6 +52,7 @@ from pokegent.games.gen3.firered.reader.schemas import (
     Health,
     PartyMember,
     Player,
+    PlayTime,
     Pokedex,
     ReadError,
     StateSnapshot,
@@ -700,6 +701,7 @@ class FireRedReader:
             return None
         return Player(
             name=decode_gen3_text(sb2[name_off : name_off + name_size]),
+            play_time=self._parse_play_time(sb2),
             gender="female" if gender_byte else "male",
             tid=tid,
             sid=sid,
@@ -714,6 +716,24 @@ class FireRedReader:
             money=money,
             coins=coins,
         )
+
+    def _parse_play_time(self, sb2: bytes) -> PlayTime | None:
+        # A display-only clock must not make otherwise legal state unusable.
+        try:
+            values = {}
+            for unit, field in (
+                ("hours", "playTimeHours"),
+                ("minutes", "playTimeMinutes"),
+                ("seconds", "playTimeSeconds"),
+            ):
+                offset, size = self._field(field, "SaveBlock2")
+                raw = sb2[offset : offset + size]
+                if len(raw) != size:
+                    return None
+                values[unit] = int.from_bytes(raw, "little")
+            return PlayTime(**values)
+        except (ProfileError, ValueError):
+            return None
 
     def _parse_avatar(
         self, collector: _Collector, avatar: tuple[int, bytes], callback2: int | None
