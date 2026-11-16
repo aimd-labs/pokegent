@@ -19,6 +19,7 @@ DEFAULTS: dict[str, Any] = {
     "hybrid": {
         "escalate_below_confidence": 0.35,
         "override_window_s": 0.0,
+        "escalate_on_no_progress": True,
         "force_agent_after_repeats": 2,
     },
     "battle": {"opponent_knowledge": "guide"},
@@ -191,6 +192,8 @@ def load_user_config(
         raise ValueError("hybrid.escalate_below_confidence must be a number or mapping")
     elif not math.isfinite(float(threshold)) or not 0 <= threshold <= 1:
         raise ValueError("hybrid.escalate_below_confidence must be between 0 and 1")
+    if not isinstance(hybrid["escalate_on_no_progress"], bool):
+        raise ValueError("hybrid.escalate_on_no_progress must be a boolean")
     repeats = hybrid["force_agent_after_repeats"]
     if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 1:
         raise ValueError("hybrid.force_agent_after_repeats must be a positive integer")

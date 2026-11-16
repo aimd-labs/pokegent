@@ -19,9 +19,18 @@ A successful interaction postcondition alone does not establish state change. Th
 pass normal frame and executor validation. `battle.opponent_knowledge` (`guide` by default or
 `fair_play`), `field.menus`, and `output.run_dir`.
 
-The runner has no self-recovery ladder. On no progress it prints one `stopped: no progress ...`
-line and stops; an escalation makes it wait for its agent (agent and hybrid mode) or stop with
-`escalated` (exit 3) in system1 mode. Old `recovery:`, `objectives:` and `runner.busy_nudge_after`
+Hybrid mode offers one bounded agent recovery window on a no-progress verdict when
+`hybrid.escalate_on_no_progress` is true (default). The next action-bearing decision bypasses
+System One and emits `decision.agent.requested` with `escalation_reason=no_progress`; subsequent
+decisions remain agent-owned until the executor reports durable progress (`ActionResult.progressed
+is True`). Position-only movement, a changed monitor signature, and a verified interaction
+postcondition do not end or rearm the window. After another `runner.no_progress_limit`
+action-bearing decisions without progress, or an earlier existing guard verdict, the run enters
+SAFE_PAUSE (exit 1). Verified progress rearms the single recovery window. Frame legality, executor
+validation and invalid/unsupported-state pauses still apply throughout. Disabling this setting
+retains the original no-progress stop. Non-hybrid modes keep their existing behavior.
+There is no automatic game-input recovery ladder.
+Old `recovery:`, `objectives:` and `runner.busy_nudge_after`
 keys are rejected with an error, never silently ignored.
 
 Environment overrides include `POKEGENT_ROM_PATH`, `POKEGENT_DECIDER`,

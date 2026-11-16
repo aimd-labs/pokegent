@@ -87,6 +87,12 @@ snapshots carry game events), `elapsed_frames`, `verified_outcome` (`bool|None`)
 9. Exactly one chooseable option: executed without calling the decider (`decision.forced`).
 10. The same (scene, option, fingerprint) attempted `no_progress_limit` times inside
     `no_progress_window` iterations: `progress.stuck` + escalation.
+    Hybrid may route the first no-progress verdict to its agent for one bounded recovery window
+    (`hybrid.escalate_on_no_progress`, default true). All action-bearing decisions in this window
+    bypass System One with `escalation_reason=no_progress`. Another exhausted window or earlier
+    guard verdict SAFE_PAUSEs; only executor-verified durable progress (`result.progressed is True`)
+    ends and rearms recovery. Position-only movement and monitor signature changes do not rearm it.
+    Non-hybrid modes retain their existing escalation behavior.
 11. No randomness, no wall clock in decisions. Event ids and decision ids are sequential. The only
     non-replayable field is `details.measured_ms` of `decision.systemone.completed`.
 12. Secrets are redacted before an event is written; one flush per event; rotation never overwrites.
