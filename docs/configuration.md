@@ -48,6 +48,12 @@ state file. Only explicitly identified pre-game scenes are accepted before FireR
 avatar; ordinary `--state` runs retain the strict valid-avatar startup gate. Gender defaults to boy,
 and the name screens choose the game's first preset rather than typing a custom name.
 
+Checkpoint and final-save validation accepts an absent avatar only when the core reader verifies
+a recognized pre-field callback and finds no active player object anywhere. In that case the
+uncreated object's coordinates are not compared with the saved position. Once the indexed object
+is an active player, coordinate agreement is required even during the intro; invalid indices,
+wrong indexed players, other callbacks, ROM headers and all other reader checks remain enforced.
+
 ```yaml
 new_game:
   gender: male       # male or female
