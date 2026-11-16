@@ -73,12 +73,23 @@ def _battle(battle: dict[str, Any]) -> dict[str, Any]:
 
 
 def _state(state: dict[str, Any]) -> dict[str, Any]:
+    player = state.get("player") or {}
+    play_time = player.get("play_time")
+    pokedex = state.get("pokedex") or {}
     out: dict[str, Any] = {
         "badges": list(state.get("badges", [])),
         "party": [_party_row(m) for m in state.get("party", [])],
         "battle": _battle(state.get("battle") or {"in_battle": False, "is_trainer": False}),
-        "player": {"play_time": None},  # not read yet; the page shows --:--:--
-        "pokedex": None,
+        "player": {
+            "name": player.get("name"),
+            "trainer_id": player.get("trainer_id"),
+            "play_time": (
+                {unit: play_time.get(unit) for unit in ("hours", "minutes", "seconds")}
+                if play_time is not None else None
+            ),
+            "money": player.get("money"),
+        },
+        "pokedex": {"seen": pokedex.get("seen"), "caught": pokedex.get("caught")},
     }
     if state.get("map"):
         out["map"] = {"name": state["map"]["name"]}

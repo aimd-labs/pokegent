@@ -23,6 +23,8 @@ PARTY_MON_SIZE = 100
 # include/constants/species.h: NUM_SPECIES == SPECIES_EGG == 412; real species are 1..411
 SPECIES_EGG = 412
 NUM_SPECIES = SPECIES_EGG
+# include/constants/pokedex.h: NATIONAL_DEX_COUNT (excludes extra Unown species slots)
+NATIONAL_DEX_COUNT = 386
 # include/constants/moves.h: MOVES_COUNT; include/constants/items.h: ITEMS_COUNT
 MOVES_COUNT = 355
 ITEMS_COUNT = 375

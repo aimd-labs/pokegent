@@ -47,3 +47,25 @@ The old upstream REST server and its mutable `/action`, `/save`, `/load`, and `/
 removed. The run interface remains read-only, and the external `/screenshot` contract is unchanged.
 The one-release compatibility implementation in `addons/runtime.py` is the only addon listener
 that mounts `/screenshot`; explicit stream and dashboard listeners do not expose it.
+
+Public telemetry's `state.player` contains `name`, `trainer_id` (the public 16-bit
+ID only), `money`, and `play_time` (`hours`, `minutes`, `seconds`). The reader uses
+the selected ROM profile and relocated save-block pointers: name uses the existing
+Gen-3 text decoder, ID and clock come from SaveBlock2, and SaveBlock1 money is XOR
+decrypted with SaveBlock2's 32-bit encryption key. The clock comes from RAM, not
+wall time; its valid range is 0–999 hours and 0–59 minutes/seconds.
+`state.pokedex` contains `seen` and `caught`, counting the national dex flags in
+SaveBlock2 (dex numbers 1–386, excluding unused bits). These fields are explicit
+public whitelists; secret trainer ID and individual dex flags are never forwarded.
+
+Unavailable values are `null`, including invalid/unreadable save blocks and the
+intro's cleared save blocks before a trainer name exists. An unreadable or invalid
+clock alone yields `play_time: null`; it does not invalidate action state. Zero is
+a readable value once the trainer exists. Existing party, badge, map, position and
+battle fields retain their shapes. No ROM, save or extracted game data is needed
+for `tests/test_public_trainer_card.py`.
+
+Layout and clock bounds are documented by the profile's pinned interoperability
+reference: [SaveBlock2](https://github.com/pret/pokefirered/blob/037335f4c725d7c9aecdac87066f2002b4bd7e14/include/global.h),
+[clock](https://github.com/pret/pokefirered/blob/037335f4c725d7c9aecdac87066f2002b4bd7e14/src/play_time.c),
+and [national dex counting](https://github.com/pret/pokefirered/blob/037335f4c725d7c9aecdac87066f2002b4bd7e14/src/pokedex.c).

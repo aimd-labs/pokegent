@@ -44,6 +44,9 @@ layouts:
           playerName:        {offset: 0x0000, size: 8, source: "global.h:329 u8 playerName[PLAYER_NAME_LENGTH+1]"}
           playerGender:      {offset: 0x0008, size: 1, source: "global.h:330 u8 playerGender (MALE 0, FEMALE 1)"}
           playerTrainerId:   {offset: 0x000A, size: 4, source: "global.h:332 u8 playerTrainerId[4] (TID u16, SID u16)"}
+          playTimeHours: {offset: 0x000E, size: 2, source: "pret 037335f4 include/global.h SaveBlock2.playTimeHours; src/play_time.c"}
+          playTimeMinutes: {offset: 0x0010, size: 1, source: "pret 037335f4 include/global.h SaveBlock2.playTimeMinutes; src/play_time.c"}
+          playTimeSeconds: {offset: 0x0011, size: 1, source: "pret 037335f4 include/global.h SaveBlock2.playTimeSeconds; src/play_time.c"}
           optionsButtonMode: {offset: 0x0013, size: 1, source: "global.h:337 u8 optionsButtonMode; OPTIONS_BUTTON_MODE_HELP/LR/L_EQUALS_A"}
           pokedexOwned:      {offset: 0x0028, size: 52, source: "global.h:344 struct Pokedex owned[DEX_FLAGS_NO], BPRE Rev0 decomp"}
           pokedexSeen:       {offset: 0x005C, size: 52, source: "global.h:344 struct Pokedex seen[DEX_FLAGS_NO], BPRE Rev0 decomp"}

@@ -223,21 +223,30 @@ def state_block(snapshot: StateSnapshot, names: NameBook) -> dict[str, Any]:
         }
     player = snapshot.player
     map_info = map_block(snapshot)
+    # Cleared save blocks can have valid pointers during the intro. Until a name exists,
+    # zero-filled IDs, clocks, money and flags are not an initialized trainer card.
+    trainer_ready = bool(player.name.strip())
     return {
         "valid": True,
         "badges": badges_block(snapshot),
         "map": map_info,
         "position": map_info.get("position"),
         "player": {
-            "name": player.name,
-            "money": player.money,
+            "name": player.name if trainer_ready else None,
+            "trainer_id": player.tid if trainer_ready else None,
+            "money": player.money if trainer_ready else None,
             "facing": player.facing,
             "movement": player.movement,
-            "play_time": None,  # not read by the reader yet
+            "play_time": (
+                player.play_time.model_dump() if trainer_ready and player.play_time else None
+            ),
         },
         "party": [party_row(m, names) for m in snapshot.party],
         "battle": battle_block(snapshot, names),
-        "pokedex": None,  # not read by the reader yet
+        "pokedex": {
+            "seen": snapshot.pokedex.seen_count if trainer_ready and snapshot.pokedex else None,
+            "caught": snapshot.pokedex.owned_count if trainer_ready and snapshot.pokedex else None,
+        },
     }
 
 
