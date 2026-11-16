@@ -1821,6 +1821,7 @@ class EmuClock:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name=name, daemon=True)
         self._frame_ms: Deque[float] = collections.deque(maxlen=600)
+        self._decision_guard_ms: Deque[float] = collections.deque(maxlen=600)
         self.resyncs = 0
         self.ticks = 0  # frames run by this clock
         self.watchdog_aborts = 0
@@ -1930,6 +1931,12 @@ class EmuClock:
         return {
             "frames": self.ticks,
             "frame_ms": {"p50": pct(0.5), "p99": pct(0.99), "mean": mean, "samples": n},
+            "decision_guard_ms": {
+                "mean": (sum(self._decision_guard_ms) / len(self._decision_guard_ms)
+                         if self._decision_guard_ms else 0.0),
+                "max": max(self._decision_guard_ms, default=0.0),
+                "samples": len(self._decision_guard_ms),
+            },
             "frames_per_s_while_running": (1000.0 / mean) if mean else 0.0,
             "resyncs": self.resyncs,
             "pending_commands": self.pending(),
@@ -2007,9 +2014,11 @@ class EmuClock:
         t0 = self._timer()
         self._emu.tick(1)
         self.ticks += 1
-        if self._decision_idle is not None:
-            self._decision_idle(self._emu)
         self._frame_ms.append((self._timer() - t0) * 1000.0)
+        if self._decision_idle is not None:
+            guard_start = self._timer()
+            self._decision_idle(self._emu)
+            self._decision_guard_ms.append((self._timer() - guard_start) * 1000.0)
         cmd = self._active
         if cmd is not None:
             cmd.ran += 1

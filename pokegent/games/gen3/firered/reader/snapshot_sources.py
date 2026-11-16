@@ -181,7 +181,10 @@ class CompositeSnapshotSource:
         actor reads, route planning, builders, provider calls or input happen in this guard.
         Always decode the map here, even if normal perception has map_mode=off.
         """
-        from pokegent.games.gen3.firered.reader.decision_idle import observable_state
+        from pokegent.games.gen3.firered.reader.decision_idle import (
+            DecisionReadTrace,
+            observable_state,
+        )
 
         baseline = self._last_atomic
         if baseline is None or live_snapshot_seq(baseline) != snapshot_seq:
@@ -190,16 +193,30 @@ class CompositeSnapshotSource:
             self._source, self._profile, sidecar=TextSidecar(),
             party_source=self.party_source, map_mode="field", include_battle=True,
         )
-        decoder.build(baseline)
+        trace = DecisionReadTrace(baseline)
+        decoder.build(trace)
         expected = observable_state(decoder.last, allow_invalid_core=allow_invalid_core)
+        ranges = trace.probe_ranges(self._profile, decoder.last)
+        previous = tuple(baseline.read_range(addr, size) for addr, size in ranges)
 
         def unchanged(atomic: AtomicSnapshot) -> bool:
+            nonlocal ranges, previous
             if atomic.load_epoch != baseline.load_epoch:
                 return False
-            decoder.build(atomic)
-            return observable_state(
+            current = tuple(atomic.read_range(addr, size) for addr, size in ranges)
+            if current == previous:
+                return True
+            trace = DecisionReadTrace(atomic)
+            decoder.build(trace)
+            matches = observable_state(
                 decoder.last, allow_invalid_core=allow_invalid_core
             ) == expected
+            if matches:
+                # Pointer targets and active menus can alter the dependency set. Rebuild it
+                # after every decode; compare against the last equivalent frame, not a timer.
+                ranges = trace.probe_ranges(self._profile, decoder.last)
+                previous = tuple(atomic.read_range(addr, size) for addr, size in ranges)
+            return matches
 
         return unchanged
 

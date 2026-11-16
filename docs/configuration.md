@@ -95,34 +95,51 @@ supplying either is an error because escalated decisions wait for the agent inde
 ```yaml
 emulator:
   realtime_idle_while_deciding: false # default; true enables no-input idle during decisions
+runner:
+  decision_idle_stale_limit: 3 # positive integer; then decide once with time frozen
 ```
 
 When enabled, the existing single emulator actor runs paced frames while a synchronous decider
 (including System One and an escalated external agent) waits. It releases every key first. The
 clock uses the selected viewer/stream/dashboard `fps`, or 60 fps if no addon selected pacing.
 Audio capture and frame readers use the ordinary tick/read paths during these frames. Outside
-provider waits the emulator keeps its existing command-driven behavior. No idle frames are
-inserted into executor macros, verification, checkpoints, or paused/objective waits.
+provider waits the emulator remains command-driven. Enabling this flag also paces every executor
+command at the selected fps (60 when none was selected); previously unpaced macros and settles
+therefore run in real time. No idle frames are inserted into executor macros, verification, checkpoints, or paused/objective waits.
 
 Every idle frame is checked against the atomic snapshot behind the offered decision. Any
-observable change latches `E_STALE_DECISION`, including a change that later reverses. The wait
+player/selection change latches `E_STALE_DECISION`, including a change that later reverses. The wait
 ends at a frame boundary before executor validation, so no extra idle frame can slip between
 validation and input. The next input frame belongs to the existing frame-counted FIFO command.
 External choices for invalidated frames use the existing HTTP 409 response, and the runner
-perceives again to request a fresh decision. A choice acknowledged as `queued` can still be
-rejected if the state changes before the wait closes; `queued` never means applied.
+perceives again to request a fresh decision. After `runner.decision_idle_stale_limit` consecutive
+stales at a scene/objective decision point, the next decision uses the old frozen behavior.
+Animated fingerprints or alternating scenes do not replenish these budgets. Once an action
+reaches normal execution accounting, the next decision point gets a new budget. The frozen
+choice still passes fresh legality, repeat, no-progress and unknown-scene recovery checks.
+`runtime.started` records the flag and limit; summary counters include
+`realtime_idle_while_deciding`, `stale_decisions` and `frozen_decisions`. A choice acknowledged
+as `queued` can still be rejected if the state changes before the wait closes; its next action feedback reports
+`status: stale` and `applied: false`. `queued` never means applied.
 
-The guard compares decoded core state, full UI/menu/script evidence, map/NPC state, dialog text
-and printer position/page, storage and battle state. It deliberately ignores play time, frame
-identity, previous key samples and text-printer delays; RNG and sprite-animation clocks are not
-part of decoded state. Fanfare countdowns retain their completion boundary. Decode failures and
-missing required evidence fail closed. The ordinary fresh-frame legality check and RAM action
-verification remain mandatory and unchanged. See [the idle safety argument](realtime-idle.md).
+The guard compares player position/facing/map (including the live avatar during forced or
+scripted movement), party, bag, flags, vars, storage, UI/menu selections, dialog page/printer
+state and battle phase/controllers. It excludes NPC objects, raw task data counters, play time,
+frame identity, previous keys, printer delays, battle RNG/dispatcher/script clocks and fade
+intensity. Derived menu cursors/readiness still count, even when sourced from task data.
+Fanfare countdowns retain their completion boundary. Missing required evidence and decode
+failures fail closed; fresh legality and RAM verification still apply.
 
-This mode changes replay timing and may reject often in moving/scripted scenes. The conservative
-guard fully decodes each idle frame; ROM-free tests establish correctness of the scheduling and
-guard, not native emulator throughput. Measure pacing/audio on the intended host before enabling
-it for a live run.
+A cheap comparison of the decoder's RAM dependencies precedes full decoding; pointer targets
+are tracked too. Background task counters, NPC movement, key samples and printer delays are
+filtered before decoding when they have no selection meaning. Other irrelevant byte changes
+may trigger extra decoding but cannot invalidate a choice unless decoded identity changes.
+Clock metrics report guard time separately as `decision_guard_ms`; `frame_ms` measures the
+backend tick. See [the idle safety argument](realtime-idle.md).
+
+This mode changes replay timing. Synthetic tests establish guard and scheduling behavior, not
+native throughput, audio quality or the stale frequency in a town, battle menu or dialog wait.
+Measure those on the intended ROM host before a live run.
 
 ## Graceful stop
 

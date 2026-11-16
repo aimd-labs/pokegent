@@ -156,6 +156,31 @@ def test_hybrid_gets_one_agent_window_then_safe_pause(harness):
     assert len(events.of_type(EventType.DECISION_AGENT_COMPLETED)) == 2
 
 
+def test_stales_cannot_renew_no_progress_agent_window(harness):
+    from contextlib import contextmanager
+    from threading import Event
+
+    runner, calls, actions, requests, events = harness()
+
+    @contextmanager
+    def stale_wait(guard):
+        changed = Event()
+        changed.set()
+        yield SimpleNamespace(changed=changed)
+
+    runner.executor.actor = SimpleNamespace(realtime_idle_while_deciding=True,
+                                            decision_wait=stale_wait)
+    runner.perceiver.source = SimpleNamespace(decision_guard=lambda *args, **kwargs: None)
+    runner.decider.external.discard_stale_decision = lambda: None
+    summary = runner.run()
+    assert summary.status is RunStatus.SAFE_PAUSE
+    assert summary.verdict == "no_progress"
+    assert len(actions) == 4
+    assert summary.counters["stale_decisions"] == 12
+    assert summary.counters["frozen_decisions"] == 4
+    assert len(requests) == 8
+
+
 @pytest.mark.parametrize("kwargs", [{"hybrid": False}, {"enabled": False}])
 def test_non_hybrid_and_disabled_keep_original_stop(harness, kwargs):
     runner, calls, actions, requests, _ = harness(**kwargs)
