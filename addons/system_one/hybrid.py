@@ -77,6 +77,16 @@ class HybridDecider:
         """Use the runner's same-snapshot refresh for escalated agent choices."""
         self.external.bind_pending_frame(refresh)
 
+    def bind_decision_valid(self, valid: Any) -> None:
+        bind = getattr(self.external, "bind_decision_valid", None)
+        if callable(bind):
+            bind(valid)
+
+    def discard_stale_decision(self) -> None:
+        self.external.discard_stale_decision()
+        self._repeat_key = None
+        self._repeat_count = 0
+
     def take_decided_frame(self) -> DecisionFrame | None:
         """Adopt the frame paired with a choice refreshed while the agent waited."""
         return self.external.take_decided_frame()

@@ -70,6 +70,40 @@ options. Teaching verifies the learned move and consumes an ordinary TM while re
 agent choices wait indefinitely.
 supplying either is an error because escalated decisions wait for the agent indefinitely.
 
+## Realtime decision idle
+
+```yaml
+emulator:
+  realtime_idle_while_deciding: false # default; true enables no-input idle during decisions
+```
+
+When enabled, the existing single emulator actor runs paced frames while a synchronous decider
+(including System One and an escalated external agent) waits. It releases every key first. The
+clock uses the selected viewer/stream/dashboard `fps`, or 60 fps if no addon selected pacing.
+Audio capture and frame readers use the ordinary tick/read paths during these frames. Outside
+provider waits the emulator keeps its existing command-driven behavior. No idle frames are
+inserted into executor macros, verification, checkpoints, or paused/objective waits.
+
+Every idle frame is checked against the atomic snapshot behind the offered decision. Any
+observable change latches `E_STALE_DECISION`, including a change that later reverses. The wait
+ends at a frame boundary before executor validation, so no extra idle frame can slip between
+validation and input. The next input frame belongs to the existing frame-counted FIFO command.
+External choices for invalidated frames use the existing HTTP 409 response, and the runner
+perceives again to request a fresh decision. A choice acknowledged as `queued` can still be
+rejected if the state changes before the wait closes; `queued` never means applied.
+
+The guard compares decoded core state, full UI/menu/script evidence, map/NPC state, dialog text
+and printer position/page, storage and battle state. It deliberately ignores play time, frame
+identity, previous key samples and text-printer delays; RNG and sprite-animation clocks are not
+part of decoded state. Fanfare countdowns retain their completion boundary. Decode failures and
+missing required evidence fail closed. The ordinary fresh-frame legality check and RAM action
+verification remain mandatory and unchanged. See [the idle safety argument](realtime-idle.md).
+
+This mode changes replay timing and may reject often in moving/scripted scenes. The conservative
+guard fully decodes each idle frame; ROM-free tests establish correctness of the scheduling and
+guard, not native emulator throughput. Measure pacing/audio on the intended host before enabling
+it for a live run.
+
 ## Graceful stop
 
 `run.graceful_stop_timeout_s` is the hard graceful-stop budget (default `10`). SIGINT, SIGTERM, or

@@ -71,6 +71,14 @@ snapshots carry game events), `elapsed_frames`, `verified_outcome` (`bool|None`)
 
 ## 3. Invariants (each has a test)
 
+Opt-in decision idle is an observation exception to command-only frame advancement:
+`emulator.realtime_idle_while_deciding` (default false) scopes paced no-input frames to a
+decider wait. The single actor latches any decoded observable-state change on every idle frame;
+`E_STALE_DECISION` withdraws the old decision and requests a fresh one (external submissions use
+HTTP 409). Idle stops at a boundary before executor revalidation; no idle tick can intervene
+between that validation and input. Existing input FIFO/frame budgets and RAM verification remain
+unchanged. See [decision idle safety](realtime-idle.md) for identity, FireRed cases and limits.
+
 1. `options` holds only LEGAL/CONDITIONAL; ids unique per frame; a frame never changes after creation.
 2. The model sees `state`, `instructions`, `criteria` and nothing else; it answers with an option id.
 3. Executor input requires, on a fresh snapshot: usable, `snapshot_seq` not older, same `scene_id`,

@@ -59,6 +59,7 @@ from pokegent.options.models import (
     DecisionFrame,
     Legality,
     PayloadLeakError,
+    StaleDecision,
     check_choice,
     to_system_one_payload,
 )
@@ -495,6 +496,12 @@ class Runner:
         self._hybrid_no_progress_active = False
         self._hybrid_recovery_decisions = 0
         self._objective_lock = threading.RLock()
+        self._decision_idle = None
+        bind_valid = getattr(self.decider, "bind_decision_valid", None)
+        if callable(bind_valid):
+            bind_valid(
+                lambda: self._decision_idle is None or not self._decision_idle.changed.is_set()
+            )
         refresh_pending = getattr(self.decider, "bind_pending_frame", None)
         if callable(refresh_pending):
             refresh_pending(self._refresh_pending_frame)
@@ -1367,6 +1374,31 @@ class Runner:
         """Return the incrementally maintained notable event view."""
         return list(self._briefing_public_events)
 
+    def _call_decider(self, frame: DecisionFrame):
+        actor = getattr(self.executor, "actor", None)
+        if not getattr(actor, "realtime_idle_while_deciding", False):
+            return self.decider.decide(frame)
+        guard = self.perceiver.source.decision_guard(
+            frame.snapshot_seq,
+            allow_invalid_core=bool(
+                self._last_perception and self._last_perception.scene.core_invalid
+            ),
+        )
+        idle = None
+        try:
+            with actor.decision_wait(guard) as idle:
+                self._decision_idle = idle
+                result = self.decider.decide(frame)
+        except Exception:
+            if idle is not None and idle.changed.is_set():
+                raise StaleDecision("observable state changed during decision idle") from None
+            raise
+        finally:
+            self._decision_idle = None
+        if idle.changed.is_set():
+            raise StaleDecision("observable state changed during decision idle")
+        return result
+
     def _decide(self, frame: DecisionFrame) -> tuple[DecisionFrame, str] | RunStatus | None:
         """The frame paired with its validated option, ``None``, or a terminal status."""
         try:
@@ -1409,7 +1441,7 @@ class Runner:
             attempt += 1
             t0 = self.clock()
             try:
-                result = self.decider.decide(shown)
+                result = self._call_decider(shown)
                 elapsed_ms = (self.clock() - t0) * 1000.0
                 take_frame = getattr(self.decider, "take_decided_frame", None)
                 if callable(take_frame):
@@ -1418,6 +1450,16 @@ class Runner:
                         shown = adopted
                         frame = adopted
                 break
+            except StaleDecision as exc:
+                discard = getattr(self.decider, "discard_stale_decision", None)
+                if callable(discard):
+                    discard()
+                self._emit(
+                    EventType.OPTION_REJECTED, scene_id=frame.scene_id,
+                    request_id=frame.decision_id, outcome=ErrorCode.E_STALE_DECISION.value,
+                    details={"reason": str(exc)},
+                )
+                return None  # the next iteration perceives and offers a fresh state
             except DeciderTimeout as exc:
                 last_error = exc
                 self._emit(
