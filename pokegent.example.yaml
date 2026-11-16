@@ -12,6 +12,7 @@ external:
 hybrid:
   escalate_below_confidence: 0.35 # or {default: 0.35, battle: 0.5}
   override_window_s: 0
+  force_agent_after_repeats: 2
 battle:
   opponent_knowledge: guide # guide | fair_play
 field:

@@ -7,6 +7,7 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
+from pokegent.actions._exec.models import ActionStatus
 from pokegent.events import EventSink, EventType
 from pokegent.options.models import ChoiceResult, DecisionFrame
 from pokegent.server import ExternalDecider
@@ -25,12 +26,23 @@ class HybridDecider:
         external_timeout: float,
         escalate_below_confidence: float | Mapping[str, float] = 0.35,
         override_window_s: float = 0.0,
+        force_agent_after_repeats: int = 2,
         autoplay: str = "off",
         events: EventSink | None = None,
     ) -> None:
         self._thresholds = self._validate_thresholds(escalate_below_confidence)
         if override_window_s < 0:
             raise ValueError("hybrid.override_window_s must be non-negative")
+        if (
+            isinstance(force_agent_after_repeats, bool)
+            or not isinstance(force_agent_after_repeats, int)
+            or force_agent_after_repeats < 1
+        ):
+            raise ValueError("hybrid.force_agent_after_repeats must be a positive integer")
+        self.force_agent_after_repeats = force_agent_after_repeats
+        self._repeat_key: tuple[str, str, str] | None = None
+        self._repeat_count = 0
+        self._decision_id: str | None = None
         self.system1 = system1
         self.agent = ExternalDecider(port, external_timeout, autoplay=autoplay)
         # Compatibility attribute; the bridge module is now server.
@@ -71,11 +83,21 @@ class HybridDecider:
         self.external.update_briefing(snapshot, tables, world, events, frame)
 
     def decide(self, frame: DecisionFrame) -> ChoiceResult:
+        self._decision_id = frame.decision_id
+        scope = (frame.scene_id, frame.state_fingerprint)
+        if self._repeat_key is not None and self._repeat_key[:2] != scope:
+            self._repeat_key = None
+            self._repeat_count = 0
+        force_agent = self._repeat_count >= self.force_agent_after_repeats
+        if force_agent:
+            self._repeat_key = None
+            self._repeat_count = 0
         started = time.monotonic()
         system_result: ChoiceResult | None = None
         system_error: Exception | None = None
         try:
-            system_result = self.system1.decide(frame)
+            if not force_agent:
+                system_result = self.system1.decide(frame)
         except Exception as exc:  # provider and breaker failures both escalate
             system_error = exc
 
@@ -110,7 +132,9 @@ class HybridDecider:
             },
             "escalated": escalate,
             "escalation_reason": (
-                "stuck"
+                "repeated_option"
+                if force_agent
+                else "stuck"
                 if stuck
                 else "system1_error"
                 if system_error
@@ -123,7 +147,7 @@ class HybridDecider:
         }
         if system_result is None and system_error is not None:
             metadata["escalation_reason"] = "system1_unavailable"
-        if escalate and self._events is not None:
+        if escalate and not force_agent and self._events is not None:
             self._events.emit(
                 EventType.DECISION_SYSTEMONE_COMPLETED,
                 scene_id=frame.scene_id,
@@ -210,6 +234,21 @@ class HybridDecider:
 
     def record_action_result(self, frame: DecisionFrame, result: Any) -> None:
         decided_by = self.last_decision.get("decided_by") or "system1"
+        changed = result.progressed is True or (
+            result.progressed is None
+            and result.status is ActionStatus.APPLIED
+            and result.verified_outcome is True
+            and result.before_hash is not None
+            and result.after_hash is not None
+            and result.before_hash != result.after_hash
+        )
+        if frame.decision_id != self._decision_id or decided_by != "system1" or changed:
+            self._repeat_key = None
+            self._repeat_count = 0
+        else:
+            key = (frame.scene_id, frame.state_fingerprint, result.option_id)
+            self._repeat_count = self._repeat_count + 1 if key == self._repeat_key else 1
+            self._repeat_key = key
         self.external.record_action_result(
             frame,
             result,

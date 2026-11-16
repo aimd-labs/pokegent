@@ -143,6 +143,11 @@ choice/confidence; the later accepted agent choice is `decision.agent.completed`
 event is emitted immediately after the frame is published, so a client may observe the frame first.
 Unknown types raise at `emit` (a programming error); readers accept any well-formed type.
 
+Hybrid adaptive routing may bypass System One after consecutive executed choices of the same
+option on an unchanged scene/fingerprint without verified state change. The agent request then
+uses `escalation_reason=repeated_option`; no System One completion is fabricated for the bypassed
+call. Agent choices still pass normal frame and executor validation.
+
 ## 8. Frozen vs may change
 
 **Frozen (v1.x, additive only):** field names and meanings of Option, DecisionFrame, ChoiceResult,
