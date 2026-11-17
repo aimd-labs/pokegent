@@ -1,10 +1,37 @@
 # Persistent owner operations
 
-`ops/hermes/pokegent-owner-start --config /path/to/private-owner.json` starts one owner agent
+`/opt/pokegent-owner-bootstrap/pokegent-owner-start --config /etc/pokegent-owner/owner.json` starts one owner agent
 inside Bubblewrap on Linux. It does not start, stop or signal the game. Run it as a dedicated,
 unprivileged Unix user. Provision directories and permissions before launch. The launcher never
 creates host directories, copies private inputs, changes a service, or falls back to an unsandboxed
 command. Install Bubblewrap separately; user namespaces must be available.
+
+## Protected, pinned bootstrap
+
+Production must run an operator-installed copy of `ops/hermes/pokegent-owner-start`, pinned to a
+reviewed commit, outside the checkout, profile, live state and every other owner-writable path.
+As the operator, extract that exact revision to a protected staging directory, record its commit
+and SHA-256 digest, and install it under an operator-owned directory. For example (replace the
+revision and staging path):
+
+```sh
+git show REVIEWED_COMMIT:ops/hermes/pokegent-owner-start > /path/to/operator-staging/pokegent-owner-start
+sha256sum /path/to/operator-staging/pokegent-owner-start
+sudo install -d -o root -g root -m 0755 /opt/pokegent-owner-bootstrap
+sudo install -o root -g root -m 0755 /path/to/operator-staging/pokegent-owner-start /opt/pokegent-owner-bootstrap/pokegent-owner-start
+```
+
+Use the installed absolute path in the operator-controlled session/service startup definition.
+Never restart by executing the checkout's copy, copying from an unreviewed owner branch, or using
+an owner-writable wrapper. All parent directories, including staging and startup configuration,
+must be protected from the owner: a read-only file in a writable parent can be replaced. The launcher
+rejects a production bootstrap beneath writable bindings, symlinked paths, owner-owned components
+(even mode 0555), and paths writable through group permissions or ACLs. Only the operator updates
+the pinned bootstrap after review. The copy is standalone and imports only the system standard library.
+
+`--synthetic-test` explicitly permits an unprotected bootstrap for disposable test fixtures and
+recording executables. It must never appear in a production startup definition; it disables trust
+checks and does not provide the production launch guarantee.
 
 ## One game code home
 
@@ -56,6 +83,7 @@ Network remains shared for loopback telemetry and external APIs. PID, IPC, UTS a
 are isolated; capabilities are dropped; `/tmp`, `/proc` and `/dev` are sandbox-local. Only selected
 system resolver, identity, certificate and loader files under `/etc` are exposed read-only.
 
+All inherited descriptors above standard input/output/error are closed before Bubblewrap executes.
 The inherited environment is cleared, including authentication, proxy, debug, `PYTHONPATH` and
 `PYTHONHOME` variables. Model keys belong only in the dedicated private profile. Never put secrets
 in `environment_variables`, `agent_command`, resume arguments, shell tracing or launch logs.

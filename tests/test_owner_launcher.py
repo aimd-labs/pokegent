@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "ops/hermes/pokegent-owner-start"
-build = runpy.run_path(str(LAUNCHER))["build"]
+launcher = runpy.run_path(str(LAUNCHER))
+build = launcher["build"]
 
 
 @pytest.fixture
@@ -51,10 +52,13 @@ def owner(tmp_path):
     return config, record
 
 
-def invoke(config, tmp_path, *, pass_fds=()):
+def invoke(config, tmp_path, *, pass_fds=(), synthetic_test=True):
     manifest = tmp_path / "owner.json"
     manifest.write_text(json.dumps(config))
-    return subprocess.run([sys.executable, "-I", str(LAUNCHER), "--config", str(manifest)],
+    command = [sys.executable, "-I", str(LAUNCHER), "--config", str(manifest)]
+    if synthetic_test:
+        command.append("--synthetic-test")
+    return subprocess.run(command,
                           env={**os.environ, "GH_TOKEN": "synthetic-token",
                                "PYTHONPATH": "/untrusted/imports", "GH_DEBUG": "api"},
                           capture_output=True, text=True, timeout=5, pass_fds=pass_fds)
@@ -84,6 +88,49 @@ def test_inherited_directory_descriptor_cannot_reach_unmounted_file(owner, tmp_p
         os.close(descriptor)
     assert result.returncode == 0, result.stderr
     assert json.loads(record.read_text()) is None
+
+
+def test_production_rejects_bootstrap_in_writable_checkout_before_child(owner, tmp_path):
+    config, record = owner
+    bootstrap = Path(config["repo"]) / "owner-start"
+    bootstrap.write_bytes(LAUNCHER.read_bytes())
+    manifest = tmp_path / "owner.json"
+    manifest.write_text(json.dumps(config))
+    result = subprocess.run([sys.executable, "-I", str(bootstrap), "--config", str(manifest)],
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 2
+    assert not record.exists()
+
+
+def test_protected_bootstrap_and_parent_layout(owner, tmp_path, monkeypatch):
+    config, _ = owner
+    # A real system executable supplies operator-owned file/parent permissions.
+    trusted = Path("/usr/bin/python3").resolve()
+    monkeypatch.setitem(build.__globals__, "__file__", str(trusted))
+    assert build(config)[-2:] == config["agent_command"]
+    with pytest.raises(ValueError, match="outside writable mounts"):
+        launcher["protected_file"](trusted, [(trusted.parent, True)])
+
+    bootstrap = tmp_path / "bootstrap"
+    bootstrap.write_bytes(LAUNCHER.read_bytes())
+    bootstrap.chmod(0o555)
+    with pytest.raises(ValueError, match="protected from the owner"):
+        launcher["protected_file"](bootstrap, [])
+
+    # Even an operator-owned file is replaceable through an owner-owned parent.
+    actual_stat = Path.stat
+
+    def operator_file_stat(self, **kwargs):
+        result = actual_stat(self, **kwargs)
+        if self == bootstrap:
+            values = list(result)
+            values[4] = os.getuid() + 1
+            return os.stat_result(values)
+        return result
+
+    monkeypatch.setattr(Path, "stat", operator_file_stat)
+    with pytest.raises(ValueError, match="protected from the owner"):
+        launcher["protected_file"](bootstrap, [])
 
 
 def test_exact_binding_closure_and_no_inherited_credentials(owner, tmp_path):
@@ -128,7 +175,7 @@ def test_latest_session_resume_is_configurable(owner, mode, has_state, resumed):
     config["resume"] = mode
     if has_state:
         (Path(config["profile"]) / "state.db").touch()
-    args = build(config)
+    args = build(config, synthetic_test=True)
     command = args[args.index("--") + 1:]
     assert command == config["agent_command"] + (["--continue"] if resumed else [])
 
@@ -138,7 +185,7 @@ def test_custom_session_marker_and_readonly_checkout(owner):
     marker = Path(config["profile"]) / "sessions.sqlite"
     marker.touch()
     config.update(resume_file=str(marker), resume_args=["--resume", "latest"], repo_writable=False)
-    args = build(config)
+    args = build(config, synthetic_test=True)
     assert args[-2:] == ["--resume", "latest"]
     assert args[args.index(config["repo"]) - 1] == "--ro-bind"
 
@@ -185,14 +232,14 @@ def test_wrong_owner_and_root_fail_before_launch(owner, monkeypatch):
     config, _ = owner
     config["owner_uid"] = os.getuid() + 1
     with pytest.raises(ValueError):
-        build(config)
+        build(config, synthetic_test=True)
     monkeypatch.setattr(os, "getuid", lambda: 0)
     config["owner_uid"] = 0
     with pytest.raises(ValueError):
-        build(config)
+        build(config, synthetic_test=True)
 
 
 @pytest.mark.parametrize("config", [[], None, {"unexpected": "value"}])
 def test_invalid_manifest_is_rejected(config):
     with pytest.raises(ValueError):
-        build(config)
+        build(config, synthetic_test=True)
