@@ -163,6 +163,9 @@ def test_existing_policies_keep_completed_objective(harness, policy):
     assert h.state.actions == 1 and h.store.path.exists()
     assert h.session.completed
     assert not any(row["event"] == "completion_cleared" for row in h.store.history())
+    restarted = ObjectiveStore(h.store.path)
+    assert restarted.current() == h.session.objective
+    assert restarted.revision() == 1
     assert RunnerConfig().on_objective_done == "hold"
 
 
@@ -245,6 +248,23 @@ def test_exhausted_script_clears_last_goal_without_restarting(harness):
     assert h.store.current() is None and h.state.actions >= 2
     restarted = ScriptedObjectiveSource(ObjectiveStore(h.store.path), h.script.plan)
     assert restarted.start() is None and restarted.status()["completed_ids"] == ["first"]
+
+
+def test_completed_queue_predecessor_cannot_replay_below_revision_floor(harness):
+    first = objective(set_by="script")
+    second = objective(2, objective_id="second", set_by="script", amount=2)
+    h = harness(plan=[first, second])
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert h.script.status()["completed_ids"] == ["first", "second"]
+    assert h.store.current() is None
+    assert [(row["objective_id"], row["revision"]) for row in h.store.history()
+            if row["event"] == "completion_cleared"] == [("second", 2)]
+
+    atomic_write_json(h.store.path, first)
+    restarted = ObjectiveStore(h.store.path)
+    assert restarted.current() is None and restarted.revision() == 2
+    assert restarted.last_warning().code == "stale_revision"
+    assert restarted.propose(objective(3, objective_id="third")).accepted
 
 
 def test_history_failure_does_not_clear_without_durable_record(harness, monkeypatch):

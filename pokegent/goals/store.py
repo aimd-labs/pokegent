@@ -310,7 +310,7 @@ class ObjectiveStore:
                 and row.get("objective") == new.model_dump(mode="json")
                 for row in self.history()
             )
-            if active is None and known:
+            if active is None and known and new.revision == current_rev:
                 self._activate(verdict)
                 return
             self._warn(
