@@ -113,3 +113,9 @@ the agent's choice; the existing System One suggestion is never applied because
 the agent was slow.
 When a non-escalated override window expires, the decision is recorded as
 `decided_by: system1`. Completion events identify `system1` or `agent`.
+
+An option marked irreversible (the `irreversible` field, or `facts.irreversible` for families
+that carry the evidence there) is never applied on a System One pick: the frame always escalates
+to the agent, whatever the option's confidence and the scene threshold
+(`escalation_reason: irreversible_option`). An option that is not marked irreversible keeps the
+normal confidence gate.
