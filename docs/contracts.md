@@ -449,3 +449,32 @@ facts in their criteria; rendered species lists are compact and append `+N more`
 These are facts only: no team planner, advice, or usefulness ranking is added. Briefing trimming
 removes low-value events/side/bag detail before stored-PC rows and records `pc.stored_mons` in
 `diagnostics.trimmed` whenever those rows are capped or reduced.
+
+## 20. v1.11 (additive): a decision-blocked route is a route step
+
+Some edges cannot be unblocked by any capability: the Mt Moon B2F fossil choice is a one-time
+decision, and no bag item, badge or flag makes its edge available. A route that needs it used to
+be reported as an unreachable barrier, so no option was advertised as the step toward it and the
+decider had no route fact to follow.
+
+`NavigationPlan` gains `blocked_choice_step` (default `None`): the stable key of the first edge
+whose unmet requirements are decision requirements (`CHOICE_REQUIREMENTS`, currently `fossil`).
+It is set only when **every** unmet requirement on the whole route is such a decision requirement;
+a route that also needs a capability (a fossil followed by a Cut tree, or one edge needing both)
+stays capability-blocked with `None`. When both planner searches find no route at all (a target
+past the fossils, or a world search that exceeds its budget), the planner runs one bounded search
+over the current map and, if the nearest decision-blocked edge is reachable, returns a plan with
+no route, the decision label in `unmet`, `blocked_choice_step`, and a `blocked_route_fact` naming
+the decision ("no route known to …; next decision: fossil at …"). No route is invented: the step
+is the only known next decision.
+
+The adapter advertises the option that performs that edge with `route_relation: next route step`,
+`route_step` / `next_route_step`. The no-route plan also carries `route_needs` and
+`blocked_choice` on that option; on a route-present plan those two facts are not set and the
+ordinary `route_blocked` / `route_cost` facts apply. The no-route step does **not** carry
+`serves_goal` or `on_route`: no route to the objective is known, so the frame must not claim the
+decision serves it (the target may be unrelated or unreachable through it). Every other option
+keeps the ordinary `no_route` / `unreachable` facts. This changes no executor, no legality and no
+requirement: the edge is still unmet, the step is simply visible as the next decision. The option
+keeps its own facts, so a fossil option stays `irreversible` with `risk: high`; handing an
+irreversible pick to the agent is the hybrid irreversible gate, not part of this contract.

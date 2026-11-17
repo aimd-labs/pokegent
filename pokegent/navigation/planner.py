@@ -10,12 +10,33 @@ from itertools import count
 from pokegent.games.gen3.firered.maps.map_schema import MapState
 from pokegent.navigation.graph import NavigationGraph
 from pokegent.navigation.models import (
+    CHOICE_REQUIREMENTS,
     CapabilityState,
     NavigationEdge,
     NavigationNode,
     NavigationPlan,
     NavigationTarget,
 )
+
+
+def _choice_step(route: tuple[NavigationEdge, ...]) -> str | None:
+    """Stable key of the first edge on ``route`` that only a decision can unblock.
+
+    A fossil choice is not a missing capability: no bag item, badge or flag makes the edge
+    available, so the edge is a route step the agent must take instead of an unreachable
+    barrier. The whole route must qualify: a route that still needs a capability (a fossil
+    followed by a Cut tree) stays capability-blocked.
+    """
+    unmet = [(edge, row) for edge in route for row in edge.requirements if not row.met]
+    if unmet and all(row.key in CHOICE_REQUIREMENTS for edge, row in unmet):
+        return unmet[0][0].stable_key
+    return None
+
+
+def _choice_edge(edge: NavigationEdge) -> bool:
+    """Whether every unmet requirement of this edge is a decision requirement."""
+    unmet = [row for row in edge.requirements if not row.met]
+    return bool(unmet) and all(row.key in CHOICE_REQUIREMENTS for row in unmet)
 
 
 @dataclass(frozen=True)
@@ -57,6 +78,11 @@ class NavigationPlanner:
         exhausted = available if available.exhausted else blocked if blocked.exhausted else None
         budget_fact = self._budget_fact(exhausted, limit) if exhausted is not None else None
         if blocked.route is None:
+            choice = self._choice_frontier(
+                start, target, capabilities, live=live, limit=limit
+            )
+            if choice is not None:
+                return choice
             return NavigationPlan(
                 start,
                 target,
@@ -76,7 +102,75 @@ class NavigationPlanner:
             # route as the only route.  Keep the route for executor context but
             # surface the incomplete proof in the frame.
             blocked_route_fact=budget_fact if unmet else None,
+            blocked_choice_step=_choice_step(blocked.route),
         )
+
+    def _choice_frontier(
+        self,
+        start: NavigationNode,
+        target: NavigationTarget,
+        capabilities: CapabilityState,
+        *,
+        live: MapState | None,
+        limit: int,
+    ) -> NavigationPlan | None:
+        """The next decision step when no route could be found at all.
+
+        The Mt Moon fossil choice sits on the only path out of B2F. When the searches cannot
+        produce a route (the world search can exceed its budget with unmet edges, and a target
+        tile behind the fossils is unreachable until the choice is made), the frame is empty
+        and the agent has nothing to follow. A bounded search over the current map still finds
+        the decision that has to be made: the nearest edge whose unmet requirements are all
+        decision requirements. The plan keeps no route (none is known) and names that step.
+        """
+        sequence = count()
+        distance: dict[NavigationNode, int] = {start: 0}
+        heap: list[tuple[int, int, NavigationNode]] = [(0, next(sequence), start)]
+        explored = 0
+        while heap and explored < limit:
+            cost, _order, node = heapq.heappop(heap)
+            if cost != distance.get(node):
+                continue
+            explored += 1
+            for edge in self.graph.edges_from(
+                node,
+                capabilities,
+                live=live if node.map_key == start.map_key else None,
+                include_unmet=True,
+            ):
+                if edge.unmet:
+                    if not _choice_edge(edge):
+                        continue
+                    labels = tuple(dict.fromkeys(edge.unmet))
+                    return NavigationPlan(
+                        start,
+                        target,
+                        None,
+                        unmet=labels,
+                        explored=explored,
+                        blocked_route_fact=(
+                            f"no route known to {self._map_name(target.map_key)}; "
+                            f"next decision: {labels[0]} at "
+                            f"{self._map_name(edge.destination.map_key)} "
+                            f"({edge.destination.x},{edge.destination.y})"
+                        ),
+                        blocked_choice_step=edge.stable_key,
+                    )
+                if edge.destination.map_key != start.map_key:
+                    # The step is the decision on the current map, never a guess about a
+                    # route through another map whose gates were not searched.
+                    continue
+                new_cost = cost + edge.cost
+                if new_cost >= distance.get(edge.destination, 1 << 60):
+                    continue
+                distance[edge.destination] = new_cost
+                heapq.heappush(heap, (new_cost, next(sequence), edge.destination))
+        return None
+
+    def _map_name(self, map_key: tuple[int, int]) -> str:
+        state = self.graph.state(map_key)
+        name = getattr(getattr(state, "identity", None), "name", None)
+        return name or str(map_key)
 
     def _budget_fact(self, result: _SearchResult, limit: int) -> str:
         node = result.last
@@ -263,7 +357,14 @@ class NavigationPlanner:
         _, cost, search_state, edge = frontier
         route = self._route_stateful(parent, search_state) + (edge,)
         unmet = tuple(dict.fromkeys(label for row in route for label in row.unmet))
-        return NavigationPlan(start, target, cost, route, unmet=unmet, explored=explored)
+        return NavigationPlan(
+            start,
+            target,
+            cost,
+            route,
+            unmet=unmet,
+            explored=explored,
+        )
 
     def _search(
         self,
