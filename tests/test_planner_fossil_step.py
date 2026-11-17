@@ -2,8 +2,9 @@
 
 from types import SimpleNamespace
 
+from pokegent.goals.models import Objective, Target
+from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
 from pokegent.navigation.adapter import NavigationAdapter
-from pokegent.navigation.capabilities import requirement
 from pokegent.navigation.models import (
     CapabilityState,
     NavigationEdge,
@@ -34,10 +35,20 @@ class _FakeGraph:
             self._edges.setdefault(edge.source, []).append(edge)
         self._names = names or {}
         self.maps = {}
+        self.provider = SimpleNamespace(puzzles=lambda **_kwargs: {})
 
     def state(self, map_key):
         name = self._names.get(tuple(map_key))
         return None if name is None else SimpleNamespace(identity=SimpleNamespace(name=name))
+
+    def node(self, map_key, x, y):
+        return NavigationNode(map_key[0], map_key[1], x, y)
+
+    def map_route(self, start, target):
+        return (tuple(start), tuple(target))
+
+    def counted_trainers(self, *_args):
+        return ()
 
     def stateful_flags_toward(self, _start, _target):
         return frozenset()
@@ -50,7 +61,7 @@ class _FakeGraph:
         return tuple(edges) if include_unmet else tuple(edge for edge in edges if edge.available)
 
 
-def _route(*, blocked: bool = True) -> tuple[NavigationEdge, ...]:
+def _route(*, blocked: bool = True, arrival=ARRIVAL) -> tuple[NavigationEdge, ...]:
     blocker = (FOSSIL_REQUIREMENT,) if blocked else (CUT_REQUIREMENT,)
     return (
         NavigationEdge("walk:11:8", START, APPROACH, "walk", 4),
@@ -63,8 +74,18 @@ def _route(*, blocked: bool = True) -> tuple[NavigationEdge, ...]:
             blocker,
             executor_target=(("kind", "obstacle"), ("role", "fossil"), ("local_id", 2)),
         ),
-        NavigationEdge("warp:60:1", FOSSIL_TILE, ARRIVAL, "warp", 2),
+        NavigationEdge("warp:60:1", FOSSIL_TILE, arrival, "warp", 2),
     )
+
+
+def _dead_end_route() -> tuple[NavigationEdge, ...]:
+    """A fossil on the only path, but the target map is past it and disconnected.
+
+    This is the live shape: the planner cannot produce a route at all, so the frame used to
+    be empty.  The decision is still the next thing the agent must do.
+    """
+    walk, fossil, warp = _route()
+    return (walk, fossil)
 
 
 def _fossil_option() -> Option:
@@ -102,6 +123,46 @@ def _exit_option() -> Option:
     )
 
 
+def _snapshot(*, group=1, number=59, x=10, y=10):
+    state = SimpleNamespace(
+        identity=SimpleNamespace(group=group, number=number, name="MtMoon_B2F"),
+        player=SimpleNamespace(
+            avatar_x=x,
+            avatar_y=y,
+            facing="N",
+            surfing=False,
+            biking=False,
+            badges=(),
+        ),
+        objects=(),
+        strength_active=False,
+    )
+    return SimpleNamespace(
+        map=state,
+        player=state.player,
+        party=(),
+        bag=(),
+        flags=SimpleNamespace(set_ids=()),
+        vars=SimpleNamespace(nonzero=()),
+        ui=None,
+        dynamic_warp=None,
+        usable=True,
+    )
+
+
+def _resolved() -> ResolvedObjective:
+    return ResolvedObjective(
+        objective=Objective(
+            objective_id="reach_cerulean",
+            revision=1,
+            kind="reach",
+            target=Target(map="Cerulean City"),
+        ),
+        target=ResolvedTarget(group=1, number=60, map_name="MtMoon_B1F"),
+        probes=(),
+    )
+
+
 def test_planner_keeps_the_fossil_edge_as_the_blocked_choice_step():
     planner = NavigationPlanner(_FakeGraph(_route()))
     plan = planner.plan(START, TARGET, CapabilityState())
@@ -122,19 +183,18 @@ def test_planner_leaves_a_capability_block_unresolved():
     assert plan.blocked_choice_step is None
 
 
-def test_planner_does_not_treat_a_mixed_requirement_as_a_choice():
-    edge = NavigationEdge(
-        "field_move:2",
-        APPROACH,
-        FOSSIL_TILE,
-        "field_move",
-        6,
-        (FOSSIL_REQUIREMENT, CUT_REQUIREMENT),
-    )
+def test_planner_does_not_treat_a_mixed_edge_as_a_choice():
     graph = _FakeGraph(
         (
             NavigationEdge("walk:11:8", START, APPROACH, "walk", 4),
-            edge,
+            NavigationEdge(
+                "field_move:2",
+                APPROACH,
+                FOSSIL_TILE,
+                "field_move",
+                6,
+                (FOSSIL_REQUIREMENT, CUT_REQUIREMENT),
+            ),
             NavigationEdge("warp:60:1", FOSSIL_TILE, ARRIVAL, "warp", 2),
         )
     )
@@ -145,72 +205,56 @@ def test_planner_does_not_treat_a_mixed_requirement_as_a_choice():
     assert plan.blocked_choice_step is None
 
 
-def test_corridor_frontier_reports_a_choice_step():
-    corridor = (START.map_key, ARRIVAL.map_key)
-    # The frontier only tracks closed edges that cross to the next corridor map, so the
-    # fossil edge is synthetic here; its choice requirement is the real contract.
+def test_planner_does_not_treat_a_fossil_then_cut_route_as_a_choice():
+    """A decision after which the route still needs Cut is not a step the agent can decide."""
     graph = _FakeGraph(
         (
             NavigationEdge("walk:11:8", START, APPROACH, "walk", 4),
             NavigationEdge(
                 "fossil:2",
                 APPROACH,
-                ARRIVAL,
+                FOSSIL_TILE,
                 "field_move",
                 6,
                 (FOSSIL_REQUIREMENT,),
-                executor_target=(("kind", "obstacle"), ("role", "fossil"), ("local_id", 2)),
+            ),
+            NavigationEdge(
+                "cut:9", FOSSIL_TILE, ARRIVAL, "field_move", 6, (CUT_REQUIREMENT,)
             ),
         )
     )
-    plan = NavigationPlanner(graph).plan_to_corridor_frontier(
-        START, TARGET, corridor, CapabilityState()
-    )
 
-    assert plan is not None
+    plan = NavigationPlanner(graph).plan(START, TARGET, CapabilityState())
+
+    assert plan.unmet == ("fossil", "Cut and Cascade Badge")
+    assert plan.blocked_choice_step is None
+
+
+def test_planner_names_the_decision_when_no_route_exists():
+    # No warp past the fossil: both searches find no route, which is the live incident shape.
+    planner = NavigationPlanner(_FakeGraph(_dead_end_route(), names={(1, 59): "MtMoon_B2F"}))
+
+    plan = planner.plan(START, TARGET, CapabilityState())
+
+    assert plan.cost is None
+    assert plan.route == ()
     assert plan.unmet == ("fossil",)
     assert plan.blocked_choice_step == "fossil:2"
-    assert plan.route[-1].stable_key == "fossil:2"
+    assert "next decision: fossil at MtMoon_B2F (13,7)" in plan.blocked_route_fact
 
 
-def _annotate(plan: NavigationPlan):
-    adapter = NavigationAdapter(_FakeGraph(names={(1, 59): "MtMoon_B2F", (1, 60): "MtMoon_B1F"}))
-    options, _ = adapter.annotate(
-        [_fossil_option(), _exit_option()],
-        SimpleNamespace(map=None),
-        None,
-        plan=plan,
-    )
-    return {option.id: option for option in options}
-
-
-def test_no_route_through_a_fossil_still_advertises_the_fossil_step():
-    # The incident's shape: the search returned no path, but the only blocker is the
-    # fossil choice, so the option that takes it is the route step.
-    plan = NavigationPlan(
-        START,
-        TARGET,
-        None,
-        unmet=("fossil",),
-        blocked_route_fact="route blocked by fossil at MtMoon_B2F (13,7)",
-        blocked_choice_step="fossil:2",
+def test_planner_does_not_name_a_capability_as_a_decision():
+    graph = _FakeGraph(
+        (NavigationEdge("walk:11:8", START, APPROACH, "walk", 4),
+         NavigationEdge("cut:9", APPROACH, FOSSIL_TILE, "field_move", 6, (CUT_REQUIREMENT,))),
+        names={(1, 59): "MtMoon_B2F"},
     )
 
-    options = _annotate(plan)
+    plan = NavigationPlanner(graph).plan(START, TARGET, CapabilityState())
 
-    fossil = options["fossil:2"]
-    assert fossil.facts["next_route_step"] is True
-    assert fossil.facts["route_step"] is True
-    assert fossil.facts["on_route"] is True
-    assert fossil.facts["serves_goal"] is True
-    assert fossil.facts["route_needs"] == ["fossil"]
-    assert fossil.facts["blocked_choice"] == "fossil:2"
-    assert "no_route" not in fossil.facts
-    assert fossil.irreversible is True
-    assert fossil.risk is Risk.HIGH
-    # The way back out is still legal, but it is not the route.
-    assert options["warp:1:3:1"].facts["no_route"] is True
-    assert "next_route_step" not in options["warp:1:3:1"].facts
+    assert plan.cost is None
+    assert plan.route == ()
+    assert plan.blocked_choice_step is None
 
 
 def test_choice_edge_inside_the_route_is_marked_as_the_step():
@@ -224,16 +268,44 @@ def test_choice_edge_inside_the_route_is_marked_as_the_step():
         blocked_choice_step="fossil:2",
     )
 
-    options = _annotate(plan)
+    adapter = NavigationAdapter(_FakeGraph(names={(1, 59): "MtMoon_B2F", (1, 60): "MtMoon_B1F"}))
+    options, _ = adapter.annotate(
+        [_fossil_option(), _exit_option()], SimpleNamespace(map=None), None, plan=plan
+    )
+    fossil = {option.id: option for option in options}["fossil:2"]
 
-    fossil = options["fossil:2"]
     assert fossil.facts["next_route_step"] is True
     assert fossil.facts["serves_goal"] is True
     assert fossil.facts["route_blocked"].startswith("route blocked by fossil at MtMoon_B2F")
-    assert options["warp:1:3:1"].facts.get("next_route_step") is not True
+    assert fossil.irreversible is True
+    assert fossil.risk is Risk.HIGH
 
 
-def test_fossil_requirement_is_never_met_by_a_capability():
-    # This is why the fossil edge is a decision step and not something the world search
-    # can unblock on its own.
-    assert requirement("fossil", CapabilityState()).met is False
+def test_no_route_plan_advertises_the_fossil_through_plan_and_annotate():
+    """planner -> adapter.plan -> annotate: the empty frame names the decision."""
+    graph = _FakeGraph(_dead_end_route(), names={(1, 59): "MtMoon_B2F", (1, 60): "MtMoon_B1F"})
+    adapter = NavigationAdapter(graph)
+
+    plan = adapter.plan(_snapshot(), _resolved())
+
+    assert plan is not None
+    assert plan.cost is None
+    assert plan.route == ()
+
+    options, annotated = adapter.annotate(
+        [_fossil_option(), _exit_option()], _snapshot(), _resolved(), plan=plan
+    )
+    facts = {option.id: option.facts for option in options}
+
+    assert annotated is plan
+    assert facts["fossil:2"]["next_route_step"] is True
+    assert facts["fossil:2"]["route_step"] is True
+    assert facts["fossil:2"]["on_route"] is True
+    assert facts["fossil:2"]["serves_goal"] is True
+    assert facts["fossil:2"]["route_needs"] == ["fossil"]
+    assert facts["fossil:2"]["blocked_choice"] == "fossil:2"
+    assert "no_route" not in facts["fossil:2"]
+    # The way back out is legal, but it is not the route step.
+    assert facts["warp:1:3:1"]["no_route"] is True
+    assert "next_route_step" not in facts["warp:1:3:1"]
+    assert plan.blocked_choice_step == "fossil:2"

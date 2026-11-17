@@ -452,19 +452,27 @@ removes low-value events/side/bag detail before stored-PC rows and records `pc.s
 
 ## 20. v1.11 (additive): a decision-blocked route is a route step
 
-Some route edges cannot be unblocked by any capability: the Mt Moon B2F fossil choice is a
-one-time decision, and no bag item, badge or flag makes its edge available. The planner used to
-report such a route as a blocked barrier, so no option was advertised as the step toward it and
-the decider had no route fact to follow.
+Some edges cannot be unblocked by any capability: the Mt Moon B2F fossil choice is a one-time
+decision, and no bag item, badge or flag makes its edge available. A route that needs it used to
+be reported as an unreachable barrier, so no option was advertised as the step toward it and the
+decider had no route fact to follow.
 
-`NavigationPlan` gains `blocked_choice_step` (default `None`): the stable key of the first route
-edge whose unmet requirements are all decision requirements (`CHOICE_REQUIREMENTS`, currently
-`fossil`). Mixed requirements (a fossil and Cut on the same edge) are not a choice step. The
-adapter advertises the option that performs that edge with `route_relation: next route step`,
-`route_step` / `next_route_step`, `on_route`, `serves_goal: true`, `route_needs` and
-`blocked_choice`, also when the search returned no route at all; every other option keeps the
-ordinary `no_route` / `unreachable` facts. The option keeps its own facts, so a fossil option
-stays `irreversible` with `risk: high` and the hybrid decider hands it to the agent instead of
-applying a System One pick. This changes no executor, no legality and no requirement: the edge
-is still unmet, the step is simply visible as the next thing the agent must decide.
+`NavigationPlan` gains `blocked_choice_step` (default `None`): the stable key of the first edge
+whose unmet requirements are decision requirements (`CHOICE_REQUIREMENTS`, currently `fossil`).
+It is set only when **every** unmet requirement on the whole route is such a decision requirement;
+a route that also needs a capability (a fossil followed by a Cut tree, or one edge needing both)
+stays capability-blocked with `None`. When both planner searches find no route at all (a target
+past the fossils, or a world search that exceeds its budget), the planner runs one bounded search
+over the current map and, if the nearest decision-blocked edge is reachable, returns a plan with
+no route, the decision label in `unmet`, `blocked_choice_step`, and a `blocked_route_fact` naming
+the decision ("no route known to …; next decision: fossil at …"). No route is invented: the step
+is the only known next decision.
 
+The adapter advertises the option that performs that edge with `route_relation: next route step`,
+`route_step` / `next_route_step`, `on_route` and `serves_goal: true`. The no-route plan also
+carries `route_needs` and `blocked_choice` on that option; on a route-present plan those two facts
+are not set and the ordinary `route_blocked` / `route_cost` facts apply. Every other option keeps
+the ordinary `no_route` / `unreachable` facts. This changes no executor, no legality and no
+requirement: the edge is still unmet, the step is simply visible as the next decision. The option
+keeps its own facts, so a fossil option stays `irreversible` with `risk: high`; handing an
+irreversible pick to the agent is the hybrid irreversible gate, not part of this contract.

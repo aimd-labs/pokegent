@@ -104,10 +104,10 @@ class NavigationPlan:
     unmet: tuple[str, ...] = ()
     explored: int = 0
     blocked_route_fact: str | None = None
-    #: Stable key of the first route edge that only a decision can unblock (for example the
-    #: Mt Moon fossil choice).  It is a route step the agent must take, not a missing
-    #: capability, so the adapter advertises the option that performs it.  ``None`` when the
-    #: blocker is a capability (Cut, Surf, a flag) or when nothing is blocked.
+    #: Stable key of the edge that only a decision can unblock (for example the Mt Moon fossil
+    #: choice). It is a route step the agent must make, not a missing capability, so the
+    #: adapter advertises the option that performs it. ``None`` when a capability (Cut, Surf, a
+    #: flag) also blocks the route, and when nothing is blocked.
     blocked_choice_step: str | None = None
 
     @property

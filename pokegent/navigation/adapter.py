@@ -223,10 +223,7 @@ class NavigationAdapter:
         if blocked_index is None:
             return frontier
         blocked_route_fact = self._blocked_route(frontier, blocked_index)
-        # A decision-blocked edge (the fossil choice) is a step the agent takes, not a
-        # barrier to hide: keep it in the route so its option is advertised as the step.
-        choice_step = frontier.blocked_choice_step
-        route = frontier.route if choice_step is not None else frontier.route[:blocked_index]
+        route = frontier.route[:blocked_index]
         return NavigationPlan(
             plan.start,
             target,
@@ -235,7 +232,6 @@ class NavigationAdapter:
             unmet=frontier.route[blocked_index].unmet,
             explored=max(plan.explored, frontier.explored),
             blocked_route_fact=blocked_route_fact,
-            blocked_choice_step=choice_step,
         )
 
     def _remember_plan(self, key: tuple[object, ...] | None, plan: NavigationPlan | None) -> None:
