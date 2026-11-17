@@ -11,8 +11,10 @@ env CODE=/path/to/pokegent PY=/path/to/pokegent/.venv/bin/python \
 
 The observer reads `live-run.json`, all `runs/live-NNNN/exit.json` records and incremental
 `events*.jsonl`. It sees in-run `progress.milestone_completed` records with `completed: true`;
-the same process keeps playing. Rotated logs are followed by inode and offset. Finished
-segments are also scanned so a fast transition or offline monitor cannot hide a run end.
+the same process keeps playing. Rotated logs are followed by logical generation (first
+sequence and record hash), file identity and a checked offset boundary, so recycled inodes
+cannot hide new records. Finished segments are also scanned so a fast transition or offline
+monitor cannot hide a run end.
 The observer never launches, signals, rewinds, promotes states or edits objectives.
 If both a recorded child and its supervisor are dead without an exit record, it queues
 a review from available facts; missing facts stay null/`none`. A live supervisor retains
@@ -66,6 +68,8 @@ receipts and delivery hashes. Delivery uses one file lock; acknowledged facts ar
 while their hashes remain for deduplication. Queue and receipts survive monitor restarts.
 Do not delete this journal or its lock while using the same run history. Receipt metadata
 grows with completed runs/revisions; archive it together with retired run data.
+Upgrading from inode-only cursors rescans retained logs into the existing deduplicated
+review queue; the old cursor table is left intact for rollback.
 
 An external command cannot make its acceptance and the local SQLite receipt one atomic
 transaction. A crash after owner acceptance but before receipt commit can repeat delivery.

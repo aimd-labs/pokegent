@@ -11,9 +11,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from pokegent.events import EventLog
 from pokegent.review import MAX_INPUT, MAX_LINE, Queue, Settings, main, sanitize
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -198,6 +200,48 @@ def test_in_run_completion_rotation_partial_and_restart(settings):
     assert [json.loads(s)["active_objective_revision"] for s in
             (settings.home / "delivered").read_text().splitlines()] == [1, 2]
     assert (out / "events-000001.jsonl").exists()
+    queue.close()
+
+
+@pytest.mark.parametrize("recycled_identity", [False, True])
+def test_real_event_log_rotation_with_consumed_segment_deletion(
+    settings, monkeypatch, recycled_identity,
+):
+    if recycled_identity:
+        original = os.fstat
+
+        def reused_inode(fd):
+            stat = original(fd)
+            return SimpleNamespace(st_dev=stat.st_dev, st_ino=1, st_size=stat.st_size)
+
+        monkeypatch.setattr("pokegent.review.os.fstat", reused_inode)
+    out = settings.home / "runs/live-0001"
+    queue = Queue(settings)
+    with EventLog(out, out.name, max_bytes=256, keep_segments=1) as log:
+        for revision in range(1, 21):
+            log.emit("progress.milestone_completed",
+                     details={"completed": True, "revision": revision})
+            queue.observe()
+            queue.close()
+            queue = Queue(settings)
+        assert log.rotations == 19 and len(log.segments()) == 1
+    assert pending(queue) == 20
+    rows = [json.loads(row[0]) for row in queue.db.execute("SELECT body FROM reviews")]
+    assert sorted(row["active_objective_revision"] for row in rows) == list(range(1, 21))
+    queue.close()
+
+
+def test_replaced_log_with_same_first_record_revalidates_offset(settings):
+    log = settings.home / "runs/live-0001/events.jsonl"
+    append_event(log, event(1, seq=1))
+    append_event(log, event(2, seq=2))
+    queue = Queue(settings)
+    queue.observe()
+    # Same inode, size and first sequence; only the saved cursor boundary detects this rewrite.
+    original = log.read_text()
+    log.write_text(original.replace('"revision": 2', '"revision": 3'))
+    queue.observe()
+    assert pending(queue) == 3
     queue.close()
 
 

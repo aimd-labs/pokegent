@@ -110,8 +110,9 @@ class Queue:
             CREATE TABLE IF NOT EXISTS reviews (
                 id TEXT PRIMARY KEY, body TEXT, delivered INTEGER NOT NULL DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS cursors (
-                file TEXT PRIMARY KEY, offset INTEGER NOT NULL, skipping INTEGER NOT NULL
+            CREATE TABLE IF NOT EXISTS event_cursors (
+                generation TEXT PRIMARY KEY, identity TEXT NOT NULL,
+                offset INTEGER NOT NULL, skipping INTEGER NOT NULL, boundary TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS finished (run TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS clock (id INTEGER PRIMARY KEY, attempted REAL NOT NULL);
@@ -193,18 +194,29 @@ class Queue:
             return True
 
     def events(self, out: Path, run_id: str) -> bool:
-        """Incremental, bounded reads; inode cursors follow normal event-log rotation."""
+        """Follow logical generations; an inode alone cannot establish log continuity."""
         paths = sorted(out.glob("events-??????.jsonl")) + [out / "events.jsonl"]
         budget = 256
         for path in paths:
             try:
                 with path.open("rb") as source:
                     stat = os.fstat(source.fileno())
-                    key = f"{stat.st_dev}:{stat.st_ino}"
+                    identity = f"{stat.st_dev}:{stat.st_ino}"
+                    first = source.readline(MAX_LINE + 1)
+                    try:
+                        sequence = json.loads(first).get("seq")
+                    except (ValueError, AttributeError):
+                        sequence = None
+                    sequence = sequence if type(sequence) is int else None
+                    key = f"{run_id}:{sequence}:{hashlib.sha256(first).hexdigest()}"
                     cursor = self.db.execute(
-                        "SELECT offset, skipping FROM cursors WHERE file=?", (key,)
-                    ).fetchone() or (0, 0)
-                    offset, skipping = cursor if cursor[0] <= stat.st_size else (0, 0)
+                        "SELECT identity, offset, skipping, boundary FROM event_cursors "
+                        "WHERE generation=?", (key,)
+                    ).fetchone()
+                    offset, skipping = 0, 0
+                    if cursor and cursor[0] == identity and cursor[1] <= stat.st_size:
+                        if log_boundary(source, cursor[1]) == cursor[3]:
+                            offset, skipping = cursor[1:3]
                     source.seek(offset)
                     while budget:
                         line = source.readline(MAX_LINE + 1)
@@ -235,8 +247,8 @@ class Queue:
                         offset = source.tell()
                         with self.db:
                             self.db.execute(
-                                "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)",
-                                (key, offset, skipping),
+                                "INSERT OR REPLACE INTO event_cursors VALUES (?, ?, ?, ?, ?)",
+                                (key, identity, offset, skipping, log_boundary(source, offset)),
                             )
                     if not budget:
                         return False
@@ -272,6 +284,12 @@ class Queue:
                 if self.enqueue(review):
                     with self.db:
                         self.db.execute("INSERT OR IGNORE INTO finished VALUES (?)", (run_id,))
+
+
+def log_boundary(source, offset: int) -> str:
+    """Check the bytes preceding an offset before trusting it in a later scan."""
+    source.seek(max(0, offset - 256))
+    return hashlib.sha256(source.read(offset - source.tell())).hexdigest()
 
 
 def alive(pid) -> bool:
