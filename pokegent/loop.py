@@ -1540,11 +1540,11 @@ class Runner:
                 )
             return None
         self._invalid_choice_streak = 0
-        decided_by = (
-            getattr(self.decider, "last_decision", {}).get("decided_by")
-            if isinstance(getattr(self.decider, "last_decision", None), dict)
-            else None
-        ) or ("agent" if result.provider_id in {"agent", "external"} else "system1")
+        last_decision = getattr(self.decider, "last_decision", None)
+        last_decision = last_decision if isinstance(last_decision, dict) else {}
+        decided_by = last_decision.get("decided_by") or (
+            "agent" if result.provider_id in {"agent", "external"} else "system1"
+        )
         if decided_by == "agent":
             self.counters.agent_frames += 1
         self._emit(
@@ -1564,23 +1564,24 @@ class Runner:
                 "confidence": result.confidence,
                 "truncated": result.truncated,
                 **(
-                    {"decided_by": getattr(self.decider, "last_decision").get("decided_by")}
-                    if isinstance(getattr(self.decider, "last_decision", None), dict)
-                    and getattr(self.decider, "last_decision").get("decided_by")
+                    {"decided_by": last_decision["decided_by"]}
+                    if last_decision.get("decided_by")
+                    else {}
+                ),
+                # A hybrid route-step veto replaces the System One claim; say so, and keep the
+                # claim that was not followed in the event instead of a fabricated confidence.
+                **(
+                    {"vetoed_by": last_decision["vetoed_by"]}
+                    if last_decision.get("vetoed_by")
                     else {}
                 ),
                 **(
                     {
-                        "system1_option_id": getattr(self.decider, "last_decision").get(
-                            "system1_option_id"
-                        ),
-                        "system1_confidence": getattr(self.decider, "last_decision").get(
-                            "system1_confidence"
-                        ),
+                        "system1_option_id": last_decision.get("system1_option_id"),
+                        "system1_confidence": last_decision.get("system1_confidence"),
                     }
-                    if decided_by == "agent"
-                    and isinstance(getattr(self.decider, "last_decision", None), dict)
-                    and "system1_option_id" in getattr(self.decider, "last_decision")
+                    if "system1_option_id" in last_decision
+                    and (decided_by == "agent" or last_decision.get("vetoed_by"))
                     else {}
                 ),
             },
