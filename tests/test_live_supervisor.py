@@ -259,6 +259,56 @@ def test_stale_dead_pid_recovers_only_its_final_state_and_unique_counter(live):
     assert load(old / "exit.json")["recovered"]
 
 
+@pytest.mark.parametrize("stop_on_clear", [True, False])
+def test_recovered_clear_applies_policy_before_launching(live, stop_on_clear):
+    home, start = live
+    old = home / "runs/live-0001"
+    old.mkdir(parents=True)
+    (old / "final.state").write_text("recovered clear")
+    (old / "summary.json").write_text(json.dumps({
+        "game_cleared": True, "exit_code": 0,
+        "states": {"final": "final.state", "checkpoints": []},
+    }))
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait(timeout=5)
+    (home / "live-run.json").write_text(json.dumps({
+        "run_id": old.name, "out": str(old), "status": "running", "pid": dead.pid,
+    }))
+    child = start([{}, {"wait": True}], STOP_ON_CLEAR=str(stop_on_clear).lower())
+    if not stop_on_clear:
+        wait_until(lambda: (home / "runs/live-0002/ready").exists())
+        (home / "stop").touch()
+    assert child.wait(timeout=5) == 0
+    recovered = load(old / "exit.json")
+    assert recovered["recovered"] and recovered["verdict"] == "clear"
+    if stop_on_clear:
+        assert not (home / "calls.jsonl").exists()
+        assert not (home / "counter").exists()
+        assert (home / "current.state").read_text().strip() == str(old / "final.state")
+        # A subsequent supervisor restart must keep honoring the finished clear.
+        assert start([{}]).wait(timeout=5) == 0
+        assert not (home / "calls.jsonl").exists()
+    else:
+        assert len(calls(home)) == 1 and calls(home)[0]["input"] == "recovered clear"
+
+
+def test_recovered_stall_limit_applies_before_launching(live, hybrid_segment):
+    home, start = live
+    old = home / "runs/live-0001"
+    old.mkdir(parents=True)
+    paused = hybrid_segment()
+    (old / "final.state").write_text("recovered pause")
+    (old / "summary.json").write_text(json.dumps({
+        **paused["summary"], "states": {"final": "final.state", "checkpoints": []},
+    }))
+    (home / "live-run.json").write_text(json.dumps({
+        "run_id": old.name, "out": str(old), "status": "running", "stalled_segments": 2,
+    }))
+    assert start([{}]).wait(timeout=5) == 3
+    assert not (home / "calls.jsonl").exists()
+    assert load(home / "live-run.json")["verdict"] == "owner_review"
+
+
 @pytest.mark.parametrize("step", [
     {"final": False},
     {"final": False, "no_summary": True},

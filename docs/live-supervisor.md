@@ -82,7 +82,9 @@ launchers using the **same data root**; it cannot prevent an independently launc
 writing the same game. Stop and reconcile existing writers before adopting this launcher. A
 recorded live PID whose ownership cannot be proven blocks startup; the supervisor never signals
 a PID read from disk. A dead recorded child can be recovered only from that run's own published
-state. Missing/invalid metadata, rejected saves and blocked records require owner review.
+state. Recovery applies `STOP_ON_CLEAR` before allocating or launching another segment; a
+previously finished clear also retains this policy on restart. Missing/invalid metadata,
+rejected saves and blocked records require owner review.
 
 Each segment gets a new `runs/live-NNNN/` directory and a sibling `live-NNNN.log`. Existing run
 directories are never reused even if `counter` is stale. `live-run.json` records preparing/running/

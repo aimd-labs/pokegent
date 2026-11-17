@@ -203,7 +203,7 @@ class Supervisor:
                 supervisor_stop_reason="stalled segment limit reached: owner review required",
             )
 
-    def recover(self) -> None:
+    def recover(self) -> dict | None:
         record_path = self.home / "live-run.json"
         if not record_path.exists():
             return
@@ -218,7 +218,7 @@ class Supervisor:
         if type(self.stalled_segments) is not int or self.stalled_segments < 0:
             raise ValueError("invalid stalled segment count; ownership needs review")
         if record["status"] == "finished":
-            return
+            return record
         pid = record.get("pid")
         if pid is not None:
             if type(pid) is not int or pid <= 0:
@@ -240,9 +240,8 @@ class Supervisor:
         result.update(verdict=record["verdict"], stalled_segments=record["stalled_segments"])
         write_json(out / "exit.json", result)
         write_json(record_path, record)
-        if record["status"] == "blocked":
-            raise ValueError(record["supervisor_stop_reason"])
         self.journal(f"recovered {out.name} from atomic state publication")
+        return record
 
     def next_run(self) -> tuple[str, Path]:
         counter = self.home / "counter"
@@ -343,7 +342,14 @@ class Supervisor:
                 raise ValueError("RUN_CONFIG must name an existing file")
             if self.settings.plan is not None and not self.settings.plan.is_file():
                 raise ValueError("OBJECTIVE_PLAN must name an existing file")
-            self.recover()
+            recovered = self.recover()
+            if recovered:
+                if recovered["status"] == "blocked":
+                    self.journal(recovered["supervisor_stop_reason"])
+                    return 3 if recovered["verdict"] == "owner_review" else 4
+                if recovered.get("verdict") == "clear" and self.settings.stop_on_clear:
+                    self.journal("recovered game clear: stopping")
+                    return 0
             while not self.stop_requested():
                 (self.home / "restart").unlink(missing_ok=True)
                 pointer = (self.home / "current.state").read_text(encoding="utf-8").strip()
