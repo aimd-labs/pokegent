@@ -51,13 +51,39 @@ def owner(tmp_path):
     return config, record
 
 
-def invoke(config, tmp_path):
+def invoke(config, tmp_path, *, pass_fds=()):
     manifest = tmp_path / "owner.json"
     manifest.write_text(json.dumps(config))
     return subprocess.run([sys.executable, "-I", str(LAUNCHER), "--config", str(manifest)],
                           env={**os.environ, "GH_TOKEN": "synthetic-token",
                                "PYTHONPATH": "/untrusted/imports", "GH_DEBUG": "api"},
-                          capture_output=True, text=True, timeout=5)
+                          capture_output=True, text=True, timeout=5, pass_fds=pass_fds)
+
+
+def test_inherited_directory_descriptor_cannot_reach_unmounted_file(owner, tmp_path):
+    config, record = owner
+    hidden = tmp_path / "unmounted"
+    hidden.mkdir()
+    (hidden / "marker").write_text("synthetic-unmounted-content")
+    descriptor = os.open(hidden, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.set_inheritable(descriptor, True)
+        Path(config["bwrap"]).write_text(
+            f"#!{sys.executable}\nimport json, os\n"
+            "content = None\n"
+            "try:\n"
+            f"    fd = os.open('marker', os.O_RDONLY, dir_fd={descriptor})\n"
+            "    content = os.read(fd, 100).decode()\n"
+            "    os.close(fd)\n"
+            "except OSError:\n"
+            "    pass\n"
+            f"open({str(record)!r}, 'w').write(json.dumps(content))\n"
+        )
+        result = invoke(config, tmp_path, pass_fds=(descriptor,))
+    finally:
+        os.close(descriptor)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(record.read_text()) is None
 
 
 def test_exact_binding_closure_and_no_inherited_credentials(owner, tmp_path):
