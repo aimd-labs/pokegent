@@ -52,8 +52,9 @@ or merely writing to a local temporary file is not successful delivery. The buil
 command uses `--if idle` for this check. Delivery targets an existing session; it does not
 start a new one-shot agent. The owner follows [SKILL.md](SKILL.md).
 
-Only the five typed fields described in the skill are retained. Unknown fields, event
-details, prose and provider configuration are discarded. Input is bounded to 16 KiB;
+Only the five typed input facts described in the skill are retained; delivery adds a
+generated `review_id`. Unknown fields (including caller-supplied IDs), event details,
+prose and provider configuration are discarded. Input is bounded to 16 KiB;
 run IDs, numeric facts and state references are validated. Completion batches preserve
 their individual revisions. State references are constructed relative to `LIVE_HOME`, only
 as `runs/<run_id>/final.state` or `runs/<run_id>/checkpoints/ckpt-<digits>.state` (at least
@@ -71,10 +72,18 @@ grows with completed runs/revisions; archive it together with retired run data.
 Upgrading from inode-only cursors rescans retained logs into the existing deduplicated
 review queue; the old cursor table is left intact for rollback.
 
+Delivery is **at-least-once**. Every review includes a stable `review_id` in both the
+delivered owner text and stdin JSON, derived from run ID, kind (`objective_completion`
+or `run_end`) and objective revision (null if unknown). The notifier queues `run_end`
+reviews; the event observer queues `objective_completion` reviews. Retries preserve
+individual IDs even if batching changes. The same review id may arrive twice; treat it
+as one, as directed by the owner skill. Input cannot supply or override this ID.
+
 An external command cannot make its acceptance and the local SQLite receipt one atomic
-transaction. A crash after owner acceptance but before receipt commit can repeat delivery.
-Adapters needing deduplication across that window should persist `POKEGENT_REVIEW_ID`
-(the batch hash exposed in their environment) and individual review identities. Otherwise
-delivery retries are at-least-once across that narrow window; ordinary monitor restarts
-after receipt commit do not redeliver. Timeout/failure leaves the batch pending. This
-channel does not impose deadlines or fallbacks on game legality or hybrid choices.
+transaction. A crash or receipt error after acceptance, or a timeout with an ambiguous
+outcome, leaves the review pending and retries the same ID. Ordinary monitor restarts
+after receipt commit do not redeliver. Custom adapters may also persist IDs to suppress
+duplicate processing. `POKEGENT_REVIEW_ID` is a batch hash supplied in the transport
+environment for convenience; it may change when pending reviews are rebatched, so use
+the individual `review_id` for deduplication. This channel does not impose deadlines or
+fallbacks on game legality or hybrid choices.

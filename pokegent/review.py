@@ -58,6 +58,11 @@ def sanitize(value: dict, *, home: Path | None = None) -> dict:
     }
 
 
+def review_id(value: dict, kind: str) -> str:
+    identity = [value["run_id"], kind, value["active_objective_revision"]]
+    return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class Settings:
     home: Path
@@ -108,7 +113,8 @@ class Queue:
         self.db = sqlite3.connect(directory / "queue.sqlite3", timeout=1)
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS reviews (
-                id TEXT PRIMARY KEY, body TEXT, delivered INTEGER NOT NULL DEFAULT 0
+                id TEXT PRIMARY KEY, body TEXT, delivered INTEGER NOT NULL DEFAULT 0,
+                kind TEXT NOT NULL DEFAULT 'run_end'
             );
             CREATE TABLE IF NOT EXISTS event_cursors (
                 generation TEXT PRIMARY KEY, identity TEXT NOT NULL,
@@ -117,23 +123,32 @@ class Queue:
             CREATE TABLE IF NOT EXISTS finished (run TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS clock (id INTEGER PRIMARY KEY, attempted REAL NOT NULL);
         """)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            columns = {column[1] for column in self.db.execute("PRAGMA table_info(reviews)")}
+            if "kind" not in columns:
+                self.db.execute("ALTER TABLE reviews ADD COLUMN kind TEXT NOT NULL "
+                                "DEFAULT 'run_end'")
 
     def close(self):
         self.db.close()
 
-    def enqueue(self, value: dict) -> bool:
-        body = json.dumps(sanitize(value, home=self.settings.home),
-                          sort_keys=True, separators=(",", ":"))
-        key = hashlib.sha256(body.encode()).hexdigest()
+    def enqueue(self, value: dict, *, kind: str = "run_end") -> bool:
+        facts = sanitize(value, home=self.settings.home)
+        body = json.dumps(facts, sort_keys=True, separators=(",", ":"))
+        key = review_id(facts, kind)
+        legacy_key = hashlib.sha256(body.encode()).hexdigest()
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            if self.db.execute("SELECT 1 FROM reviews WHERE id=?", (key,)).fetchone():
+            if self.db.execute("SELECT 1 FROM reviews WHERE id IN (?, ?)",
+                               (key, legacy_key)).fetchone():
                 return True
             if self.db.execute("SELECT COUNT(*) FROM reviews WHERE delivered=0").fetchone()[0] >= (
                 self.settings.queue_limit
             ):
                 return False
-            self.db.execute("INSERT INTO reviews(id, body) VALUES (?, ?)", (key, body))
+            self.db.execute("INSERT INTO reviews(id, body, kind) VALUES (?, ?, ?)",
+                            (key, body, kind))
         return True
 
     def drain(self, *, now: float | None = None) -> bool:
@@ -144,7 +159,7 @@ class Queue:
             except BlockingIOError:
                 return False
             rows = self.db.execute(
-                "SELECT id, body FROM reviews WHERE delivered=0 ORDER BY rowid LIMIT ?",
+                "SELECT id, body, kind FROM reviews WHERE delivered=0 ORDER BY rowid LIMIT ?",
                 (self.settings.batch_limit,),
             ).fetchall()
             if not rows:
@@ -159,17 +174,23 @@ class Queue:
             with self.db:
                 self.db.execute("INSERT OR REPLACE INTO clock VALUES (1, ?)", (now,))
             # Revalidate pending records too: older journals may contain unchecked path text.
-            items = [sanitize(json.loads(row[1]), home=self.settings.home) for row in rows]
+            items = []
+            for _, raw, kind in rows:
+                facts = sanitize(json.loads(raw), home=self.settings.home)
+                items.append({**facts, "review_id": review_id(facts, kind)})
             body = json.dumps(items[0] if len(items) == 1 else {"reviews": items}, sort_keys=True)
             message = (
                 "Pokegent owner review: inspect fresh status and the current objective before "
                 "deciding whether to write one newer, checkable objective. Gameplay continues "
-                "independently. Do not send game input or control services. Review facts: " + body
+                "independently. Do not send game input or control services. The same review id "
+                "may arrive twice; treat it as one. Review facts: " + body
             )
             command = [arg.replace("{target}", self.settings.target).replace("{message}", message)
                        for arg in self.settings.command]
-            # Custom transports can persist this receipt before acknowledging a retry.
-            receipt = hashlib.sha256("\n".join(row[0] for row in rows).encode()).hexdigest()
+            # This batch token is a convenience; individual review_ids survive rebatching.
+            receipt = hashlib.sha256(
+                "\n".join(item["review_id"] for item in items).encode()
+            ).hexdigest()
             try:
                 with subprocess.Popen(
                     command, stdin=subprocess.PIPE, text=True, stdout=subprocess.DEVNULL,
@@ -240,7 +261,7 @@ class Queue:
                                     if not self.enqueue({
                                         "run_id": run_id, "verdict": "objective_done",
                                         "active_objective_revision": details.get("revision"),
-                                    }):
+                                    }, kind="objective_completion"):
                                         return False
                             except (ValueError, AttributeError, TypeError):
                                 pass  # A malformed record never becomes an owner prompt.

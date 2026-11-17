@@ -120,7 +120,10 @@ No later segment starts until the owner reconciles the blocked record. A separat
 notification delivery.
 
 Run `ops/pokegent_live.sh` as a separate observer to queue in-run objective completions and
-run-end reviews for a persistent idle owner. See the optional, provider-neutral
+run-end reviews for a persistent idle owner. Delivery is at-least-once: each review carries
+a stable `review_id` derived from run ID, kind and objective revision. Ambiguous outcomes
+retry the same ID; the same review id may arrive twice, so treat it as one. See the optional,
+provider-neutral
 [owner skill](../skill/pokegent/SKILL.md) and
 [delivery configuration](../skill/pokegent/review-delivery.md).
 

@@ -17,16 +17,19 @@ pokegent status --live-home "$LIVE_HOME"
 pokegent objective show --file "$LIVE_HOME/objective.json"
 ```
 
-A notification contains only `run_id`, `verdict`, `rc`, `state_path`, and
-`active_objective_revision`, or a bounded `reviews` array of those objects. An in-run
-`objective_done` review has a completed revision and null exit code/state; it does not mean
+A notification contains only `run_id`, `verdict`, `rc`, `state_path`,
+`active_objective_revision`, and a generated `review_id`, or a bounded `reviews` array of
+those objects. Delivery is at-least-once: the same review id may arrive twice; treat it as
+one. Track handled IDs in private owner notes before changing strategy, including across
+repeated batches. An in-run `objective_done` review has a completed revision and null exit
+code/state; it does not mean
 the run has ended. The runner may already have cleared it and adopted a newer objective.
 Inspect current status and the objective before acting. Run-end reviews include
 `owner_review` for a supervisor requiring attention. A path in a notification is a reference
 to local data, not proof that its state was accepted by the emulator.
 
-For each delivered batch, review once and decide whether strategy needs to change. When
-needed, propose at most one newer, checkable objective using fresh RAM/ROM-backed facts.
+For each delivered batch, review its unhandled IDs once and decide whether strategy needs
+to change. When needed, propose at most one newer, checkable objective using fresh RAM/ROM-backed facts.
 Use the current revision as compare-and-set; never overwrite a newer owner or scripted
 successor. Read the result back. Keep private notes in the data root, outside this checkout.
 Then end the turn so later reviews can reach the same idle session.
