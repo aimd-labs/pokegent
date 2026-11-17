@@ -25,7 +25,7 @@ MAX_INPUT = 16 * 1024
 MAX_LINE = 64 * 1024
 
 
-def sanitize(value: dict) -> dict:
+def sanitize(value: dict, *, home: Path | None = None) -> dict:
     """Whitelist typed facts only; never forward event details or arbitrary prose."""
     if not isinstance(value, dict) or not isinstance(value.get("run_id"), str) or not re.fullmatch(
         r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", value["run_id"]
@@ -36,14 +36,22 @@ def sanitize(value: dict) -> dict:
     rc = value.get("rc")
     revision = value.get("active_objective_revision")
     state = value.get("state_path")
-    if not isinstance(state, str) or len(state) > 1024 or not state.endswith(".state") or any(
-        ord(c) < 32 for c in state
-    ) or re.search(r"(?i)bearer\s|token=|secret=|password=|api[_-]?key=", state):
-        state = None
+    reference = None
+    if home is not None and isinstance(state, str):
+        root = home.resolve()
+        run = Path("runs") / value["run_id"]
+        for prefix in (str(root / run) + "/", run.as_posix() + "/"):
+            if state.startswith(prefix):
+                artifact = state[len(prefix):]
+                if re.fullmatch(r"final\.state|checkpoints/ckpt-[0-9]{7,}\.state", artifact):
+                    candidate = root / run / artifact
+                    if candidate.resolve() == candidate:
+                        reference = (run / artifact).as_posix()
+                break
     return {
         "run_id": value["run_id"], "verdict": value["verdict"],
         "rc": rc if type(rc) is int and -255 <= rc <= 255 else None,
-        "state_path": state,
+        "state_path": reference,
         "active_objective_revision": (
             revision if type(revision) is int and 1 <= revision < 2**63 else None
         ),
@@ -113,7 +121,8 @@ class Queue:
         self.db.close()
 
     def enqueue(self, value: dict) -> bool:
-        body = json.dumps(sanitize(value), sort_keys=True, separators=(",", ":"))
+        body = json.dumps(sanitize(value, home=self.settings.home),
+                          sort_keys=True, separators=(",", ":"))
         key = hashlib.sha256(body.encode()).hexdigest()
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
@@ -148,7 +157,8 @@ class Queue:
             # Limit attempts too: a busy or unavailable owner must not be hammered.
             with self.db:
                 self.db.execute("INSERT OR REPLACE INTO clock VALUES (1, ?)", (now,))
-            items = [json.loads(row[1]) for row in rows]
+            # Revalidate pending records too: older journals may contain unchecked path text.
+            items = [sanitize(json.loads(row[1]), home=self.settings.home) for row in rows]
             body = json.dumps(items[0] if len(items) == 1 else {"reviews": items}, sort_keys=True)
             message = (
                 "Pokegent owner review: inspect fresh status and the current objective before "

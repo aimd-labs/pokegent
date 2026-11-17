@@ -53,7 +53,11 @@ start a new one-shot agent. The owner follows [SKILL.md](SKILL.md).
 Only the five typed fields described in the skill are retained. Unknown fields, event
 details, prose and provider configuration are discarded. Input is bounded to 16 KiB;
 run IDs, numeric facts and state references are validated. Completion batches preserve
-their individual revisions. If the queue fills, the observer leaves the event cursor or
+their individual revisions. State references are constructed relative to `LIVE_HOME`, only
+as `runs/<run_id>/final.state` or `runs/<run_id>/checkpoints/ckpt-<digits>.state` (at least
+seven digits). Other path text, traversal and symlinks outside that location are dropped;
+pending journal records are revalidated before delivery. If the queue fills, the observer
+leaves the event cursor or
 run receipt uncommitted and retries after capacity becomes available; it does not discard
 older reviews. Keep run records and rotated logs until the observer has consumed them.
 
