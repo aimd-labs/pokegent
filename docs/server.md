@@ -113,3 +113,10 @@ the agent's choice; the existing System One suggestion is never applied because
 the agent was slow.
 When a non-escalated override window expires, the decision is recorded as
 `decided_by: system1`. Completion events identify `system1` or `agent`.
+
+A System One pick that the frame's facts mark as off the objective is not followed when the
+frame names exactly one next route step: the hybrid decider replaces the pick with that step and
+does not call the agent lane (`vetoed_by: route_step` in the status; the served frame keeps
+System One's actual pick under `system1`). A frame that names more than one candidate route step
+is ambiguous and escalates with `escalation_reason: multiple_route_steps`. An on-route pick and
+a frame without an objective are unchanged.

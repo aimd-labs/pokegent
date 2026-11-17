@@ -9,8 +9,35 @@ from typing import Any
 
 from pokegent.actions._exec.models import ActionStatus
 from pokegent.events import EventSink, EventType
-from pokegent.options.models import ChoiceResult, DecisionFrame
+from pokegent.options.models import (
+    OBJECTIVE_RELATION_NOT_SERVING,
+    ChoiceResult,
+    DecisionFrame,
+    Option,
+)
 from pokegent.server import ExternalDecider
+
+#: Escalation reason used when more than one option claims the next route step.
+ROUTE_STEP_ESCALATION = "multiple_route_steps"
+
+
+def _off_route(option: Option) -> bool:
+    """Whether the frame's own facts put this option off the active route."""
+    facts = option.facts
+    return (
+        facts.get("objective_relation") == OBJECTIVE_RELATION_NOT_SERVING
+        or facts.get("route_relation") == "off route"
+    )
+
+
+def _next_route_step(option: Option) -> bool:
+    """Whether the frame's own facts mark this option as the next route step."""
+    facts = option.facts
+    return (
+        facts.get("next_route_step") is True
+        or facts.get("route_step") is True
+        or facts.get("route_relation") == "next route step"
+    )
 
 
 class HybridDecider:
@@ -139,7 +166,9 @@ class HybridDecider:
         except Exception as exc:  # provider and breaker failures both escalate
             system_error = exc
 
-        confidence = system_result.confidence if system_result is not None else None
+        system_claim = system_result
+        veto_result, veto_reason = self._route_step_veto(frame, system_result)
+        confidence = system_claim.confidence if system_claim is not None else None
         health = getattr(self.system1, "health", None)
         circuit_open = False
         if callable(health):
@@ -152,20 +181,26 @@ class HybridDecider:
         self._stuck = False
         threshold = self._thresholds.get(frame.scene_id, self._thresholds["default"])
         escalate = (
-            system_result is None
+            system_claim is None
             or circuit_open
             or stuck
-            or confidence is None
-            or confidence <= threshold
+            or veto_reason is not None
+            or (veto_result is None and (confidence is None or confidence <= threshold))
         )
         if not escalate and self.override_window_s <= 0:
             self.last_decision = {"decided_by": "system1", "escalated": False}
-            return system_result
+            if veto_result is not None:
+                self.last_decision.update(
+                    vetoed_by="route_step",
+                    system1_option_id=system_claim.option_id,
+                    system1_confidence=confidence,
+                )
+            return veto_result if veto_result is not None else system_claim
 
         metadata: dict[str, Any] = {
             "system1": {
-                "option_id": system_result.option_id if system_result else None,
-                "probabilities": dict(system_result.probabilities) if system_result else {},
+                "option_id": system_claim.option_id if system_claim else None,
+                "probabilities": dict(system_claim.probabilities) if system_claim else {},
                 "confidence": confidence,
             },
             "escalated": escalate,
@@ -178,12 +213,14 @@ class HybridDecider:
                 if system_error
                 else "circuit_open"
                 if circuit_open
+                else veto_reason
+                if veto_reason is not None
                 else "low_confidence"
                 if confidence is not None
                 else "system1_unavailable"
             ),
         }
-        if system_result is None and system_error is not None:
+        if system_claim is None and system_error is not None:
             metadata["escalation_reason"] = "system1_unavailable"
         if escalate and not force_agent and self._events is not None:
             self._events.emit(
@@ -191,10 +228,10 @@ class HybridDecider:
                 scene_id=frame.scene_id,
                 request_id=frame.decision_id,
                 provider="system1",
-                outcome="rejected" if system_result is not None else "failed",
+                outcome="rejected" if system_claim is not None else "failed",
                 details={
-                    "option_id": system_result.option_id if system_result else None,
-                    "choice": system_result.option_id if system_result else None,
+                    "option_id": system_claim.option_id if system_claim else None,
+                    "choice": system_claim.option_id if system_claim else None,
                     "confidence": confidence,
                     "measured_ms": round((time.monotonic() - started) * 1000, 3),
                     "accepted": False,
@@ -206,10 +243,11 @@ class HybridDecider:
             "escalated": escalate,
             "escalation_reason": metadata["escalation_reason"],
         }
+        default_result = veto_result if veto_result is not None else system_claim
         result = self.external.offer(
             frame,
             metadata=metadata,
-            default=system_result if not escalate else None,
+            default=default_result if not escalate else None,
             wait_timeout=None if escalate else self.override_window_s,
             interruptible_wait=escalate,
         )
@@ -219,12 +257,61 @@ class HybridDecider:
             "escalated": escalate,
             "escalation_reason": metadata["escalation_reason"],
         }
-        if decided_by == "agent" and system_result is not None:
+        if decided_by == "agent" and system_claim is not None:
             self.last_decision.update(
-                system1_option_id=system_result.option_id,
-                system1_confidence=system_result.confidence,
+                system1_option_id=system_claim.option_id,
+                system1_confidence=system_claim.confidence,
+            )
+        elif veto_result is not None and result.option_id == veto_result.option_id:
+            self.last_decision.update(
+                vetoed_by="route_step",
+                system1_option_id=system_claim.option_id,
+                system1_confidence=confidence,
             )
         return result
+
+    @staticmethod
+    def _route_step_veto(
+        frame: DecisionFrame, result: ChoiceResult | None
+    ) -> tuple[ChoiceResult | None, str | None]:
+        """Veto a System One pick that the frame's route facts put off the objective.
+
+        Return ``(replacement, escalate_reason)``. A System One answer is a claim, and an
+        off-route claim is followed literally: on Mt Moon 1F the frame marked the warp back
+        out to Route 4 as not serving the objective while the planner's next route step was
+        the B2F ladder, so accepting it looped the agent in and out of the cave. When the
+        claim is off route and the frame names exactly one next route step, that step
+        replaces the claim (the model's confidence is not evidence about a different
+        option). Several candidate route steps are an ambiguity the facts do not resolve,
+        so the frame escalates (``ROUTE_STEP_ESCALATION``) instead of the veto choosing one.
+        An on-route claim, a frame without an objective or route facts and a choice outside
+        the frame are left unchanged.
+        """
+        if result is None or frame.goal_id is None:
+            # No objective, no route to defend.
+            return None, None
+        chooseable = frame.chooseable()
+        chosen = next((option for option in chooseable if option.id == result.option_id), None)
+        if chosen is None or not _off_route(chosen):
+            return None, None
+        route_steps = [option for option in chooseable if _next_route_step(option)]
+        if not route_steps or any(option.id == chosen.id for option in route_steps):
+            return None, None
+        if len(route_steps) > 1:
+            return None, ROUTE_STEP_ESCALATION
+        step = route_steps[0]
+        return (
+            result.model_copy(
+                update={
+                    "option_id": step.id,
+                    "probabilities": {},
+                    "confidence": 1.0,
+                    "model_id": "route-step-veto",
+                    "provider_id": "hybrid",
+                }
+            ),
+            None,
+        )
 
     def _agent_requested(self, frame_id: str, frame: DecisionFrame) -> None:
         if self._events is None:
