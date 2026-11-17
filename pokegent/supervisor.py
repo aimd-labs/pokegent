@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from pokegent.events import EventType, read_events
 from pokegent.live import payload, read_json, successor_state, verdict
 
 
@@ -60,6 +61,7 @@ class Settings:
     allow_checkpoint: bool = False
     stop_on_clear: bool = True
     max_whiteouts: int = 10
+    max_stalled_segments: int = 3
     max_crashes: int = 5
     crash_window: float = 600
     crash_backoff: float = 10
@@ -110,6 +112,7 @@ class Settings:
             allow_checkpoint=boolean("ALLOW_CHECKPOINT_RECOVERY"),
             stop_on_clear=boolean("STOP_ON_CLEAR", True),
             max_whiteouts=number("MAX_WHITEOUTS", 10, int),
+            max_stalled_segments=number("MAX_STALLED_SEGMENTS", 3, int, 1),
             max_crashes=number("MAX_CRASHES", 5, int, 1),
             crash_window=number("CRASH_WINDOW_S", 600, minimum=0.01),
             crash_backoff=number("CRASH_BACKOFF_S", 10),
@@ -127,6 +130,7 @@ class Supervisor:
         self.stopping = False
         self.crashes: deque[float] = deque()
         self.whiteouts = 0
+        self.stalled_segments = 0
 
     def journal(self, message: str) -> None:
         line = f"{datetime.now(timezone.utc).isoformat()} {message}\n"
@@ -176,6 +180,29 @@ class Supervisor:
         write_json(self.home / "live-run.json", result)
         self.journal(reason)
 
+    def track_stalls(self, result: dict) -> None:
+        out = Path(result["out"])
+        summary = read_json(out / "summary.json") or {}
+        stalled = not result.get("requested") and (
+            summary.get("stop_reason") in {"safe_pause", "no_progress"}
+            or summary.get("verdict") == "no_progress"
+        )
+        progressed = any(
+            event.type in {
+                EventType.ACTION_VERIFIED.value, EventType.ACTION_INTERRUPTED.value,
+                EventType.ACTION_FAILED.value,
+            } and event.details.get("progressed") is True
+            for event in read_events(out, skip_corrupt=True)
+        )
+        self.stalled_segments = self.stalled_segments + 1 if stalled and not progressed else 0
+        result["stalled_segments"] = self.stalled_segments
+        if (result["status"] != "blocked"
+                and self.stalled_segments >= self.settings.max_stalled_segments):
+            result.update(
+                status="blocked", verdict="owner_review",
+                supervisor_stop_reason="stalled segment limit reached: owner review required",
+            )
+
     def recover(self) -> None:
         record_path = self.home / "live-run.json"
         if not record_path.exists():
@@ -187,6 +214,9 @@ class Supervisor:
             raise ValueError("unrecognized live-run metadata; ownership needs review")
         if record["status"] == "blocked":
             raise ValueError("previous run is blocked; review live-run.json before resuming")
+        self.stalled_segments = record.get("stalled_segments", 0)
+        if type(self.stalled_segments) is not int or self.stalled_segments < 0:
+            raise ValueError("invalid stalled segment count; ownership needs review")
         if record["status"] == "finished":
             return
         pid = record.get("pid")
@@ -205,9 +235,13 @@ class Supervisor:
         state = self.promote(out)
         result = payload(record, out)
         result.update(state_path=str(state), recovered=True)
-        write_json(out / "exit.json", result)
         record.update(result, status="finished", objective_revision=self.objective_revision())
+        self.track_stalls(record)
+        result.update(verdict=record["verdict"], stalled_segments=record["stalled_segments"])
+        write_json(out / "exit.json", result)
         write_json(record_path, record)
+        if record["status"] == "blocked":
+            raise ValueError(record["supervisor_stop_reason"])
         self.journal(f"recovered {out.name} from atomic state publication")
 
     def next_run(self) -> tuple[str, Path]:
@@ -233,6 +267,7 @@ class Supervisor:
             "supervisor_pid": os.getpid(), "status": "preparing",
             "started_at": datetime.now(timezone.utc).isoformat(),
             "objective_revision": self.objective_revision(),
+            "stalled_segments": self.stalled_segments,
         }
         record_path = self.home / "live-run.json"
         write_json(record_path, metadata)
@@ -278,12 +313,16 @@ class Supervisor:
             state_error = str(exc)
         result = payload(metadata, out, name)
         result.update(rc=rc, state_path=successor, requested=requested, forced=forced)
-        write_json(out / "exit.json", result)
         metadata.update(
             result, status="blocked" if state_error or forced else "finished",
             finished_at=datetime.now(timezone.utc).isoformat(), state_error=state_error,
             objective_revision=self.objective_revision(),
         )
+        self.track_stalls(metadata)
+        result.update(
+            verdict=metadata["verdict"], stalled_segments=metadata["stalled_segments"],
+        )
+        write_json(out / "exit.json", result)
         write_json(record_path, metadata)
         self.journal(f"end {run_id} rc={rc} verdict={name} state_ok={successor is not None}")
         return metadata, read_json(out / "summary.json") is not None
@@ -313,8 +352,9 @@ class Supervisor:
                     raise ValueError("current.state must point to a nonempty absolute file")
                 result, has_summary = self.segment(lock.fileno(), state)
                 if result["status"] == "blocked":
-                    self.journal("blocked: successor state or shutdown needs review")
-                    return 4
+                    self.journal(result.get("supervisor_stop_reason")
+                                 or "blocked: successor state or shutdown needs review")
+                    return 3 if result["verdict"] == "owner_review" else 4
                 if self.stop_requested():
                     (self.home / "stop").unlink(missing_ok=True)
                     return 0

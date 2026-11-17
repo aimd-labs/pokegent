@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_hybrid_stuck_escalation import harness as hybrid_harness  # noqa: F401
 
 from pokegent.live import payload, successor_state, verdict
 from pokegent.supervisor import Settings, atomic_write
@@ -72,6 +73,7 @@ summary = {"run_id": a.run_id, "exit_code": step.get("rc", 0),
            **step.get("summary", {})}
 if not step.get("no_summary"):
     (out / "summary.json").write_text(json.dumps(summary))
+(out / "events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in step.get("events", [])))
 writer.unlink()
 raise SystemExit(step.get("rc", 0))
 '''
@@ -102,7 +104,7 @@ def live(tmp_path):
         if key not in {
             "PORT", "DECIDER", "RUN_CONFIG", "OBJECTIVE_FILE", "OBJECTIVE_PLAN", "ALLOW_REMOTE",
             "ALLOW_CHECKPOINT_RECOVERY", "STOP_ON_CLEAR", "RUNNER_BIN", "MAX_WHITEOUTS",
-            "ON_OBJECTIVE_DONE",
+            "ON_OBJECTIVE_DONE", "MAX_STALLED_SEGMENTS",
         }
     }
     env.update(
@@ -343,6 +345,66 @@ def test_whiteout_limit_uses_current_scene_schema(live):
     assert len(calls(home)) == 2
 
 
+@pytest.fixture
+def hybrid_segment(hybrid_harness):  # noqa: F811
+    def build(**kwargs):
+        runner, _, actions, _, events = hybrid_harness(**kwargs)
+        summary = runner.run()
+        assert summary.status.value == "safe_pause" and summary.verdict == "no_progress"
+        assert len(actions) == (7 if kwargs.get("progress_at") else 4)
+        return {"rc": 1, "summary": {
+            "stop_reason": summary.status.value, "verdict": summary.verdict,
+        }, "events": [e.model_dump(mode="json") for e in events.events]}
+    return build
+
+
+@pytest.mark.parametrize("limit", [None, 2])
+def test_hybrid_stalled_segments_stop_for_owner_review(live, hybrid_segment, limit):
+    home, start = live
+    paused = hybrid_segment(semantic_at=range(3, 31))
+    overrides = {} if limit is None else {"MAX_STALLED_SEGMENTS": str(limit)}
+    child = start([paused], MAX_CRASHES="2", **overrides)
+    assert child.wait(timeout=5) == 3
+    assert len(calls(home)) == (limit or 3)
+    result = load(home / "live-run.json")
+    assert result["status"] == "blocked" and result["verdict"] == "owner_review"
+    assert result["stalled_segments"] == (limit or 3)
+    assert result["state_path"].endswith("final.state")
+    assert load(Path(result["out"]) / "exit.json")["verdict"] == "owner_review"
+    assert verdict(result["out"]) == "owner_review"
+    assert start([{}]).wait(timeout=5) == 4
+    assert len(calls(home)) == (limit or 3)
+
+
+def test_durable_progress_resets_streak_even_if_segment_later_pauses(live, hybrid_segment):
+    home, start = live
+    paused = hybrid_segment()
+    progressed = hybrid_segment(progress_at=(3,))
+    child = start([paused, paused, progressed, paused])
+    assert child.wait(timeout=5) == 3
+    assert len(calls(home)) == 6
+    streaks = [load(home / f"runs/live-{n:04d}/exit.json")["stalled_segments"]
+               for n in range(1, 7)]
+    assert streaks == [1, 2, 0, 1, 2, 3]
+
+
+@pytest.mark.parametrize("stop_reason", ["safe_pause", "no_progress"])
+def test_stall_limit_accepts_stop_reason_without_runner_verdict(live, stop_reason):
+    home, start = live
+    assert start([{"rc": 1, "summary": {"stop_reason": stop_reason}}],
+                 MAX_STALLED_SEGMENTS="2").wait(timeout=5) == 3
+    assert len(calls(home)) == 2
+
+
+def test_stall_streak_survives_supervisor_restart(live, hybrid_segment):
+    home, start = live
+    (home / "live-run.json").write_text(json.dumps({
+        "status": "finished", "stalled_segments": 2,
+    }))
+    assert start([hybrid_segment()]).wait(timeout=5) == 3
+    assert len(calls(home)) == 1
+
+
 def test_game_clear_policy_can_continue(live):
     home, start = live
     child = start([{"summary": {"game_cleared": True}}, {"wait": True}], STOP_ON_CLEAR="false")
@@ -443,6 +505,7 @@ def test_atomic_pointer_replaces_only_after_complete_write(tmp_path, monkeypatch
     ("CRASH_WINDOW_S", "nan"), ("STOP_TIMEOUT_S", "0"), ("MAX_STEPS", "-1"),
     ("ALLOW_REMOTE", "yes"), ("PORT", "80"), ("DECIDER", "unexpected"),
     ("ON_OBJECTIVE_DONE", "unexpected"),
+    ("MAX_STALLED_SEGMENTS", "0"), ("MAX_STALLED_SEGMENTS", "-1"),
 ])
 def test_invalid_environment_fails_before_launch(tmp_path, monkeypatch, name, value):
     monkeypatch.setenv("LIVE_HOME", str(tmp_path))

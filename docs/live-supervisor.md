@@ -39,6 +39,7 @@ Keep provider credentials in the process environment or the private YAML's envir
 | `ALLOW_CHECKPOINT_RECOVERY` | `false`; opt in only after reviewing checkpoint recovery policy. |
 | `STOP_ON_CLEAR` | `true`; stop on the summary's RAM-backed `game_cleared: true`. |
 | `MAX_WHITEOUTS` | `10` consecutive segments with whiteout scene evidence; `0` disables the limit. No campaign/plan switching. |
+| `MAX_STALLED_SEGMENTS` | `3` consecutive SAFE_PAUSE/no-progress segments without durable progress; positive integer. Stops with verdict `owner_review` at the limit. |
 | `MAX_CRASHES` | `5` crashes in `CRASH_WINDOW_S`; positive integer. |
 | `CRASH_WINDOW_S` | `600` seconds, measured with a monotonic clock. |
 | `CRASH_BACKOFF_S`, `CRASH_BACKOFF_MAX_S` | `10`, `60` seconds; exponential backoff capped at the maximum. |
@@ -106,9 +107,19 @@ neither a crash nor game clear. Crash/whiteout counts are scoped to one supervis
 manager restart limits should also be bounded. Automatic process-manager restarts must not bypass
 owner review of a blocked record.
 
+SAFE_PAUSE/no-progress segments may resume from their accepted successor until
+`MAX_STALLED_SEGMENTS` is reached. Executor action-result events with `progressed: true` reset
+the streak, even when the segment later pauses; verified taps, position/scene changes and valid
+saves alone do not. An ordinary non-stalled segment also ends the consecutive streak. The count
+is persisted in lifecycle metadata, including while a child runs, and restored on supervisor
+restart. At the limit both lifecycle metadata and the segment's exit payload publish
+`verdict: owner_review`, the lifecycle status is blocked, and the supervisor exits `3`.
+No later segment starts until the owner reconciles the blocked record. A separate observer owns
+notification delivery.
+
 `pokegent.live.verdict(run_dir)` and `payload(metadata, run_dir, verdict_name=None)` are shared by
 supervisors and observers. `ops/pokegent_live_verdict.py RUN_DIR` prints `clear`, `whiteout`,
-`objective_done`, `interrupted`, `other` or `none` (missing/unreadable summary).
+`objective_done`, `interrupted`, `owner_review`, `other` or `none` (missing/unreadable summary).
 `ops/pokegent_live_verdict.py --payload METADATA_JSON RUN_DIR VERDICT` prints only run ID, verdict,
 actual rc (from `exit.json` when available), successor path and active objective revision. Whiteout
 uses `scenes_entered["system.whiteout"]`; clear uses the top-level game-clear fact, with no campaign
