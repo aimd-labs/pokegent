@@ -119,6 +119,11 @@ restart. At the limit both lifecycle metadata and the segment's exit payload pub
 No later segment starts until the owner reconciles the blocked record. A separate observer owns
 notification delivery.
 
+Run `ops/pokegent_live.sh` as a separate observer to queue in-run objective completions and
+run-end reviews for a persistent idle owner. See the optional, provider-neutral
+[owner skill](../skill/pokegent/SKILL.md) and
+[delivery configuration](../skill/pokegent/review-delivery.md).
+
 `pokegent.live.verdict(run_dir)` and `payload(metadata, run_dir, verdict_name=None)` are shared by
 supervisors and observers. `ops/pokegent_live_verdict.py RUN_DIR` prints `clear`, `whiteout`,
 `objective_done`, `interrupted`, `owner_review`, `other` or `none` (missing/unreadable summary).
