@@ -39,6 +39,12 @@ class NavigationNode:
         return self.map_group, self.map_number
 
 
+#: Requirements no capability can satisfy: the route continues only after a player decision
+#: the agent must make (the Mt Moon fossil choice).  Kept beside the requirement contract so
+#: the planner and the adapter agree on what a decision-blocked edge is.
+CHOICE_REQUIREMENTS = frozenset({"fossil"})
+
+
 @dataclass(frozen=True)
 class NavigationRequirement:
     """One edge prerequisite, evaluated from the current RAM snapshot."""
@@ -98,6 +104,11 @@ class NavigationPlan:
     unmet: tuple[str, ...] = ()
     explored: int = 0
     blocked_route_fact: str | None = None
+    #: Stable key of the first route edge that only a decision can unblock (for example the
+    #: Mt Moon fossil choice).  It is a route step the agent must take, not a missing
+    #: capability, so the adapter advertises the option that performs it.  ``None`` when the
+    #: blocker is a capability (Cut, Surf, a flag) or when nothing is blocked.
+    blocked_choice_step: str | None = None
 
     @property
     def reachable(self) -> bool:

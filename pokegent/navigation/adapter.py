@@ -173,6 +173,7 @@ class NavigationAdapter:
                     map_plan.route,
                     unmet=map_plan.unmet,
                     explored=map_plan.explored,
+                    blocked_choice_step=map_plan.blocked_choice_step,
                 )
             if plan.cost is None and not plan.route and plan.blocked_route_fact is None:
                 # A finite search with no unmet edge is still useful evidence: the target is
@@ -222,7 +223,10 @@ class NavigationAdapter:
         if blocked_index is None:
             return frontier
         blocked_route_fact = self._blocked_route(frontier, blocked_index)
-        route = frontier.route[:blocked_index]
+        # A decision-blocked edge (the fossil choice) is a step the agent takes, not a
+        # barrier to hide: keep it in the route so its option is advertised as the step.
+        choice_step = frontier.blocked_choice_step
+        route = frontier.route if choice_step is not None else frontier.route[:blocked_index]
         return NavigationPlan(
             plan.start,
             target,
@@ -231,6 +235,7 @@ class NavigationAdapter:
             unmet=frontier.route[blocked_index].unmet,
             explored=max(plan.explored, frontier.explored),
             blocked_route_fact=blocked_route_fact,
+            blocked_choice_step=choice_step,
         )
 
     def _remember_plan(self, key: tuple[object, ...] | None, plan: NavigationPlan | None) -> None:
@@ -547,12 +552,34 @@ class NavigationAdapter:
             blocked_route = self.blocked_route(plan)
             for index, option in enumerate(options):
                 facts = dict(option.facts)
-                facts.update(
-                    {
-                        "no_route": True,
-                        "blocked_route": blocked_route or "no path known",
-                    }
-                )
+                key = self._option_key(option) or option.id
+                if plan.blocked_choice_step is not None and key == plan.blocked_choice_step:
+                    # The route exists only through a decision (the fossil choice), so the
+                    # option that takes it is the step even though the search returned no
+                    # path: nothing else can unblock it and the agent decides.
+                    facts.update(
+                        {
+                            "route_relation": "next route step",
+                            "route_step": True,
+                            "next_route_step": True,
+                            "on_route": True,
+                            "serves_goal": True,
+                            "route_needs": list(plan.unmet),
+                            "blocked_choice": plan.blocked_choice_step,
+                            **(
+                                {"blocked_route": blocked_route}
+                                if blocked_route is not None
+                                else {}
+                            ),
+                        }
+                    )
+                else:
+                    facts.update(
+                        {
+                            "no_route": True,
+                            "blocked_route": blocked_route or "no path known",
+                        }
+                    )
                 options[index] = option.model_copy(update={"facts": facts})
             return options, plan
         local_step = self._current_map_step(options, plan, resolved)
@@ -729,6 +756,14 @@ class NavigationAdapter:
             facts.pop("next_route_step", None)
             facts.pop("on_route", None)
             route_key = key if key in route_keys else option.id
+            # A route whose only blocker is a decision (the fossil choice) advertises the
+            # option that takes that step even when the planner's blocked route was
+            # truncated before it: no capability can satisfy the requirement, the agent
+            # decides, and the option keeps its own irreversible facts.
+            choice_match = bool(
+                plan.blocked_choice_step is not None
+                and route_key == plan.blocked_choice_step
+            )
             option_target = option.facts.get("target")
             if (
                 semantic is not None
@@ -891,6 +926,7 @@ class NavigationAdapter:
                     or semantic_match
                     or route_step_match
                     or equivalent_clearer
+                    or choice_match
                 )
             ):
                 edge_index = next(
@@ -907,6 +943,8 @@ class NavigationAdapter:
                     edge_index = plan.route.index(route_step_edge)
                 if edge_index is None and semantic_match and semantic is not None:
                     edge_index = plan.route.index(semantic)
+                if edge_index is None and choice_match:
+                    edge_index = blocked_index
                 triggerable_gate = bool(
                     semantic_match
                     and semantic is not None
@@ -915,12 +953,28 @@ class NavigationAdapter:
                 )
                 if triggerable_gate:
                     edge_index = blocked_index
+                choice_step = bool(
+                    choice_match
+                    and blocked_index is not None
+                    and all(
+                        row.kind in ("walk", "bike", "ledge", "forced")
+                        for row in plan.route[:blocked_index]
+                    )
+                )
                 clears_blocker = bool(
                     edge_index == blocked_index
-                    and semantic is not None
                     and (
-                        (blocked_obstacle and semantic.kind in ("field_move", "boulder_push"))
-                        or triggerable_gate
+                        choice_step
+                        or (
+                            semantic is not None
+                            and (
+                                (
+                                    blocked_obstacle
+                                    and semantic.kind in ("field_move", "boulder_push")
+                                )
+                                or triggerable_gate
+                            )
+                        )
                     )
                 )
                 if edge_index is not None and (

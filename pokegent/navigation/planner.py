@@ -10,12 +10,26 @@ from itertools import count
 from pokegent.games.gen3.firered.maps.map_schema import MapState
 from pokegent.navigation.graph import NavigationGraph
 from pokegent.navigation.models import (
+    CHOICE_REQUIREMENTS,
     CapabilityState,
     NavigationEdge,
     NavigationNode,
     NavigationPlan,
     NavigationTarget,
 )
+
+
+def choice_blocked_step(edge: NavigationEdge) -> str | None:
+    """Stable key of ``edge`` when only a decision can unblock it, else ``None``.
+
+    A fossil choice is not a missing capability: no bag item, badge or flag makes the edge
+    available, so the edge is a route step the agent must take instead of an unreachable
+    barrier.  Mixed requirements stay capability-blocked.
+    """
+    keys = {row.key for row in edge.requirements if not row.met}
+    if keys and keys <= CHOICE_REQUIREMENTS:
+        return edge.stable_key
+    return None
 
 
 @dataclass(frozen=True)
@@ -65,6 +79,9 @@ class NavigationPlanner:
                 blocked_route_fact=budget_fact,
             )
         unmet = tuple(dict.fromkeys(label for edge in blocked.route for label in edge.unmet))
+        blocked_offset = next(
+            (index for index, edge in enumerate(blocked.route) if edge.unmet), None
+        )
         return NavigationPlan(
             start,
             target,
@@ -76,6 +93,11 @@ class NavigationPlanner:
             # route as the only route.  Keep the route for executor context but
             # surface the incomplete proof in the frame.
             blocked_route_fact=budget_fact if unmet else None,
+            blocked_choice_step=(
+                choice_blocked_step(blocked.route[blocked_offset])
+                if blocked_offset is not None
+                else None
+            ),
         )
 
     def _budget_fact(self, result: _SearchResult, limit: int) -> str:
@@ -263,7 +285,15 @@ class NavigationPlanner:
         _, cost, search_state, edge = frontier
         route = self._route_stateful(parent, search_state) + (edge,)
         unmet = tuple(dict.fromkeys(label for row in route for label in row.unmet))
-        return NavigationPlan(start, target, cost, route, unmet=unmet, explored=explored)
+        return NavigationPlan(
+            start,
+            target,
+            cost,
+            route,
+            unmet=unmet,
+            explored=explored,
+            blocked_choice_step=choice_blocked_step(edge),
+        )
 
     def _search(
         self,

@@ -449,3 +449,22 @@ facts in their criteria; rendered species lists are compact and append `+N more`
 These are facts only: no team planner, advice, or usefulness ranking is added. Briefing trimming
 removes low-value events/side/bag detail before stored-PC rows and records `pc.stored_mons` in
 `diagnostics.trimmed` whenever those rows are capped or reduced.
+
+## 20. v1.11 (additive): a decision-blocked route is a route step
+
+Some route edges cannot be unblocked by any capability: the Mt Moon B2F fossil choice is a
+one-time decision, and no bag item, badge or flag makes its edge available. The planner used to
+report such a route as a blocked barrier, so no option was advertised as the step toward it and
+the decider had no route fact to follow.
+
+`NavigationPlan` gains `blocked_choice_step` (default `None`): the stable key of the first route
+edge whose unmet requirements are all decision requirements (`CHOICE_REQUIREMENTS`, currently
+`fossil`). Mixed requirements (a fossil and Cut on the same edge) are not a choice step. The
+adapter advertises the option that performs that edge with `route_relation: next route step`,
+`route_step` / `next_route_step`, `on_route`, `serves_goal: true`, `route_needs` and
+`blocked_choice`, also when the search returned no route at all; every other option keeps the
+ordinary `no_route` / `unreachable` facts. The option keeps its own facts, so a fossil option
+stays `irreversible` with `risk: high` and the hybrid decider hands it to the agent instead of
+applying a System One pick. This changes no executor, no legality and no requirement: the edge
+is still unmet, the step is simply visible as the next thing the agent must decide.
+
