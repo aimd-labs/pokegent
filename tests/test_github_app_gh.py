@@ -127,12 +127,83 @@ def test_child_only_gets_token_in_environment_and_output_is_redacted(config, mon
     ["pr", "list", "-Rother/repo"], ["pr", "list", "--repo=other/repo"],
     ["pr", "list", "--hostname", "example.invalid"], ["issue", "view", "1", "--web"],
     ["pr", "list", "--jq", "env.GH_TOKEN"], ["pr", "create", "--editor"],
+    ["pr", "list", "-q."], ["pr", "list", "-q=identity"],
+    ["pr", "list", "-t{{.}}"], ["pr", "view", "1", "-t={{.}}"],
+    ["pr", "create", "--title", "Title", "--body", "Body", "--editor=true"],
+    ["pr", "create", "--title", "Title", "--body", "Body", "--editor=false"],
+    ["issue", "comment", "1", "--body", "Body", "-e=true"],
 ])
 def test_unsafe_commands_do_not_mint_any_token(config, monkeypatch, command):
-    def forbidden(_):
-        pytest.fail("unsafe command minted a JWT")
+    def forbidden(*_):
+        pytest.fail("unsafe command reached signer or token request")
 
     monkeypatch.setattr(app, "jwt", forbidden)
+    monkeypatch.setattr(app, "installation_token", forbidden)
+    with pytest.raises(ValueError):
+        app.run(config, command)
+
+
+PERMITTED_COMMANDS = [
+    ["pr", "create", "-tTitle", "-bBody", "-d", "--head=fix", "--base", "main"],
+    ["pr", "edit", "1", "--title=Title", "--body-file", "/synthetic/body.txt"],
+    ["pr", "view", "1", "-c", "--json=number,title"],
+    ["pr", "list", "-L10", "--state=all", "--label", "bug"],
+    ["pr", "comment", "1", "-bBody", "--edit-last", "--create-if-none"],
+    ["pr", "diff", "1", "--name-only", "--color=never", "--exclude=*.txt"],
+    ["pr", "checks", "1", "--required", "--json", "state"],
+    ["issue", "create", "--title=Title", "--body=Body", "-lbug"],
+    ["issue", "edit", "1", "--add-label=bug"],
+    ["issue", "view", "1", "--comments"],
+    ["issue", "list", "--limit=5", "--state", "closed"],
+    ["issue", "comment", "1", "-F/synthetic/body.txt"],
+]
+
+
+@pytest.mark.parametrize("command", PERMITTED_COMMANDS + [["pr", "create", "-df"]])
+def test_permitted_operation_syntax_reaches_signer(config, monkeypatch, command):
+    def stop(_):
+        raise RuntimeError("validated at signer boundary")
+
+    monkeypatch.setattr(app, "jwt", stop)
+    with pytest.raises(RuntimeError, match="validated at signer boundary"):
+        app.run(config, command)
+
+
+@pytest.mark.parametrize("command", PERMITTED_COMMANDS)
+@pytest.mark.parametrize("flag", ["--editor=true", "--editor=false", "-q.", "--web=false",
+                                 "--unknown-option", "--repo=other/game"])
+def test_every_operation_rejects_unlisted_flags_before_credentials(config, monkeypatch,
+                                                                  command, flag):
+    def forbidden(*_):
+        pytest.fail("unlisted option reached credentials or a child")
+
+    monkeypatch.setattr(app, "jwt", forbidden)
+    monkeypatch.setattr(app, "installation_token", forbidden)
+    monkeypatch.setattr(app.subprocess, "run", forbidden)
+    with pytest.raises(ValueError):
+        app.run(config, [*command, flag])
+
+
+@pytest.mark.parametrize("command", [
+    ["pr", "view", "1", "-ct{{.}}"], ["pr", "checks", "1", "-t{{.}}"],
+    ["issue", "list", "-t{{.}}"], ["issue", "view", "1", "--template={{.}}"],
+    ["pr", "list", "--j", "number"], ["pr", "view", "1", "--", "--web"],
+    ["pr", "view", "https://example.invalid/other/game/pull/1"],
+    ["pr", "view", "1", "2"], ["issue", "view"], ["pr", "list", "--limit"],
+    ["pr", "list", "--limit=NaN"], ["pr", "list", "--state=unknown"],
+    ["pr", "view", "1", "--comments=true"], ["pr", "create"],
+    ["issue", "create", "--title", "Title"], ["pr", "comment", "1"],
+    ["pr", "edit", "1"], ["pr", "create", "--title", "Title", "--body", "Text", "-e"],
+    ["pr", "comment", "1", "--body", "Text", "--body-file", "/synthetic/body.txt"],
+    ["pr", "comment", "1", "--body", "Text", "--create-if-none"],
+])
+def test_malformed_or_interactive_syntax_never_reaches_credentials(config, monkeypatch, command):
+    def forbidden(*_):
+        pytest.fail("malformed command reached credentials or a child")
+
+    monkeypatch.setattr(app, "jwt", forbidden)
+    monkeypatch.setattr(app, "installation_token", forbidden)
+    monkeypatch.setattr(app.subprocess, "run", forbidden)
     with pytest.raises(ValueError):
         app.run(config, command)
 

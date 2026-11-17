@@ -163,6 +163,35 @@ provider scoped to the same installation if authenticated push is required. Do n
 remote URLs or command-line arguments. Same-uid process inspection remains possible, so use the
 dedicated Unix account and keep unrelated processes out of it.
 
+The helper validates an explicit option schema for each operation before signing or requesting a
+token. It accepts the following subset of `gh`; new upstream options require review before being
+added. Value options accept `--name VALUE`, `--name=VALUE` and their listed short alias, including
+attached short values such as `-L10` or `-tTitle`. Boolean switches accept standalone names and
+recognized short clusters (for example `-df`); equals-valued booleans are rejected. Unknown flags,
+abbreviations, `--` terminators, extra positionals and URL/branch selectors are rejected. Select a
+PR/issue with one positive number; PR operations may omit it to use the current branch. Issue
+view/edit/comment require the number. No selector is accepted for create/list.
+
+| Operation | Permitted value options | Permitted switches |
+|---|---|---|
+| PR create | `--title/-t`, `--body/-b`, `--body-file/-F`, `--assignee/-a`, `--label/-l`, `--milestone/-m`, `--base/-B`, `--head/-H`, `--reviewer/-r` | `--draft/-d`, `--fill/-f`, `--no-maintainer-edit` |
+| Issue create | Same as PR create except base, head and reviewer | None |
+| PR edit | `--title/-t`, `--body/-b`, `--body-file/-F`, `--milestone/-m`, `--add-assignee`, `--remove-assignee`, `--add-label`, `--remove-label`, `--base/-B`, `--add-reviewer`, `--remove-reviewer` | `--remove-milestone` |
+| Issue edit | Same as PR edit except base and reviewer options | `--remove-milestone` |
+| PR list | `--assignee/-a`, `--author/-A`, `--label/-l`, `--limit/-L`, `--search/-S`, `--state/-s`, `--app`, `--json`, `--base/-B`, `--head/-H` | `--draft/-d` |
+| Issue list | Same as PR list except base/head; also `--mention`, `--milestone/-m` | None |
+| PR/issue view | `--json` | `--comments/-c` |
+| PR/issue comment | `--body/-b`, `--body-file/-F` | `--edit-last`, `--create-if-none` |
+| PR diff | `--color`, `--exclude` | `--name-only`, `--patch` |
+| PR checks | `--json`, `--interval/-i` | `--required`, `--watch`, `--fail-fast` |
+
+Create requires a nonempty title and an explicit body/body-file, or PR `--fill`. Comment requires
+a body/body-file; edit requires an explicit change. Body and body-file are mutually exclusive;
+`--create-if-none` requires `--edit-last`. These checks avoid implicit editor/prompt paths. Limits
+and intervals must be positive integers; state and color must be supported values. In list/view/checks,
+`-t` is a forbidden formatter; in create/edit it is the permitted title option. Even benign attached
+formatter forms and `--editor=false` fail before any JWT, token request or child process.
+
 ## Review and rollout evidence
 
 Run the ROM-free checks in CONTRIBUTING.md, including `tests/test_owner_launcher.py` and

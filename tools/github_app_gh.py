@@ -14,8 +14,82 @@ import urllib.request
 from pathlib import Path
 
 PERMISSIONS = {"contents": "write", "issues": "write", "pull_requests": "write"}
-COMMANDS = {"pr": {"create", "edit", "view", "list", "comment", "diff", "checks"},
-            "issue": {"create", "edit", "view", "list", "comment"}}
+BODY = [("--body", "-b"), ("--body-file", "-F")]
+CREATE = [*BODY, ("--title", "-t"), ("--assignee", "-a"), ("--label", "-l"),
+          ("--milestone", "-m")]
+EDIT = [*BODY, ("--title", "-t"), ("--milestone", "-m"), ("--add-assignee",),
+        ("--remove-assignee",), ("--add-label",), ("--remove-label",)]
+LIST = [("--assignee", "-a"), ("--author", "-A"), ("--label", "-l"), ("--limit", "-L"),
+        ("--search", "-S"), ("--state", "-s"), ("--app",), ("--json",)]
+# Each operation explicitly lists value options and boolean switches. Unknown syntax fails closed.
+COMMANDS = {
+    "pr": {
+        "create": (CREATE + [("--base", "-B"), ("--head", "-H"), ("--reviewer", "-r")],
+                   [("--draft", "-d"), ("--fill", "-f"), ("--no-maintainer-edit",)]),
+        "edit": (EDIT + [("--base", "-B"), ("--add-reviewer",), ("--remove-reviewer",)],
+                 [("--remove-milestone",)]),
+        "view": ([("--json",)], [("--comments", "-c")]),
+        "list": (LIST + [("--base", "-B"), ("--head", "-H")], [("--draft", "-d")]),
+        "comment": (BODY, [("--edit-last",), ("--create-if-none",)]),
+        "diff": ([("--color",), ("--exclude",)], [("--name-only",), ("--patch",)]),
+        "checks": ([("--json",), ("--interval", "-i")],
+                   [("--required",), ("--watch",), ("--fail-fast",)]),
+    },
+    "issue": {
+        "create": (CREATE, []),
+        "edit": (EDIT, [("--remove-milestone",)]),
+        "view": ([("--json",)], [("--comments", "-c")]),
+        "list": (LIST + [("--mention",), ("--milestone", "-m")], []),
+        "comment": (BODY, [("--edit-last",), ("--create-if-none",)]),
+    },
+}
+
+
+class CommandParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise ValueError("unsupported PR/issue option syntax")
+
+
+def positive_integer(value):
+    if not re.fullmatch(r"[1-9][0-9]*", value):
+        raise ValueError("expected a positive integer")
+    return int(value)
+
+
+def validate_command(command):
+    if (len(command) < 2 or command[1] not in COMMANDS.get(command[0], {})
+            or any(not isinstance(arg, str) or "\0" in arg or arg == "--" for arg in command)):
+        raise ValueError("only scoped PR/issue commands are supported")
+    family, operation = command[:2]
+    values, switches = COMMANDS[family][operation]
+    parser = CommandParser(add_help=False, allow_abbrev=False)
+    for flags in values:
+        kwargs = {}
+        if flags[0] in {"--limit", "--interval"}:
+            kwargs["type"] = positive_integer
+        elif flags[0] == "--state":
+            kwargs["choices"] = ["open", "closed", "all"] + (["merged"] if family == "pr" else [])
+        elif flags[0] == "--color":
+            kwargs["choices"] = ["always", "never", "auto"]
+        parser.add_argument(*flags, **kwargs)
+    for flags in switches:
+        parser.add_argument(*flags, action="store_true")
+    if operation not in {"create", "list"}:
+        parser.add_argument("number", type=positive_integer, nargs="?" if family == "pr" else None)
+    options = vars(parser.parse_args(command[2:]))
+    body = options.get("body") is not None or options.get("body_file") is not None
+    if options.get("body") is not None and options.get("body_file") is not None:
+        raise ValueError("choose body or body-file")
+    if operation == "create" and not options.get("fill") and not (options.get("title") and body):
+        raise ValueError("create requires title and body, or PR fill")
+    if operation == "comment" and not body:
+        raise ValueError("comment requires a body")
+    if operation == "edit" and not any(
+        value for name, value in options.items() if name != "number"
+    ):
+        raise ValueError("edit requires an explicit change")
+    if options.get("create_if_none") and not options.get("edit_last"):
+        raise ValueError("create-if-none requires edit-last")
 
 
 def encode(value):
@@ -87,12 +161,7 @@ def run(config, command):
     key_stat = Path(config["private_key"]).stat()
     if key_stat.st_uid != os.getuid() or key_stat.st_mode & 0o077:
         raise ValueError("private key must be accessible only to its owner")
-    if (len(command) < 2 or command[1] not in COMMANDS.get(command[0], set())
-            or any(arg in {"-R", "--repo", "--hostname", "--web", "-w", "--editor", "-e",
-                           "--jq", "-q", "--template", "-t"}
-                   or arg.startswith(("--repo=", "--hostname=", "-R", "--jq=", "--template="))
-                   for arg in command[2:])):
-        raise ValueError("only scoped PR/issue commands are supported")
+    validate_command(command)
     signed = jwt(config)
     token = installation_token(config, signed)
     # Empty gh config prevents aliases, saved credentials, debug settings and pager execution.
