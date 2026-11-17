@@ -7,7 +7,9 @@ addresses live in ``references/rom_profiles.yaml``.
 
 from __future__ import annotations
 
-from pokegent.games.gen3.firered.rom.constants import PRET_COMMIT  # noqa: F401  (re-exported for provenance)
+from pokegent.games.gen3.firered.rom.constants import (
+    PRET_COMMIT,  # noqa: F401  (re-exported for provenance)
+)
 
 # include/fieldmap.h
 MAP_OFFSET = 7

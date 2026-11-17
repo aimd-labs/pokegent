@@ -260,7 +260,8 @@ class ObjectiveSession:
     # -- after a perception --------------------------------------------------------------
 
     def observe(
-        self, snapshot: StateSnapshot, *, safe_boundary: bool = False
+        self, snapshot: StateSnapshot, *, safe_boundary: bool = False,
+        clear_completed: bool = False,
     ) -> tuple[ProgressEvent, ...]:
         """Evaluate the objective's success probes on a fresh snapshot."""
         try:
@@ -298,10 +299,13 @@ class ObjectiveSession:
         if safe_boundary and snapshot.usable and self.tracker.completed:
             objective = self.objective
             if objective is not None:
-                self.store.commit_completion(
+                committed = self.store.commit_completion(
                     objective_id=objective.objective_id,
                     expected_revision=objective.revision,
+                    clear_completed=clear_completed,
                 )
+                if committed and clear_completed:
+                    events += self.refresh().events
         return events
 
     def superseded(self) -> bool:

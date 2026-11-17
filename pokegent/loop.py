@@ -23,8 +23,8 @@ goal is dynamic: the session reads the objective file at the start of every iter
 keeps the last valid objective and becomes a ``runtime.degraded`` warning), the tracker evaluates
 probes on every perception. A finished objective never starts a new free-roaming decision
 (``field.free``): ``on_objective_done`` is ``hold`` (default, stay alive without input and poll
-the file), ``pause`` (stop with ``WAITING_OBJECTIVE``) or ``continue`` (keep playing under the
-finished objective).
+the file), ``pause`` (stop with ``WAITING_OBJECTIVE``) or ``continue`` (clear the completed
+revision and keep playing in this run).
 """
 
 from __future__ import annotations
@@ -266,7 +266,7 @@ class RunnerConfig:
     transient_invalid_frames: int = 4
     #: What a finished objective does at the next free-roaming decision: ``hold`` (default) stays
     #: alive without input and polls the file; ``pause`` stops with ``WAITING_OBJECTIVE``;
-    #: ``continue`` keeps playing under the finished objective. Only matters with
+    #: ``continue`` atomically clears the completed revision and keeps playing. Only matters with
     #: an objective session.
     on_objective_done: str = "hold"
     #: ``hold``: frames advanced (no input) and seconds slept between two polls of the file.
@@ -743,11 +743,12 @@ class Runner:
         kind = perception.kind
 
         if self.objectives is not None:
+            objective_before = self._objective_ids()
             stop = self._objective_observe(perception)
             if stop is not None:
                 return stop
-            if self.objectives.superseded():
-                return None  # a newer objective is in the file: re-perceive under it
+            if self._objective_ids() != objective_before or self.objectives.superseded():
+                return None  # changed or cleared objective: re-perceive before offering input
             if self._objective_waits(perception):
                 return self._wait_for_objective(perception)
             self._leave_hold()
@@ -2273,6 +2274,7 @@ class Runner:
             session.observe(
                 snapshot,
                 safe_boundary=self._objective_safe_boundary(perception),
+                clear_completed=self.config.on_objective_done == "continue",
             )  # completion is recorded only at the safe boundary
         return None
 

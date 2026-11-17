@@ -324,8 +324,13 @@ on. agent also needs a way to be told at the events it named, without the game e
    objective never starts a new free-roaming decision: at the first safe scene boundary (`field.free` or an idle
    `dialog.end`) with a chooseable (or an empty) option set, `RunnerConfig.on_objective_done` decides: `hold` (default) keeps the run alive without input, advancing
    `hold_idle_frames` and sleeping `hold_poll_s` per iteration while it polls the file (bounded by
-   `max_steps` / `deadline_s`); `pause` stops with `WAITING_OBJECTIVE`; `continue` keeps playing (the model then reads
-   "Objective achieved, waiting for the next one."). Mid-battle, menu, and other busy scenes are always played on;
+   `max_steps` / `deadline_s`); `pause` stops with `WAITING_OBJECTIVE`; `continue` atomically clears
+   the completed ID + revision under the writer lock and keeps playing in the same run. Completion
+   and `completion_cleared` history preserve the revision floor and prevent old-file resurrection.
+   Queued/newer objectives survive; completion of an operator objective authorizes this transition
+   while the manual-clear authority guard remains in force. The runner re-perceives after clearing
+   before offering input. Neither objective changes nor completion in `continue` signal or restart
+   the writer. Mid-battle, menu, and other busy scenes are always played on;
    readiness reviews never gate an action while a battle is active. No objective at all (no file, expired) is goal-less,
    not waiting. `AppConfig.on_objective_done`, `run.on_objective_done` in the
    run config, CLI `--on-objective-done`.

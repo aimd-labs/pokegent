@@ -266,7 +266,22 @@ first fresh usable idle scene with known non-battle controls (`field.free`-style
 
 `run.on_objective_done` controls the completed-objective policy: `hold` (default) keeps the run alive without input
 and continues polling; `pause` waits at the safe boundary with `WAITING_OBJECTIVE`; `continue`
-keeps playing under the completed objective. `run.ignore_objective` / CLI `--ignore-objective` lets a
+atomically clears the completed objective and keeps playing in the same run, goal-less or under a
+newer/queued objective. The transition checks both objective ID and revision under the store's
+writer lock; it never removes a successor. It records completion once and a durable
+`completion_cleared` history entry before removing the file and resetting the in-memory goal.
+Replaying the old completed revision cannot reactivate it; the revision floor survives clearing.
+The next decision is rebuilt from fresh perception. New revisions, including updates during a
+pending agent or hybrid choice, are adopted without stopping, signalling or restarting the runner.
+The old pending frame ID is rejected after refresh, and executor legality checks still apply.
+
+Fresh completion authorizes clearing agent and operator objectives in this specific transition;
+manual clear requests still require the matching revision and operator authority for an operator
+objective. File writers must use `ObjectiveStore.propose()` (or serialize on `<file>.lock` and
+use atomic replacement) to participate in the compare-and-set protocol. Keep the history with the
+objective file across restarts. `hold` remains the default; `pause` is unchanged.
+
+`run.ignore_objective` / CLI `--ignore-objective` lets a
 satisfied objective continue without the normal completion wait. CLI objective inputs are
 `--objective`, `--objective-plan`, and `--on-objective-done`.
 

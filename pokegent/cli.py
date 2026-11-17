@@ -702,7 +702,7 @@ def main(argv=None):
         default=None,
         help="a finished objective at the next free-roaming decision: hold = stay alive without "
         "input and poll the file (default), pause = stop with WAITING_OBJECTIVE (exit 3), "
-        "continue = keep playing under it",
+        "continue = clear the completed revision and keep playing in the same run",
     )
     run_p.add_argument(
         "--ignore-objective",
