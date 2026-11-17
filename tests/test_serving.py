@@ -78,7 +78,7 @@ def test_adapter_routes_defeated_fight_to_probe_warp() -> None:
         id="talk:1",
         label="Talk to a person",
         legality=Legality.LEGAL,
-        executor_ref="field.talk",
+        executor_ref="field.talk_to",
         facts={
             "target": {"kind": "npc", "map": (0, 0), "local_id": 1},
             "trainer_defeated": True,
