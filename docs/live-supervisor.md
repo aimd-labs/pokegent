@@ -31,6 +31,7 @@ Keep provider credentials in the process environment or the private YAML's envir
 | `RUN_CONFIG` | `$LIVE_HOME/run.yaml`; must exist. Existing user YAML schema. |
 | `OBJECTIVE_FILE` | `$LIVE_HOME/objective.json`; may be absent, as with `pokegent run`. |
 | `OBJECTIVE_PLAN` | Unset: no plan. If set, passed unchanged as `--objective-plan`. |
+| `ON_OBJECTIVE_DONE` | `continue`; passed as `--on-objective-done`. Also accepts `hold` or `pause`. |
 | `DECIDER` | `system1`, an explicit continuous-play policy; accepts all run CLI deciders. Hybrid requires a working per-choice agent consumer. |
 | `ALLOW_REMOTE` | `false`; explicitly enable remote System One endpoints. |
 | `PORT` | Unset or `0`: no viewer CLI override. Set `19700`–`19799` for the combined viewer. Private YAML can still configure addons. |
@@ -57,9 +58,12 @@ run:
   save_final_state: true
 ```
 
-The supervisor passes `--on-objective-done hold`: the runner stays alive, waits without input,
-and reads newer objective revisions on the fly. Completion or revision change never stops the
-supervisor. A legacy segment ending with `objective_done` also continues the chain. The supervisor
+The supervisor defaults to `--on-objective-done continue` so the runner keeps playing after
+completion and reads newer objective revisions on the fly. Use a runner release with the
+completion-clear-and-continue policy to clear the completed objective in the same process.
+`ON_OBJECTIVE_DONE=hold` explicitly waits without input; `pause` ends the segment at completion.
+Completion or revision change never stops the supervisor. A legacy segment ending with
+`objective_done` also continues the chain. The supervisor
 never clears, replaces or impersonates the writer of an objective; a compare-and-set/authority
 conflict cannot trigger a clear or terminate the chain. `active_objective_revision` records the
 ended summary's revision; `objective_revision` records the file's current revision in run metadata.

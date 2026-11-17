@@ -52,6 +52,7 @@ class Settings:
     objective: Path
     runner: str
     decider: str = "system1"
+    on_objective_done: str = "continue"
     max_steps: int = 3000
     port: int | None = None
     plan: Path | None = None
@@ -90,6 +91,9 @@ class Settings:
         decider = os.environ.get("DECIDER", "system1")
         if decider not in {"agent", "system1", "hybrid", "first", "forced", "external"}:
             raise ValueError("invalid DECIDER")
+        on_objective_done = os.environ.get("ON_OBJECTIVE_DONE", "continue")
+        if on_objective_done not in {"continue", "hold", "pause"}:
+            raise ValueError("ON_OBJECTIVE_DONE must be continue, hold or pause")
         default_runner = Path(sys.executable).with_name("pokegent")
         return cls(
             home=home,
@@ -97,6 +101,7 @@ class Settings:
             objective=Path(os.environ.get("OBJECTIVE_FILE", home / "objective.json")).resolve(),
             runner=os.environ.get("RUNNER_BIN", str(default_runner)),
             decider=decider,
+            on_objective_done=on_objective_done,
             max_steps=number("MAX_STEPS", 3000, int, 1),
             port=port or None,
             plan=Path(os.environ["OBJECTIVE_PLAN"]).resolve()
@@ -145,7 +150,7 @@ class Supervisor:
         args = [
             s.runner, "run", "--state", str(state), "--no-state-fallback",
             "--config", str(s.config),
-            "--objective", str(s.objective), "--on-objective-done", "hold",
+            "--objective", str(s.objective), "--on-objective-done", s.on_objective_done,
             "--decider", s.decider, "--max-steps", str(s.max_steps),
             "--run-id", run_id, "--out", str(out),
         ]

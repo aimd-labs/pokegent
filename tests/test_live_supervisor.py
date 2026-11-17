@@ -102,6 +102,7 @@ def live(tmp_path):
         if key not in {
             "PORT", "DECIDER", "RUN_CONFIG", "OBJECTIVE_FILE", "OBJECTIVE_PLAN", "ALLOW_REMOTE",
             "ALLOW_CHECKPOINT_RECOVERY", "STOP_ON_CLEAR", "RUNNER_BIN", "MAX_WHITEOUTS",
+            "ON_OBJECTIVE_DONE",
         }
     }
     env.update(
@@ -154,7 +155,7 @@ def test_two_segments_continuity_and_explicit_config(live):
     assert first["out"] != second["out"]
     assert second["state"] == str(Path(first["out"]) / "final.state")
     assert second["input"] == first["run_id"]
-    assert first["on_objective_done"] == "hold"
+    assert first["on_objective_done"] == "continue"
     assert first["no_state_fallback"]
     assert first["viewer_port"] == "19701" and first["allow_remote"]
     assert first["objective_plan"] == str(plan) and first["decider"] == "first"
@@ -162,6 +163,14 @@ def test_two_segments_continuity_and_explicit_config(live):
     assert metadata["status"] == "finished" and metadata["verdict"] == "clear"
     assert (home / "current.state").read_text().strip() == metadata["state_path"]
     assert load(Path(first["out"]) / "exit.json")["state_path"].endswith("final.state")
+
+
+@pytest.mark.parametrize("policy", ["hold", "pause", "continue"])
+def test_objective_done_policy_is_configurable(live, policy):
+    home, start = live
+    child = start([{"summary": {"game_cleared": True}}], ON_OBJECTIVE_DONE=policy)
+    assert child.wait(timeout=5) == 0
+    assert calls(home)[0]["on_objective_done"] == policy
 
 
 @pytest.mark.parametrize("objective_end", [{"done": True}, {"aborted": "changed"}])
@@ -433,6 +442,7 @@ def test_atomic_pointer_replaces_only_after_complete_write(tmp_path, monkeypatch
 @pytest.mark.parametrize(("name", "value"), [
     ("CRASH_WINDOW_S", "nan"), ("STOP_TIMEOUT_S", "0"), ("MAX_STEPS", "-1"),
     ("ALLOW_REMOTE", "yes"), ("PORT", "80"), ("DECIDER", "unexpected"),
+    ("ON_OBJECTIVE_DONE", "unexpected"),
 ])
 def test_invalid_environment_fails_before_launch(tmp_path, monkeypatch, name, value):
     monkeypatch.setenv("LIVE_HOME", str(tmp_path))
