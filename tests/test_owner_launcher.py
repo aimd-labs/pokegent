@@ -107,7 +107,8 @@ def test_protected_bootstrap_and_parent_layout(owner, tmp_path, monkeypatch):
     # A real system executable supplies operator-owned file/parent permissions.
     trusted = Path("/usr/bin/python3").resolve()
     monkeypatch.setitem(build.__globals__, "__file__", str(trusted))
-    assert build(config)[-2:] == config["agent_command"]
+    config["bwrap"] = str(trusted)
+    assert build(config, manifest=trusted)[-2:] == config["agent_command"]
     with pytest.raises(ValueError, match="outside writable mounts"):
         launcher["protected_file"](trusted, [(trusted.parent, True)])
 
@@ -131,6 +132,93 @@ def test_protected_bootstrap_and_parent_layout(owner, tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "stat", operator_file_stat)
     with pytest.raises(ValueError, match="protected from the owner"):
         launcher["protected_file"](bootstrap, [])
+
+
+@pytest.fixture
+def protected_layout(owner, tmp_path, monkeypatch):
+    """Model operator metadata without needing root or creating a real deployment."""
+    config, record = owner
+    directory = tmp_path / "operator"
+    directory.mkdir()
+    bootstrap = directory / "owner-start"
+    bootstrap.write_bytes(LAUNCHER.read_bytes())
+    manifest = directory / "owner.json"
+    manifest.write_text(json.dumps(config))
+    protected = {bootstrap, manifest, Path(config["bwrap"]), *bootstrap.parents}
+    actual_stat, actual_access = Path.stat, os.access
+    owned, writable = set(), set()
+
+    def metadata(self, **kwargs):
+        result = actual_stat(self, **kwargs)
+        if self in protected and self not in owned:
+            values = list(result)
+            values[4] = os.getuid() + 1
+            return os.stat_result(values)
+        return result
+
+    def access(value, mode, **kwargs):
+        if mode == os.W_OK and Path(value) in protected:
+            return Path(value) in writable
+        return actual_access(value, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", metadata)
+    monkeypatch.setattr(os, "access", access)
+    monkeypatch.setitem(build.__globals__, "__file__", str(bootstrap))
+    return config, record, manifest, protected, owned, writable
+
+
+def test_production_accepts_operator_protected_layout(protected_layout):
+    config, _, manifest, *_ = protected_layout
+    assert build(config, manifest=manifest)[0] == config["bwrap"]
+
+
+@pytest.mark.parametrize("broken", [
+    "manifest_owned", "manifest_writable", "parent_owned", "parent_writable",
+    "manifest_symlink", "parent_symlink", "writable_binding", "relative_bwrap",
+    "bwrap_owned", "bwrap_writable", "bwrap_symlink",
+])
+def test_production_trust_failure_prevents_any_child(protected_layout, monkeypatch, broken):
+    config, record, manifest, protected, owned, writable = protected_layout
+    selected = manifest
+    if broken == "manifest_owned":
+        owned.add(manifest)
+    elif broken == "manifest_writable":
+        writable.add(manifest)
+    elif broken == "parent_owned":
+        owned.add(manifest.parent)
+    elif broken == "parent_writable":
+        writable.add(manifest.parent)
+    elif broken == "manifest_symlink":
+        selected = manifest.with_name("alias.json")
+        selected.symlink_to(manifest)
+    elif broken == "parent_symlink":
+        alias = manifest.parent.with_name("alias")
+        alias.symlink_to(manifest.parent, target_is_directory=True)
+        selected = alias / manifest.name
+    elif broken == "writable_binding":
+        config["mounts"].append({"path": str(manifest.parent), "role": "state"})
+    elif broken == "relative_bwrap":
+        config["bwrap"] = "fake-bwrap"
+    elif broken == "bwrap_owned":
+        owned.add(Path(config["bwrap"]))
+    elif broken == "bwrap_writable":
+        writable.add(Path(config["bwrap"]))
+    elif broken == "bwrap_symlink":
+        alias = manifest.parent / "bwrap-alias"
+        alias.symlink_to(config["bwrap"])
+        config["bwrap"] = str(alias)
+    manifest.write_text(json.dumps(config))
+    if broken == "manifest_owned":
+        manifest.chmod(0o444)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("untrusted configuration reached child execution")
+
+    monkeypatch.setattr(os, "execve", forbidden)
+    monkeypatch.setattr(sys, "argv", ["owner-start", "--config", str(selected)])
+    assert launcher["main"]() == 2
+    assert not record.exists()
+
 
 
 def test_exact_binding_closure_and_no_inherited_credentials(owner, tmp_path):
@@ -192,7 +280,8 @@ def test_custom_session_marker_and_readonly_checkout(owner):
 
 @pytest.mark.parametrize("broken", ["parent", "symlink", "system", "injection", "worktree",
                                    "missing_console", "cwd", "resume_escape", "unknown",
-                                   "resume_parent", "resume_symlink"])
+                                   "resume_parent", "resume_symlink", "agent_parent",
+                                   "agent_symlink", "relative_bwrap"])
 def test_rejects_unsafe_or_incomplete_manifest(owner, tmp_path, broken):
     config, record = owner
     if broken == "parent":
@@ -220,6 +309,14 @@ def test_rejects_unsafe_or_incomplete_manifest(owner, tmp_path, broken):
         marker.symlink_to(tmp_path / "other-profile.sqlite")
     elif broken == "unknown":
         config["extra_game_repo"] = str(tmp_path)
+    elif broken == "agent_parent":
+        config["agent_command"][0] = config["agent_runtime"] + "/../fake-bwrap"
+    elif broken == "agent_symlink":
+        alias = Path(config["agent_runtime"]) / "alias"
+        alias.symlink_to(config["bwrap"])
+        config["agent_command"][0] = str(alias)
+    elif broken == "relative_bwrap":
+        config["bwrap"] = "fake-bwrap"
     result = invoke(config, tmp_path)
     assert result.returncode == 2
     assert not record.exists()

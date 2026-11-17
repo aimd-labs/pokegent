@@ -35,7 +35,7 @@ def protected_file(value, mounts):
     return result
 
 
-def build(config, *, synthetic_test=False):
+def build(config, *, synthetic_test=False, manifest=None):
     if not isinstance(config, dict):
         raise ValueError("owner configuration must be an object")
     required = {"repo", "environment", "agent_runtime", "home", "profile", "live_home",
@@ -80,6 +80,13 @@ def build(config, *, synthetic_test=False):
                 raise ValueError("mounts must not overlap or expose a parent of another mount")
     if not synthetic_test:
         protected_file(__file__, mounts)
+        protected_file(manifest, mounts)
+    bwrap = Path(config.get("bwrap", "/usr/bin/bwrap"))
+    if (not bwrap.is_absolute() or bwrap.resolve(strict=True) != bwrap
+            or not bwrap.is_file() or not os.access(bwrap, os.X_OK)):
+        raise ValueError("bwrap must be an absolute canonical executable file")
+    if not synthetic_test:
+        protected_file(bwrap, mounts)
 
     home = Path(config["home"])
     if not home.is_absolute() or home.resolve() != home or len(home.parts) < 3:
@@ -95,7 +102,8 @@ def build(config, *, synthetic_test=False):
             or any(not isinstance(arg, str) or not arg or "\0" in arg for arg in command)):
         raise ValueError("agent_command must be a nonempty argv array")
     executable = Path(command[0])
-    if not executable.is_absolute() or not executable.is_relative_to(roots["agent_runtime"]):
+    if (not executable.is_absolute() or executable.resolve(strict=True) != executable
+            or not executable.is_relative_to(roots["agent_runtime"])):
         raise ValueError("agent_command executable must be in agent_runtime")
     if not executable.is_file() or not os.access(executable, os.X_OK):
         raise ValueError("agent_command executable is unavailable")
@@ -125,7 +133,7 @@ def build(config, *, synthetic_test=False):
     if any(not isinstance(value, str) or "\0" in value for value in extras.values()):
         raise ValueError("environment values must be strings")
     env.update(extras)
-    args = [config.get("bwrap", "/usr/bin/bwrap"), "--unshare-user", "--unshare-pid",
+    args = [str(bwrap), "--unshare-user", "--unshare-pid",
             "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session",
             "--cap-drop", "ALL", "--clearenv", "--ro-bind", "/usr", "/usr"]
     for name in ("bin", "sbin", "lib", "lib64"):
@@ -153,10 +161,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--synthetic-test", action="store_true",
-                        help="allow an unprotected bootstrap for disposable synthetic tests only")
+                        help="allow unprotected files/recording fakes for disposable tests only")
     args = parser.parse_args()
     try:
-        command = build(json.loads(args.config.read_text()), synthetic_test=args.synthetic_test)
+        if not args.synthetic_test:
+            protected_file(__file__, [])
+            protected_file(args.config, [])
+        command = build(json.loads(args.config.read_text()), synthetic_test=args.synthetic_test,
+                        manifest=args.config)
         os.umask(0o077)
         # Mount isolation cannot revoke inherited host file/directory capabilities.
         for descriptor in os.listdir("/proc/self/fd"):

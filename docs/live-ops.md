@@ -45,7 +45,16 @@ must resolve in an explicit read-only runtime mount or the system `/usr` mount. 
 game checkout or a private custom-code repository. Use an environment without credentials or
 unrelated editable installs. The owner agent runtime is separate tooling, not a gameplay source.
 
-Copy `ops/hermes/owner.example.json` to a private location outside Git and replace all example paths.
+As the operator, copy `ops/hermes/owner.example.json` to a protected private location outside Git
+(for example `/etc/pokegent-owner/owner.json`) and replace all example paths. The manifest must be
+readable by the dedicated owner but owned by the operator; use an operator-owned directory mode
+0755 and file mode 0644 containing only non-secret paths/settings, or a restricted read-only group
+for private settings. Never store secrets in this manifest. Protect every parent directory from
+owner writes/replacement, and keep it outside every writable binding. Production checks ownership
+and effective write access (including groups/ACLs) on the file and every ancestor before reading it;
+symlinks in the file or parent path are rejected. Mode 0444 alone is insufficient for owner-owned
+files. A manifest in the writable profile is rejected. Provision this layout as the operator;
+the launcher never repairs permissions or elevates privileges.
 Copy `ops/hermes/AGENTS.owner.md` into the profile's supported instruction location (for example,
 `<profile>/AGENTS.md` with `cwd` set to `profile`); keep the checkout's development AGENTS.md intact.
 The example is a schema illustration, not a runnable deployment. Paths are mounted at the same
@@ -70,7 +79,7 @@ because they require Git metadata from another checkout. Custom mounts cannot ov
 | `resume_file` / `resume_args` | Defaults: `<profile>/state.db` / `["--continue"]`. File must stay inside profile. Use the agent runtime's latest-session flag; no session identifier is stored in public config. |
 | `mounts` | Explicit `{ "path": "/absolute/narrow/path", "role": "data" }` entries. No globbing or discovery of neighboring installs. |
 | `environment_variables` | Only `POKEGENT_ROM_PATH`, `POKEGENT_LOCAL_DATA_DIR`, `POKEGENT_MAP_GROUPS`, `LD_LIBRARY_PATH`, `TERM`. These values must be non-secret. |
-| `bwrap` | Absolute launcher executable, default `/usr/bin/bwrap`; substitute a recording fake for synthetic tests only. |
+| `bwrap` | Absolute canonical executable, default `/usr/bin/bwrap`. Production requires operator ownership and protected parents outside writable bindings. Recording fakes require `--synthetic-test`. |
 
 Extra mount roles are `data` (read-only ROM, generated tables, YAML config), `runtime` (read-only
 interpreters, native libraries or owner tool dependencies), `tool` (one read-only executable file),
@@ -87,8 +96,9 @@ All inherited descriptors above standard input/output/error are closed before Bu
 The inherited environment is cleared, including authentication, proxy, debug, `PYTHONPATH` and
 `PYTHONHOME` variables. Model keys belong only in the dedicated private profile. Never put secrets
 in `environment_variables`, `agent_command`, resume arguments, shell tracing or launch logs.
-The privileged operator owns the manifest and the launch path; the owner must not be allowed to
-edit either. A sandbox cannot protect a signing key against code already running as its owner:
+The privileged operator owns the manifest, pinned bootstrap and Bubblewrap executable; the owner
+must not be allowed to edit or replace them or their parent paths. Rejection of an unsafe launch
+configuration happens before any child executes. A sandbox cannot protect a signing key against code already running as its owner:
 scope the App installation to this single repository and enforce review/default-branch protection
 server-side. An in-process PR-only command policy is an additional guard, not a security boundary
 against a holder of the signing key.
