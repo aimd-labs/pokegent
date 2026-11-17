@@ -1,0 +1,21 @@
+{
+  "repo": "/srv/pokegent",
+  "environment": "/opt/pokegent-env",
+  "agent_runtime": "/opt/owner-agent",
+  "agent_command": ["/opt/owner-agent/bin/hermes", "--cli"],
+  "home": "/var/lib/pokegent-owner/home",
+  "profile": "/var/lib/pokegent-owner/profile",
+  "live_home": "/var/lib/pokegent-live",
+  "cwd": "/var/lib/pokegent-owner/profile",
+  "resume": "auto",
+  "repo_writable": true,
+  "mounts": [
+    {"path": "/var/lib/pokegent-data", "role": "data"},
+    {"path": "/var/lib/pokegent-secrets/app.pem", "role": "credential"},
+    {"path": "/opt/owner-tools/gh", "role": "tool"}
+  ],
+  "environment_variables": {
+    "POKEGENT_ROM_PATH": "/var/lib/pokegent-data/game.gba",
+    "POKEGENT_LOCAL_DATA_DIR": "/var/lib/pokegent-data/tables"
+  }
+}
