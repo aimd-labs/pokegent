@@ -9,8 +9,20 @@ from typing import Any
 
 from pokegent.actions._exec.models import ActionStatus
 from pokegent.events import EventSink, EventType
-from pokegent.options.models import ChoiceResult, DecisionFrame
+from pokegent.options.models import ChoiceResult, DecisionFrame, Option
 from pokegent.server import ExternalDecider
+
+#: Escalation reason used when System One's pick would confirm an irreversible action.
+IRREVERSIBLE_ESCALATION = "irreversible_option"
+
+
+def _irreversible(option: Option) -> bool:
+    """Whether the option's model fields or facts mark it irreversible.
+
+    The ``Option.irreversible`` flag needs prompt and effect text; families that carry the
+    evidence in ``facts`` (fossil choices, item use with a lasting effect) set it there.
+    """
+    return option.irreversible is True or option.facts.get("irreversible") is True
 
 
 class HybridDecider:
@@ -140,6 +152,7 @@ class HybridDecider:
             system_error = exc
 
         confidence = system_result.confidence if system_result is not None else None
+        irreversible = self._irreversible_choice(frame, system_result)
         health = getattr(self.system1, "health", None)
         circuit_open = False
         if callable(health):
@@ -155,6 +168,7 @@ class HybridDecider:
             system_result is None
             or circuit_open
             or stuck
+            or irreversible
             or confidence is None
             or confidence <= threshold
         )
@@ -178,6 +192,8 @@ class HybridDecider:
                 if system_error
                 else "circuit_open"
                 if circuit_open
+                else IRREVERSIBLE_ESCALATION
+                if irreversible
                 else "low_confidence"
                 if confidence is not None
                 else "system1_unavailable"
@@ -225,6 +241,21 @@ class HybridDecider:
                 system1_confidence=system_result.confidence,
             )
         return result
+
+    @staticmethod
+    def _irreversible_choice(frame: DecisionFrame, result: ChoiceResult | None) -> bool:
+        """Whether System One's pick is an option marked irreversible.
+
+        Confidence is not evidence about an action that cannot be undone, so such a pick is
+        always handed to the agent instead of being applied; frames without an irreversible
+        pick are unchanged.
+        """
+        if result is None:
+            return False
+        chosen = next(
+            (option for option in frame.chooseable() if option.id == result.option_id), None
+        )
+        return chosen is not None and _irreversible(chosen)
 
     def _agent_requested(self, frame_id: str, frame: DecisionFrame) -> None:
         if self._events is None:
