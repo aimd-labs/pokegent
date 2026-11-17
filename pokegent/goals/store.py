@@ -143,15 +143,7 @@ class ObjectiveStore:
         self.history_path = Path(self.history_path)
         self.warnings = deque(maxlen=self.max_warnings)
         self._seq = self._count_history()
-        self._revision_floor = max(
-            (
-                int(row["revision"])
-                for row in self.history()
-                if row.get("event") in ("accepted", "external")
-                and isinstance(row.get("revision"), int)
-            ),
-            default=0,
-        )
+        self._revision_floor = self._history_revision()
         self._committed_completions = {
             (str(row["objective_id"]), int(row["revision"]))
             for row in self.history()
@@ -159,6 +151,17 @@ class ObjectiveStore:
             and isinstance(row.get("objective_id"), str)
             and isinstance(row.get("revision"), int)
         }
+
+    def _history_revision(self) -> int:
+        return max(
+            (
+                int(row["revision"])
+                for row in self.history()
+                if row.get("event") in ("accepted", "external", "completed", "completion_cleared")
+                and isinstance(row.get("revision"), int)
+            ),
+            default=0,
+        )
 
     # -- reading --------------------------------------------------------------------------------
 
@@ -259,6 +262,14 @@ class ObjectiveStore:
             self._log("warning", rev, data.get("objective_id"), verdict.reasons, data)
             return
         new = verdict.objective
+        if any(
+            row.get("event") == "completion_cleared"
+            and row.get("objective_id") == new.objective_id
+            and row.get("revision") == new.revision
+            for row in self.history()
+        ):
+            self._warn("stale_revision", "completed objective was already cleared", new.revision)
+            return
         active = self._active.objective
         current_rev = max(active.revision if active is not None else 0, self._revision_floor)
         self._warn_forbid_drop(active, new)
@@ -299,7 +310,7 @@ class ObjectiveStore:
                 and row.get("objective") == new.model_dump(mode="json")
                 for row in self.history()
             )
-            if active is None and known:
+            if active is None and known and new.revision == current_rev:
                 self._activate(verdict)
                 return
             self._warn(
@@ -365,6 +376,7 @@ class ObjectiveStore:
         with self._lock, self._file_lock():
             self._signature = None  # force a re-read inside the lock: writers serialise here
             self.poll()
+            self._revision_floor = max(self._revision_floor, self._history_revision())
             verdict = self.validate(data)
             raw = data.model_dump(mode="json") if isinstance(data, Objective) else dict(data)
             if not verdict.ok or verdict.objective is None:
@@ -431,8 +443,14 @@ class ObjectiveStore:
     def _completion_committed(self, objective: Objective) -> bool:
         return (objective.objective_id, objective.revision) in self._committed_completions
 
-    def commit_completion(self, *, objective_id: str, expected_revision: int) -> bool:
-        """Commit a fresh-RAM completion at a safe boundary for ownership handoff."""
+    def commit_completion(
+        self, *, objective_id: str, expected_revision: int, clear_completed: bool = False
+    ) -> bool:
+        """Commit fresh-RAM completion; optionally clear that exact revision in the same lock.
+
+        Completion authorizes retiring even an operator objective. Manual ``clear`` retains
+        its separate authority guard. A queued or concurrently proposed successor wins.
+        """
         with self._lock, self._file_lock():
             self._signature = None
             self.poll()
@@ -444,16 +462,53 @@ class ObjectiveStore:
             ):
                 return False
             key = (active.objective_id, active.revision)
+            self._committed_completions.update(
+                (row["objective_id"], row["revision"])
+                for row in self.history()
+                if row.get("event") == "completed"
+                and isinstance(row.get("objective_id"), str)
+                and isinstance(row.get("revision"), int)
+            )
             if key not in self._committed_completions:
-                self._committed_completions.add(key)
-                self._log(
+                if not self._log(
                     "completed",
                     active.revision,
                     active.objective_id,
                     (),
                     active.model_dump(mode="json"),
-                )
+                ):
+                    return False
+                self._committed_completions.add(key)
+            if clear_completed:
+                # Persist the tombstone first: a crash before unlink must not revive this file.
+                if not self._log(
+                    "completion_cleared", active.revision, active.objective_id, (), None
+                ):
+                    return False
+                try:
+                    self._remove_active()
+                except OSError as exc:
+                    # The durable tombstone retires the goal even if file cleanup failed.
+                    self._active = _Active()
+                    self._signature = None
+                    self._missing_noted = True
+                    self._warn(
+                        "completion_cleanup_failed", f"{type(exc).__name__}: {exc}",
+                        active.revision,
+                    )
             return True
+
+    def _remove_active(self) -> None:
+        if self.path.exists():
+            self.path.unlink()
+            dir_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        self._active = _Active()
+        self._signature = None
+        self._missing_noted = True
 
     def clear(
         self, *, expected_revision: int | None = None, set_by: str | None = None
@@ -492,16 +547,7 @@ class ObjectiveStore:
                     "revision": current,
                     "reason": "forbid_dropped",
                 }
-            if self.path.exists():
-                self.path.unlink()
-                dir_fd = os.open(self.path.parent, os.O_RDONLY)
-                try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
-            self._active = _Active()
-            self._signature = None
-            self._missing_noted = True
+            self._remove_active()
             self._log("cleared", current, None, (), None)
             return {"cleared": True, "revision": current}
 
@@ -526,6 +572,22 @@ class ObjectiveStore:
     def _count_history(self) -> int:
         return len(self.history())
 
+    def _repair_history_tail(self, fd: int) -> None:
+        """Discard a crash/failed-write tail while holding the history writer lock."""
+        end = os.lseek(fd, 0, os.SEEK_END)
+        position = end
+        while position:
+            start = max(0, position - 4096)
+            os.lseek(fd, start, os.SEEK_SET)
+            chunk = os.read(fd, position - start)
+            newline = chunk.rfind(b"\n")
+            if newline >= 0:
+                position = start + newline + 1
+                break
+            position = start
+        if position != end:
+            os.ftruncate(fd, position)
+
     def _log(
         self,
         event: str,
@@ -533,29 +595,37 @@ class ObjectiveStore:
         objective_id: Any,
         reasons: Any,
         objective: Any,
-    ) -> None:
+    ) -> bool:
         assert self.history_path is not None
         with self._lock, self._file_lock():
-            self._seq = self._count_history() + 1  # the file is the truth (other processes append)
-            entry = {
-                "seq": self._seq,
-                "at": self.clock().isoformat(),
-                "event": event,
-                "revision": revision,
-                "objective_id": objective_id if isinstance(objective_id, str) else None,
-                "reasons": [r.as_dict() for r in reasons],
-                "objective": objective if isinstance(objective, dict) else None,
-            }
-            line = json.dumps(entry, sort_keys=True, ensure_ascii=True, default=str) + "\n"
             try:
-                fd = os.open(self.history_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+                fd = os.open(self.history_path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)
                 try:
-                    os.write(fd, line.encode("ascii"))
+                    self._repair_history_tail(fd)
+                    self._seq = self._count_history() + 1  # other processes may have appended
+                    entry = {
+                        "seq": self._seq,
+                        "at": self.clock().isoformat(),
+                        "event": event,
+                        "revision": revision,
+                        "objective_id": objective_id if isinstance(objective_id, str) else None,
+                        "reasons": [r.as_dict() for r in reasons],
+                        "objective": objective if isinstance(objective, dict) else None,
+                    }
+                    line = json.dumps(entry, sort_keys=True, ensure_ascii=True, default=str) + "\n"
+                    pending = line.encode("ascii")
+                    while pending:
+                        written = os.write(fd, pending)
+                        if written <= 0:
+                            raise OSError("history write made no progress")
+                        pending = pending[written:]
                     os.fsync(fd)
                 finally:
                     os.close(fd)
             except OSError as exc:  # replay material, not a reason to stop the game
                 self._warn("history_unwritable", f"{type(exc).__name__}: {exc}")
+                return False
+            return True
 
     # -- plumbing ---------------------------------------------------------------------------------
 

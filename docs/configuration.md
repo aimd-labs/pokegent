@@ -19,6 +19,13 @@ A successful interaction postcondition alone does not establish state change. Th
 pass normal frame and executor validation. `battle.opponent_knowledge` (`guide` by default or
 `fair_play`), `field.menus`, and `output.run_dir`.
 
+`run.on_objective_done` accepts `hold` (default: stay alive without input and poll for a new
+objective), `pause` (stop with `WAITING_OBJECTIVE`, exit 3), or `continue`. With `continue`, fresh
+completion at a safe boundary atomically clears only the matching objective ID and revision,
+including an operator objective, and play continues in the same process. A newer or queued
+objective is preserved. Set it in YAML or with `--on-objective-done continue`; see
+[objective lifecycle](objective-file.md#8-runner-lifecycle-and-configuration).
+
 Hybrid mode offers one bounded agent recovery window on a no-progress verdict when
 `hybrid.escalate_on_no_progress` is true (default). The next action-bearing decision bypasses
 System One and emits `decision.agent.requested` with `escalation_reason=no_progress`; subsequent
