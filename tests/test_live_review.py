@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -232,6 +233,68 @@ def test_exit_record_preserves_revision_without_summary(settings):
     assert queue.drain()
     data = json.loads((settings.home / "delivered").read_text())
     assert data["verdict"] == "whiteout" and data["active_objective_revision"] == 3
+    queue.close()
+
+
+@pytest.mark.parametrize("rotate", [False, True])
+def test_final_publication_during_scan_requires_another_scan(settings, monkeypatch, rotate):
+    out = settings.home / "runs/live-0001"
+    log = out / "events.jsonl"
+    append_event(log, event(1))
+    scanned = threading.Event()
+    published = threading.Event()
+
+    def finish_run():
+        assert scanned.wait(timeout=2)
+        if rotate:
+            log.rename(out / "events-000001.jsonl")
+        append_event(log, event(2))
+        write(out / "exit.json", {"verdict": "other", "rc": 0})
+        published.set()
+
+    original = Queue.events
+
+    def scan_then_publish(self, *args):
+        result = original(self, *args)
+        scanned.set()
+        assert published.wait(timeout=2)
+        return result
+
+    queue = Queue(settings)
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        writer = worker.submit(finish_run)
+        with monkeypatch.context() as patch:
+            patch.setattr(Queue, "events", scan_then_publish)
+            queue.observe()
+        writer.result(timeout=2)
+    assert not queue.db.execute("SELECT run FROM finished").fetchall()
+    queue.close()
+    queue = Queue(settings)
+    queue.observe()
+    queue.observe()
+    assert pending(queue) == 3 and queue.drain()
+    rows = json.loads((settings.home / "delivered").read_text())["reviews"]
+    assert [(row["verdict"], row["active_objective_revision"]) for row in rows] == [
+        ("objective_done", 1), ("objective_done", 2), ("other", None),
+    ]
+    assert queue.db.execute("SELECT run FROM finished").fetchall() == [(out.name,)]
+    queue.close()
+
+
+def test_final_scan_backpressure_defers_finished_receipt(settings):
+    queue = Queue(replace(settings, queue_limit=1))
+    out = settings.home / "runs/live-0001"
+    append_event(out / "events.jsonl", event(1))
+    append_event(out / "events.jsonl", event(2))
+    write(out / "exit.json", {"verdict": "other", "rc": 0})
+    for _ in range(2):
+        queue.observe()
+        assert not queue.db.execute("SELECT run FROM finished").fetchall()
+        assert queue.drain()
+    queue.observe()
+    assert queue.db.execute("SELECT run FROM finished").fetchall() == [(out.name,)]
+    assert queue.drain()
+    assert len((settings.home / "delivered").read_text().splitlines()) == 3
     queue.close()
 
 

@@ -241,7 +241,8 @@ class Queue:
                     if not budget:
                         return False
             except FileNotFoundError:
-                continue  # Rename between listing and open: retry next poll.
+                if path.name != "events.jsonl":
+                    return False  # Rename between listing and open: retry next poll.
         return True
 
     def observe(self):
@@ -253,14 +254,15 @@ class Queue:
             run_id = out.name
             if self.db.execute("SELECT 1 FROM finished WHERE run=?", (run_id,)).fetchone():
                 continue
-            if not self.events(out, run_id):
-                continue
             record = read_json(out / "exit.json")
             # A dead child's supervisor owns final publication. Only synthesize a review if
             # both are dead; never race the supervisor's final owner_review classification.
             orphan = metadata.get("run_id") == run_id and metadata.get("status") == "running" and (
                 not alive(metadata.get("pid")) and not alive(metadata.get("supervisor_pid"))
             )
+            # Final publication must precede the scan that authorizes a finished receipt.
+            if not self.events(out, run_id):
+                continue
             if record is not None or orphan:
                 name = record.get("verdict") if record else None
                 name = name if isinstance(name, str) and name in VERDICTS else None
