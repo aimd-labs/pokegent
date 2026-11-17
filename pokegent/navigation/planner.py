@@ -105,6 +105,25 @@ class NavigationPlanner:
             blocked_choice_step=_choice_step(blocked.route),
         )
 
+    def plan_next_decision(
+        self,
+        start: NavigationNode,
+        target: NavigationTarget,
+        capabilities: CapabilityState = CapabilityState(),
+        *,
+        live: MapState | None = None,
+        limit: int = 250_000,
+    ) -> NavigationPlan | None:
+        """Expose the bounded current-map decision search for the no-route case.
+
+        ``plan`` runs this fallback automatically when a search proves there is no route
+        (the Mt Moon fossil shape).  Wild- and training-target entry points
+        (``plan_to_maps`` / ``plan_to_tiles``) return no-route plans directly, and the
+        adapter calls this to give the agent the next decision step instead of an empty
+        frame when nothing on the way is reachable yet.
+        """
+        return self._choice_frontier(start, target, capabilities, live=live, limit=limit)
+
     def _choice_frontier(
         self,
         start: NavigationNode,
