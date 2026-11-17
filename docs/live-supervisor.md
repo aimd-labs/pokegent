@@ -9,6 +9,8 @@ Create a private data directory containing `run.yaml` and `current.state`. The l
 **text pointer** containing the absolute path of a reviewed, nonempty initial savestate, followed
 by a newline. It is not the save itself. The runner performs native/ROM/RAM validation before
 input. Never bootstrap the pointer by choosing an older save to bypass a validation failure.
+The supervisor always passes `--no-state-fallback` so startup refuses a rejected selected save;
+standalone `pokegent run` retains checkpoint fallback unless this flag is supplied.
 
 ```sh
 env CODE=/path/to/pokegent PY=/path/to/pokegent/.venv/bin/python \

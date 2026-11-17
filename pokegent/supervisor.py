@@ -143,7 +143,8 @@ class Supervisor:
     def command(self, state: Path, run_id: str, out: Path) -> list[str]:
         s = self.settings
         args = [
-            s.runner, "run", "--state", str(state), "--config", str(s.config),
+            s.runner, "run", "--state", str(state), "--no-state-fallback",
+            "--config", str(s.config),
             "--objective", str(s.objective), "--on-objective-done", "hold",
             "--decider", s.decider, "--max-steps", str(s.max_steps),
             "--run-id", run_id, "--out", str(out),

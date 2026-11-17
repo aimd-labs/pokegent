@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,6 +30,7 @@ for key in ("state", "config", "objective", "on-objective-done", "decider", "max
             "run-id", "out", "viewer-port", "objective-plan"):
     p.add_argument("--" + key)
 p.add_argument("--allow-remote", action="store_true")
+p.add_argument("--no-state-fallback", action="store_true")
 a = p.parse_args()
 home = Path(os.environ["LIVE_HOME"])
 out = Path(a.out)
@@ -153,6 +155,7 @@ def test_two_segments_continuity_and_explicit_config(live):
     assert second["state"] == str(Path(first["out"]) / "final.state")
     assert second["input"] == first["run_id"]
     assert first["on_objective_done"] == "hold"
+    assert first["no_state_fallback"]
     assert first["viewer_port"] == "19701" and first["allow_remote"]
     assert first["objective_plan"] == str(plan) and first["decider"] == "first"
     metadata = load(home / "live-run.json")
@@ -436,3 +439,53 @@ def test_invalid_environment_fails_before_launch(tmp_path, monkeypatch, name, va
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError):
         Settings.from_env()
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+def test_native_strict_startup_does_not_load_older_checkpoint(tmp_path, monkeypatch, fallback):
+    from pokegent import app
+    from pokegent.games.gen3.firered.reader import live as reader
+
+    requested = tmp_path / "final.state"
+    requested.write_text("rejected synthetic state")
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    (checkpoints / "ckpt-0000001.state").write_text("valid synthetic checkpoint")
+    loaded = []
+    actor = SimpleNamespace(load_state=lambda path: loaded.append(Path(path).name))
+    monkeypatch.setattr(reader, "LiveReader", lambda *_: SimpleNamespace(
+        after_state_load=lambda stem: SimpleNamespace(ok=stem != "final", conformance={}),
+    ))
+
+    def reached_runner(**kwargs):
+        raise RuntimeError("runner reached after checkpoint")
+
+    monkeypatch.setattr(app, "build_runner", reached_runner)
+    error = RuntimeError if fallback else app.StateRefused
+    message = "runner reached" if fallback else "no valid state"
+    with pytest.raises(error, match=message):
+        app.play_state(
+            actor, None, requested, config=app.AppConfig(), decider=None, decider_name="first",
+            facts=None, events=None, **({} if fallback else {"state_fallback": False}),
+        )
+    assert loaded == (["final.state", "ckpt-0000001.state"] if fallback else ["final.state"])
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_run_cli_forwards_state_fallback_flag(tmp_path, monkeypatch, strict):
+    from pokegent import app, cli
+
+    forwarded = {}
+
+    def run(**kwargs):
+        forwarded.update(kwargs)
+        return SimpleNamespace(exit_code=0)
+
+    monkeypatch.setattr(app, "run_offline", run)
+    config = tmp_path / "run.yaml"
+    config.write_text("{}")
+    command = ["run", "--state", str(tmp_path / "synthetic.state"), "--config", str(config)]
+    with pytest.raises(SystemExit) as ended:
+        cli.main(command + (["--no-state-fallback"] if strict else []))
+    assert ended.value.code == 0
+    assert forwarded["state_fallback"] is not strict
