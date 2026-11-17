@@ -79,13 +79,36 @@ def _route(*, blocked: bool = True, arrival=ARRIVAL) -> tuple[NavigationEdge, ..
 
 
 def _dead_end_route() -> tuple[NavigationEdge, ...]:
-    """A fossil on the only path, but the target map is past it and disconnected.
+    """A fossil on the only path, but the target map is disconnected past it.
 
-    This is the live shape: the planner cannot produce a route at all, so the frame used to
-    be empty.  The decision is still the next thing the agent must do.
+    Both searches explore the whole reachable area and find no route, so the frame used to be
+    empty. The decision is still the next thing the agent must do.
     """
-    walk, fossil, warp = _route()
+    walk, fossil, _warp = _route()
     return (walk, fossil)
+
+
+def _unrelated_fossil_route() -> tuple[NavigationEdge, ...]:
+    """A reachable fossil choice that does not lead to the target at all.
+
+    The fossil exits toward a third map; nothing connects to the target map. The no-route
+    fallback still names the decision, but it must not claim it serves the objective.
+    """
+    return (
+        NavigationEdge("walk:11:8", START, APPROACH, "walk", 4),
+        NavigationEdge(
+            "fossil:2",
+            APPROACH,
+            FOSSIL_TILE,
+            "field_move",
+            6,
+            (FOSSIL_REQUIREMENT,),
+            executor_target=(("kind", "obstacle"), ("role", "fossil"), ("local_id", 2)),
+        ),
+        NavigationEdge(
+            "warp:61:1", FOSSIL_TILE, NavigationNode(1, 61, 1, 1), "warp", 2
+        ),
+    )
 
 
 def _fossil_option() -> Option:
@@ -300,12 +323,42 @@ def test_no_route_plan_advertises_the_fossil_through_plan_and_annotate():
     assert annotated is plan
     assert facts["fossil:2"]["next_route_step"] is True
     assert facts["fossil:2"]["route_step"] is True
-    assert facts["fossil:2"]["on_route"] is True
-    assert facts["fossil:2"]["serves_goal"] is True
     assert facts["fossil:2"]["route_needs"] == ["fossil"]
     assert facts["fossil:2"]["blocked_choice"] == "fossil:2"
     assert "no_route" not in facts["fossil:2"]
+    # No route to the target is known, so the step must not claim it serves the objective.
+    assert "serves_goal" not in facts["fossil:2"]
+    assert "on_route" not in facts["fossil:2"]
     # The way back out is legal, but it is not the route step.
     assert facts["warp:1:3:1"]["no_route"] is True
     assert "next_route_step" not in facts["warp:1:3:1"]
     assert plan.blocked_choice_step == "fossil:2"
+
+
+def test_fully_explored_unrelated_target_names_the_decision_without_claiming_it():
+    """The blocked search always completes here: the fossil does not lead to the target.
+
+    The decision is still the only actionable step, but the frame must not advertise it as
+    serving the objective or as being on its route.
+    """
+    graph = _FakeGraph(
+        _unrelated_fossil_route(), names={(1, 59): "MtMoon_B2F", (1, 60): "MtMoon_B1F"}
+    )
+    adapter = NavigationAdapter(graph)
+
+    plan = adapter.plan(_snapshot(), _resolved())
+
+    assert plan is not None
+    assert plan.cost is None
+    assert plan.route == ()
+    assert plan.blocked_choice_step == "fossil:2"
+
+    options, _ = adapter.annotate(
+        [_fossil_option(), _exit_option()], _snapshot(), _resolved(), plan=plan
+    )
+    facts = {option.id: option.facts for option in options}
+
+    assert facts["fossil:2"]["next_route_step"] is True
+    assert facts["fossil:2"]["blocked_choice"] == "fossil:2"
+    assert "serves_goal" not in facts["fossil:2"]
+    assert "on_route" not in facts["fossil:2"]

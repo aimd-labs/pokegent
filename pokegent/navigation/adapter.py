@@ -550,16 +550,14 @@ class NavigationAdapter:
                 facts = dict(option.facts)
                 key = self._option_key(option) or option.id
                 if plan.blocked_choice_step is not None and key == plan.blocked_choice_step:
-                    # The route exists only through a decision (the fossil choice), so the
-                    # option that takes it is the step even though the search returned no
-                    # path: nothing else can unblock it and the agent decides.
+                    # No route is known, but this decision is the step toward finding one.
+                    # ``serves_goal`` and ``on_route`` stay unset: the target may be unrelated
+                    # or unreachable through this step, and the frame must not claim otherwise.
                     facts.update(
                         {
                             "route_relation": "next route step",
                             "route_step": True,
                             "next_route_step": True,
-                            "on_route": True,
-                            "serves_goal": True,
                             "route_needs": list(plan.unmet),
                             "blocked_choice": plan.blocked_choice_step,
                             **(

@@ -469,10 +469,12 @@ the decision ("no route known to …; next decision: fossil at …"). No route i
 is the only known next decision.
 
 The adapter advertises the option that performs that edge with `route_relation: next route step`,
-`route_step` / `next_route_step`, `on_route` and `serves_goal: true`. The no-route plan also
-carries `route_needs` and `blocked_choice` on that option; on a route-present plan those two facts
-are not set and the ordinary `route_blocked` / `route_cost` facts apply. Every other option keeps
-the ordinary `no_route` / `unreachable` facts. This changes no executor, no legality and no
+`route_step` / `next_route_step`. The no-route plan also carries `route_needs` and
+`blocked_choice` on that option; on a route-present plan those two facts are not set and the
+ordinary `route_blocked` / `route_cost` facts apply. The no-route step does **not** carry
+`serves_goal` or `on_route`: no route to the objective is known, so the frame must not claim the
+decision serves it (the target may be unrelated or unreachable through it). Every other option
+keeps the ordinary `no_route` / `unreachable` facts. This changes no executor, no legality and no
 requirement: the edge is still unmet, the step is simply visible as the next decision. The option
 keeps its own facts, so a fossil option stays `irreversible` with `risk: high`; handing an
 irreversible pick to the agent is the hybrid irreversible gate, not part of this contract.
