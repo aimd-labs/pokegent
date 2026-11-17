@@ -72,6 +72,10 @@ supplying either is an error because escalated decisions wait for the agent inde
 
 ## Graceful stop
 
+For continuous segment chaining, state continuity and process-manager configuration, see
+[the live supervisor](live-supervisor.md). Its environment configuration does not replace this
+per-run YAML schema.
+
 `run.graceful_stop_timeout_s` is the hard graceful-stop budget (default `10`). SIGINT, SIGTERM, or
 creation of `run.restart_file` cancels an in-flight System One HTTP request or external-decider
 wait, then stops before the next input and atomically writes the validated `final.state`. A restart
