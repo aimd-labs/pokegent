@@ -115,8 +115,22 @@ When a non-escalated override window expires, the decision is recorded as
 `decided_by: system1`. Completion events identify `system1` or `agent`.
 
 A System One pick that the frame's facts mark as off the objective is not followed when the
-frame names exactly one next route step: the hybrid decider replaces the pick with that step and
-does not call the agent lane (`vetoed_by: route_step` in the status; the served frame keeps
-System One's actual pick under `system1`). A frame that names more than one candidate route step
-is ambiguous and escalates with `escalation_reason: multiple_route_steps`. An on-route pick and
-a frame without an objective are unchanged.
+frame names exactly one next route step and the pick is a navigation target (a warp, edge, fly,
+door, ladder or tile walk): the hybrid decider replaces the pick with that step and does not call
+the agent lane (`vetoed_by: route_step` in the status). The replacement is the planner's step,
+not a System One answer, so it carries no confidence; the served frame keeps System One's actual
+pick, and the served metadata (`vetoed_by`, `vetoed_option`) and completion event keep its
+`option_id` and `confidence`. An item, bicycle, NPC, heal or trainer pick is not a navigation
+choice and keeps the normal confidence gate even when it is off route. A frame that names more
+than one candidate route step is ambiguous and escalates with
+`escalation_reason: multiple_route_steps`. An on-route pick and a frame without an objective are
+unchanged.
+
+An option marked irreversible (the `irreversible` field, or `facts.irreversible` for families
+that carry the evidence there) is never applied on a System One pick: the frame always escalates
+to the agent, whatever the option's confidence and the scene threshold
+(`escalation_reason: irreversible_option`). This is checked against the post-veto choice, so a
+route-step replacement that is itself irreversible escalates instead of being applied; a single
+route step that is only high risk (a trainer battle on the way) is not applied either and
+escalates with `escalation_reason: high_risk_route_step`. An option that is not marked
+irreversible keeps the normal confidence gate.

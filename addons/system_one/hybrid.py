@@ -14,11 +14,26 @@ from pokegent.options.models import (
     ChoiceResult,
     DecisionFrame,
     Option,
+    Risk,
 )
 from pokegent.server import ExternalDecider
 
 #: Escalation reason used when more than one option claims the next route step.
 ROUTE_STEP_ESCALATION = "multiple_route_steps"
+
+#: Escalation reason used when System One's pick would confirm an irreversible action.
+IRREVERSIBLE_ESCALATION = "irreversible_option"
+
+#: Option-id prefixes that name a movement target the route can substitute for a pick.
+NAVIGATION_ID_PREFIXES = frozenset({"warp", "edge", "fly", "tile"})
+
+#: ``facts.target.kind`` values that name the same movement targets (doors and ladders are
+#: warp options). Everything else (items, bicycle, NPC, heal, trainer, dialog) is not a
+#: navigation choice, so its off-route marking never justifies a route-step replacement.
+NAVIGATION_TARGET_KINDS = frozenset({"warp", "edge", "fly", "tile"})
+
+#: Escalation reason used when the only route step is high risk but not irreversible.
+ROUTE_STEP_RISK_ESCALATION = "high_risk_route_step"
 
 
 def _off_route(option: Option) -> bool:
@@ -37,6 +52,43 @@ def _next_route_step(option: Option) -> bool:
         facts.get("next_route_step") is True
         or facts.get("route_step") is True
         or facts.get("route_relation") == "next route step"
+    )
+
+
+def _navigation(option: Option) -> bool:
+    """Whether this option is a movement target (warp, edge, fly, door, ladder, tile walk)."""
+    target = option.facts.get("target")
+    kind = target.get("kind") if isinstance(target, Mapping) else None
+    return (
+        option.id.split(":", 1)[0] in NAVIGATION_ID_PREFIXES
+        or kind in NAVIGATION_TARGET_KINDS
+    )
+
+
+def _irreversible(option: Option) -> bool:
+    """Whether the option's model fields or facts mark it irreversible.
+
+    The ``Option.irreversible`` flag needs prompt and effect text; families that carry the
+    evidence in ``facts`` (fossil choices, item use with a lasting effect) set it there.
+    """
+    return option.irreversible is True or option.facts.get("irreversible") is True
+
+
+def _route_step_choice(result: ChoiceResult, step: Option) -> ChoiceResult:
+    """The replacement choice for a route step.
+
+    The replacement is the planner's step, not a System One answer: it has no probability and
+    no confidence, and the vetoed claim stays in the caller's metadata instead of being
+    overwritten by a fabricated 1.0.
+    """
+    return result.model_copy(
+        update={
+            "option_id": step.id,
+            "probabilities": {},
+            "confidence": None,
+            "model_id": "route-step-veto",
+            "provider_id": "hybrid",
+        }
     )
 
 
@@ -167,8 +219,13 @@ class HybridDecider:
             system_error = exc
 
         system_claim = system_result
-        veto_result, veto_reason = self._route_step_veto(frame, system_result)
+        veto_result, veto_reason = self._route_step_veto(frame, system_claim)
+        # The choice that would actually be applied: the vetoed route step when there is one.
+        served = veto_result if veto_result is not None else system_claim
+        vetoed = veto_result is not None or veto_reason is not None
         confidence = system_claim.confidence if system_claim is not None else None
+        # Confidence is not evidence about an irreversible action; the post-veto choice decides.
+        irreversible = self._irreversible_choice(frame, served)
         health = getattr(self.system1, "health", None)
         circuit_open = False
         if callable(health):
@@ -184,18 +241,19 @@ class HybridDecider:
             system_claim is None
             or circuit_open
             or stuck
+            or irreversible
             or veto_reason is not None
             or (veto_result is None and (confidence is None or confidence <= threshold))
         )
         if not escalate and self.override_window_s <= 0:
             self.last_decision = {"decided_by": "system1", "escalated": False}
-            if veto_result is not None:
+            if vetoed and system_claim is not None:
                 self.last_decision.update(
                     vetoed_by="route_step",
                     system1_option_id=system_claim.option_id,
                     system1_confidence=confidence,
                 )
-            return veto_result if veto_result is not None else system_claim
+            return served
 
         metadata: dict[str, Any] = {
             "system1": {
@@ -213,6 +271,8 @@ class HybridDecider:
                 if system_error
                 else "circuit_open"
                 if circuit_open
+                else IRREVERSIBLE_ESCALATION
+                if irreversible
                 else veto_reason
                 if veto_reason is not None
                 else "low_confidence"
@@ -220,6 +280,14 @@ class HybridDecider:
                 else "system1_unavailable"
             ),
         }
+        if vetoed and system_claim is not None:
+            # The served frame records why System One's claim was not followed; the original
+            # claim stays in the ``system1`` block and in this explicit copy.
+            metadata["vetoed_by"] = "route_step"
+            metadata["vetoed_option"] = {
+                "option_id": system_claim.option_id,
+                "confidence": confidence,
+            }
         if system_claim is None and system_error is not None:
             metadata["escalation_reason"] = "system1_unavailable"
         if escalate and not force_agent and self._events is not None:
@@ -236,6 +304,14 @@ class HybridDecider:
                     "measured_ms": round((time.monotonic() - started) * 1000, 3),
                     "accepted": False,
                     "escalation_reason": metadata["escalation_reason"],
+                    **(
+                        {
+                            "vetoed_by": metadata["vetoed_by"],
+                            "vetoed_option": metadata["vetoed_option"],
+                        }
+                        if "vetoed_option" in metadata
+                        else {}
+                    ),
                 },
             )
         self.last_decision = {
@@ -243,11 +319,10 @@ class HybridDecider:
             "escalated": escalate,
             "escalation_reason": metadata["escalation_reason"],
         }
-        default_result = veto_result if veto_result is not None else system_claim
         result = self.external.offer(
             frame,
             metadata=metadata,
-            default=default_result if not escalate else None,
+            default=served if not escalate else None,
             wait_timeout=None if escalate else self.override_window_s,
             interruptible_wait=escalate,
         )
@@ -262,7 +337,7 @@ class HybridDecider:
                 system1_option_id=system_claim.option_id,
                 system1_confidence=system_claim.confidence,
             )
-        elif veto_result is not None and result.option_id == veto_result.option_id:
+        if vetoed and system_claim is not None:
             self.last_decision.update(
                 vetoed_by="route_step",
                 system1_option_id=system_claim.option_id,
@@ -282,17 +357,22 @@ class HybridDecider:
         the B2F ladder, so accepting it looped the agent in and out of the cave. When the
         claim is off route and the frame names exactly one next route step, that step
         replaces the claim (the model's confidence is not evidence about a different
-        option). Several candidate route steps are an ambiguity the facts do not resolve,
-        so the frame escalates (``ROUTE_STEP_ESCALATION``) instead of the veto choosing one.
-        An on-route claim, a frame without an objective or route facts and a choice outside
-        the frame are left unchanged.
+        option), and the replacement carries no confidence of its own. A single route step
+        that is irreversible goes to the caller's irreversible gate, and one that is only
+        high risk escalates (``ROUTE_STEP_RISK_ESCALATION``) rather than being applied.
+        Several candidate route steps are an ambiguity the facts do not resolve, so the frame
+        escalates (``ROUTE_STEP_ESCALATION``) instead of the veto choosing one. Only
+        navigation targets (warp, edge, fly, door, ladder, tile walk) are vetoed: an item,
+        bicycle, NPC, heal or trainer pick keeps the ordinary confidence gate even when it is
+        off route. An on-route claim, a frame without an objective or route facts and a choice
+        outside the frame are left unchanged.
         """
         if result is None or frame.goal_id is None:
             # No objective, no route to defend.
             return None, None
         chooseable = frame.chooseable()
         chosen = next((option for option in chooseable if option.id == result.option_id), None)
-        if chosen is None or not _off_route(chosen):
+        if chosen is None or not _navigation(chosen) or not _off_route(chosen):
             return None, None
         route_steps = [option for option in chooseable if _next_route_step(option)]
         if not route_steps or any(option.id == chosen.id for option in route_steps):
@@ -300,18 +380,30 @@ class HybridDecider:
         if len(route_steps) > 1:
             return None, ROUTE_STEP_ESCALATION
         step = route_steps[0]
-        return (
-            result.model_copy(
-                update={
-                    "option_id": step.id,
-                    "probabilities": {},
-                    "confidence": 1.0,
-                    "model_id": "route-step-veto",
-                    "provider_id": "hybrid",
-                }
-            ),
-            None,
+        if _irreversible(step):
+            # The caller's irreversible gate hands the replacement to the agent, with no
+            # default; the veto itself never applies a step that cannot be undone.
+            return _route_step_choice(result, step), None
+        if step.risk is Risk.HIGH:
+            # A high-risk step (a route trainer battle) is the agent's call, not a silent
+            # substitution for System One's off-route claim.
+            return None, ROUTE_STEP_RISK_ESCALATION
+        return _route_step_choice(result, step), None
+
+    @staticmethod
+    def _irreversible_choice(frame: DecisionFrame, result: ChoiceResult | None) -> bool:
+        """Whether System One's pick is an option marked irreversible.
+
+        Confidence is not evidence about an action that cannot be undone, so such a pick is
+        always handed to the agent instead of being applied; frames without an irreversible
+        pick are unchanged.
+        """
+        if result is None:
+            return False
+        chosen = next(
+            (option for option in frame.chooseable() if option.id == result.option_id), None
         )
+        return chosen is not None and _irreversible(chosen)
 
     def _agent_requested(self, frame_id: str, frame: DecisionFrame) -> None:
         if self._events is None:
