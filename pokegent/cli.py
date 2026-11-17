@@ -555,6 +555,7 @@ def cmd_run(args):
             autoplay=args.autoplay,
             external_walk_step_limit=args.external_walk_step_limit,
             new_game=args.new_game,
+            state_fallback=not args.no_state_fallback,
             hybrid_escalate_below_confidence=args.hybrid_escalate_below_confidence,
             hybrid_override_window_s=args.hybrid_override_window_s,
             system1_outage=args.system1_outage,
@@ -631,6 +632,10 @@ def main(argv=None):
     source = run_p.add_mutually_exclusive_group(required=True)
     source.add_argument("--state", help="savestate (*.state), read-only")
     source.add_argument("--new-game", action="store_true", help="cold boot and start a fresh game")
+    run_p.add_argument(
+        "--no-state-fallback", action="store_true",
+        help="refuse an invalid requested savestate without trying older checkpoints",
+    )
     run_p.add_argument(
         "--decider",
         choices=("agent", "system1", "hybrid", "first", "forced", "external"),

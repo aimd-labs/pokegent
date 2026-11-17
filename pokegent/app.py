@@ -1508,6 +1508,7 @@ def play_state(
     state_dir: str | os.PathLike[str] | None = None,
     state_log: Callable[[str], None] = print,
     stop_signals: StopSignals | None = None,
+    state_fallback: bool = True,
 ) -> tuple[RunnerApp, RunSummary, dict[str, Any]]:
     """Load one savestate into ``actor`` and run the router loop on it: a fresh app per state.
 
@@ -1520,7 +1521,7 @@ def play_state(
     requested = Path(state_path) if state_path is not None else None
     candidates = [requested] if requested is not None else []
     checkpoint_dir = requested.parent / "checkpoints" if requested is not None else None
-    if checkpoint_dir is not None:
+    if checkpoint_dir is not None and state_fallback:
         candidates.extend(sorted(checkpoint_dir.glob("ckpt-*.state"), reverse=True))
     path: Path | None = None
     failures: list[str] = []
@@ -1664,6 +1665,7 @@ def run_offline(
     autoplay: str | None = None,
     external_walk_step_limit: int | None = None,
     new_game: bool = False,
+    state_fallback: bool = True,
     log=print,
 ) -> RunReport:
     """Load ``state`` into a headless emulator and run the router loop for ``max_steps``.
@@ -1923,6 +1925,7 @@ def run_offline(
                     state_dir=out,
                     state_log=log,
                     stop_signals=stops,
+                    state_fallback=state_fallback,
                 )
                 if stops.forced:
                     doc["stop_reason"] = "forced_interrupt"
