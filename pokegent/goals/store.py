@@ -572,6 +572,22 @@ class ObjectiveStore:
     def _count_history(self) -> int:
         return len(self.history())
 
+    def _repair_history_tail(self, fd: int) -> None:
+        """Discard a crash/failed-write tail while holding the history writer lock."""
+        end = os.lseek(fd, 0, os.SEEK_END)
+        position = end
+        while position:
+            start = max(0, position - 4096)
+            os.lseek(fd, start, os.SEEK_SET)
+            chunk = os.read(fd, position - start)
+            newline = chunk.rfind(b"\n")
+            if newline >= 0:
+                position = start + newline + 1
+                break
+            position = start
+        if position != end:
+            os.ftruncate(fd, position)
+
     def _log(
         self,
         event: str,
@@ -582,21 +598,27 @@ class ObjectiveStore:
     ) -> bool:
         assert self.history_path is not None
         with self._lock, self._file_lock():
-            self._seq = self._count_history() + 1  # the file is the truth (other processes append)
-            entry = {
-                "seq": self._seq,
-                "at": self.clock().isoformat(),
-                "event": event,
-                "revision": revision,
-                "objective_id": objective_id if isinstance(objective_id, str) else None,
-                "reasons": [r.as_dict() for r in reasons],
-                "objective": objective if isinstance(objective, dict) else None,
-            }
-            line = json.dumps(entry, sort_keys=True, ensure_ascii=True, default=str) + "\n"
             try:
-                fd = os.open(self.history_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+                fd = os.open(self.history_path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)
                 try:
-                    os.write(fd, line.encode("ascii"))
+                    self._repair_history_tail(fd)
+                    self._seq = self._count_history() + 1  # other processes may have appended
+                    entry = {
+                        "seq": self._seq,
+                        "at": self.clock().isoformat(),
+                        "event": event,
+                        "revision": revision,
+                        "objective_id": objective_id if isinstance(objective_id, str) else None,
+                        "reasons": [r.as_dict() for r in reasons],
+                        "objective": objective if isinstance(objective, dict) else None,
+                    }
+                    line = json.dumps(entry, sort_keys=True, ensure_ascii=True, default=str) + "\n"
+                    pending = line.encode("ascii")
+                    while pending:
+                        written = os.write(fd, pending)
+                        if written <= 0:
+                            raise OSError("history write made no progress")
+                        pending = pending[written:]
                     os.fsync(fd)
                 finally:
                     os.close(fd)

@@ -275,6 +275,10 @@ The next decision is rebuilt from fresh perception. New revisions, including upd
 pending agent or hybrid choice, are adopted without stopping, signalling or restarting the runner.
 The old pending frame ID is rejected after refresh, and executor legality checks still apply.
 
+History records must be written in full and fsynced before a completion clear can remove the
+objective. A failed write preserves the file; the next history append discards any incomplete
+last line under the writer lock before retrying.
+
 Fresh completion authorizes clearing agent and operator objectives in this specific transition;
 manual clear requests still require the matching revision and operator authority for an operator
 objective. File writers must use `ObjectiveStore.propose()` (or serialize on `<file>.lock` and

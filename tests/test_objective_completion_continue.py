@@ -1,5 +1,6 @@
 """Synthetic objective lifecycle with real store, perception, executor and runner."""
 
+import json
 import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
@@ -319,6 +320,112 @@ def test_completion_cleanup_failure_keeps_same_runner_acting(harness, monkeypatc
     assert h.store.propose(objective(2, objective_id="second", amount=99)).accepted
     assert h.runner._iteration() is None
     assert h.seen[-1][0].objective_id == "second"
+
+
+def test_short_history_writes_finish_and_fsync_before_clear(tmp_path, monkeypatch):
+    store = ObjectiveStore(tmp_path / "objective.json")
+    payload = objective()
+    assert store.propose(payload).accepted
+    original_write, original_fsync, original_unlink = os.write, os.fsync, Path.unlink
+    synced = []
+
+    def short_write(fd, data):
+        return original_write(fd, data[:max(1, len(data) // 2)])
+
+    def fsync(fd):
+        result = original_fsync(fd)
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            synced.append(store.history_path.read_bytes())
+        return result
+
+    def unlink(path, *args, **kwargs):
+        if path == store.path:
+            assert json.loads(synced[-1].splitlines()[-1])["event"] == "completion_cleared"
+        return original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "write", short_write)
+        patch.setattr(os, "fsync", fsync)
+        patch.setattr(Path, "unlink", unlink)
+        assert store.commit_completion(objective_id="first", expected_revision=1,
+                                       clear_completed=True)
+    assert [row["event"] for row in store.history()] == ["accepted", "completed",
+                                                       "completion_cleared"]
+    assert not store.path.exists()
+    atomic_write_json(store.path, payload)
+    assert ObjectiveStore(store.path).current() is None
+
+
+@pytest.mark.parametrize("failure", ["zero_write", "write_error", "fsync_error"])
+@pytest.mark.parametrize("event", ["completed", "completion_cleared"])
+def test_incomplete_history_clear_preserves_file_and_retry_repairs_tail(tmp_path, monkeypatch,
+                                                                     failure, event):
+    store = ObjectiveStore(tmp_path / "objective.json")
+    payload = objective()
+    assert store.propose(payload).accepted
+    original_write, original_fsync = os.write, os.fsync
+    clearing = False
+
+    def write(fd, data):
+        nonlocal clearing
+        if clearing and failure != "fsync_error":
+            if failure == "zero_write":
+                return 0
+            raise OSError("synthetic storage exhaustion")
+        if f'"event": "{event}"'.encode("ascii") in data:
+            clearing = True
+            if failure != "fsync_error":
+                return original_write(fd, data[:len(data) // 2])
+        return original_write(fd, data)
+
+    def fsync(fd):
+        if clearing and failure == "fsync_error":
+            raise OSError("synthetic history fsync failure")
+        return original_fsync(fd)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "write", write)
+        patch.setattr(os, "fsync", fsync)
+        assert not store.commit_completion(objective_id="first", expected_revision=1,
+                                           clear_completed=True)
+    assert store.path.exists() and store.current().objective_id == "first"
+    assert store.last_warning().code == "history_unwritable"
+
+    if failure != "fsync_error":
+        assert not store.history_path.read_bytes().endswith(b"\n")
+        store = ObjectiveStore(store.path)  # repair must survive a writer restart as well
+    assert store.commit_completion(objective_id="first", expected_revision=1, clear_completed=True)
+    rows = [json.loads(line) for line in store.history_path.read_bytes().splitlines()]
+    assert [row["seq"] for row in rows] == list(range(1, len(rows) + 1))
+    assert sum(row["event"] == "completed" for row in rows) == 1
+    assert rows[-1]["event"] == "completion_cleared"
+    assert not store.path.exists()
+    atomic_write_json(store.path, payload)
+    assert ObjectiveStore(store.path).current() is None
+
+
+@pytest.mark.parametrize("tail_size", [1, 9000])
+def test_history_retry_truncates_only_partial_tail_under_writer_lock(tmp_path, monkeypatch,
+                                                                  tail_size):
+    store = ObjectiveStore(tmp_path / "objective.json")
+    assert store.propose(objective()).accepted
+    prefix = store.history_path.read_bytes()
+    with store.history_path.open("ab") as handle:
+        handle.write(b"x" * tail_size)
+    original_truncate = os.ftruncate
+    repaired = []
+
+    def truncate(fd, size):
+        assert store._lock_depth > 0
+        repaired.append(size)
+        return original_truncate(fd, size)
+
+    monkeypatch.setattr(os, "ftruncate", truncate)
+    assert store.commit_completion(objective_id="first", expected_revision=1, clear_completed=True)
+    assert repaired == [len(prefix)]
+    assert store.history_path.read_bytes().startswith(prefix)
+    rows = [json.loads(line) for line in store.history_path.read_bytes().splitlines()]
+    assert [row["event"] for row in rows] == ["accepted", "completed", "completion_cleared"]
 
 
 def test_config_supports_continue_and_preserves_default():
