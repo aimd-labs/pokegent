@@ -1,8 +1,10 @@
 """Synthetic objective lifecycle with real store, perception, executor and runner."""
 
 import os
+import stat
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
 from threading import Barrier
 from types import SimpleNamespace
 
@@ -274,6 +276,49 @@ def test_history_failure_does_not_clear_without_durable_record(harness, monkeypa
     monkeypatch.setattr(h.store, "_log", lambda *args: False)
     h.runner._objective_observe(h.runner._perceive())
     assert h.store.current() is not None and h.store.path.exists()
+
+
+@pytest.mark.parametrize("failure", ["unlink", "directory_fsync"])
+def test_completion_cleanup_failure_keeps_same_runner_acting(harness, monkeypatch, failure):
+    h = harness()
+    identity = (h.runner, h.actor, h.perceiver, h.viewer)
+    assert h.runner._iteration() is None
+    original_unlink, original_fsync = Path.unlink, os.fsync
+
+    def unlink(path, *args, **kwargs):
+        if path == h.store.path:
+            raise PermissionError("synthetic objective unlink failure")
+        return original_unlink(path, *args, **kwargs)
+
+    def fsync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("synthetic directory fsync failure")
+        return original_fsync(fd)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", unlink if failure == "unlink" else original_unlink)
+        patch.setattr(os, "fsync", fsync if failure == "directory_fsync" else original_fsync)
+        assert h.runner._iteration() is None
+        assert h.runner._iteration() is None
+
+    assert identity == (h.runner, h.actor, h.perceiver, h.viewer)
+    assert h.state.actions >= 2 and all(r.verified_outcome is True for r in h.results)
+    assert h.session.objective is None
+    assert all(obj is None and not frame.goal_id for obj, frame in h.seen[1:])
+    assert h.store.current() is None and h.store.revision() == 1
+    assert any(w.code == "completion_cleanup_failed" and w.revision == 1
+               for w in h.store.warnings)
+    assert h.store.path.exists() is (failure == "unlink")
+    assert not h.runner.stop_event.is_set()
+    assert not h.events.of_type(EventType.RUNTIME_STOPPED)
+
+    # The cached goal and a fresh store both reject a leftover/restored retired file.
+    atomic_write_json(h.store.path, objective())
+    assert h.store.current() is None
+    assert ObjectiveStore(h.store.path).current() is None
+    assert h.store.propose(objective(2, objective_id="second", amount=99)).accepted
+    assert h.runner._iteration() is None
+    assert h.seen[-1][0].objective_id == "second"
 
 
 def test_config_supports_continue_and_preserves_default():

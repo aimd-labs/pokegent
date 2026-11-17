@@ -485,7 +485,17 @@ class ObjectiveStore:
                     "completion_cleared", active.revision, active.objective_id, (), None
                 ):
                     return False
-                self._remove_active()
+                try:
+                    self._remove_active()
+                except OSError as exc:
+                    # The durable tombstone retires the goal even if file cleanup failed.
+                    self._active = _Active()
+                    self._signature = None
+                    self._missing_noted = True
+                    self._warn(
+                        "completion_cleanup_failed", f"{type(exc).__name__}: {exc}",
+                        active.revision,
+                    )
             return True
 
     def _remove_active(self) -> None:
