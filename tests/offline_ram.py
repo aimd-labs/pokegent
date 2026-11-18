@@ -99,6 +99,13 @@ def inventory(directory):
             for path in directory.rglob("*") if path.is_file()}
 
 
+def malformed_field_profile(profile_path, field):
+    document = yaml.safe_load(profile_path.read_text())
+    block = document["layouts"]["invented"]["structs"]["SaveBlock1"]
+    block["fields"][field].update(offset=block["size"] - 1, size=1)
+    profile_path.write_text(yaml.safe_dump(document))
+
+
 def run_tool(name, args, tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir(exist_ok=True)

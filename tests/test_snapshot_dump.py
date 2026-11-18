@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from offline_ram import inventory, run_tool, synthetic_inputs
+from offline_ram import inventory, malformed_field_profile, run_tool, synthetic_inputs
 
 from tools import snapshot_dump as tool
 
@@ -86,3 +86,24 @@ def test_subprocess_outside_checkout(inputs, tmp_path, bad):
     assert json.loads(result.stdout)["snapshot"]["health"]["valid"] is not bad
     result = run_tool("snapshot_dump.py", ["--ram-image", tmp_path / "missing.state"], tmp_path)
     assert result.returncode == 2 and not result.stdout
+
+
+@pytest.mark.parametrize("subprocess_mode", [False, True])
+@pytest.mark.parametrize("field", ["money", "location"])
+def test_malformed_profile_field_width(inputs, tmp_path, capsys, subprocess_mode, field):
+    malformed_field_profile(inputs[3], field)
+    before = inventory(tmp_path)
+    args = ["--ram-image", str(inputs[1]), "--profile", "synthetic"]
+    if subprocess_mode:
+        result = run_tool("snapshot_dump.py", args, tmp_path)
+        code, out, err = result.returncode, result.stdout, result.stderr
+    else:
+        code = tool.main(args)
+        output = capsys.readouterr()
+        out, err = output.out, output.err
+    assert code == 2 and out == ""
+    message = "unpack_from" if field == "money" else "index out of range"
+    assert err.startswith("error:") and message in err
+    assert len(err) < 420 and "Traceback" not in err
+    # run_tool creates its outside cwd before comparing all sibling files.
+    assert inventory(tmp_path) == before

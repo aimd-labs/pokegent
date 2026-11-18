@@ -4,7 +4,7 @@ import json
 import struct
 
 import pytest
-from offline_ram import inventory, run_tool, synthetic_inputs
+from offline_ram import inventory, malformed_field_profile, run_tool, synthetic_inputs
 
 from pokegent.games.gen3.firered.rom.conformance import MGBA_STATE_EWRAM_OFFSET
 from tools import ram_conformance as tool
@@ -122,3 +122,23 @@ def test_saved_party_mismatch_remains_informational(inputs, monkeypatch, capsys)
     monkeypatch.setattr(tool, "run_state_dir", lambda *a, **kw: report)
     assert tool.main(["--states", str(inputs[0]), "--profile", "synthetic"]) == 0
     assert json.loads(capsys.readouterr().out) == report
+
+
+@pytest.mark.parametrize("subprocess_mode", [False, True])
+@pytest.mark.parametrize("field", ["money", "location"])
+def test_malformed_profile_field_width(inputs, tmp_path, capsys, subprocess_mode, field):
+    malformed_field_profile(inputs[3], field)
+    before = inventory(tmp_path)
+    args = ["--states", str(inputs[0]), "--profile", "synthetic"]
+    if subprocess_mode:
+        result = run_tool("ram_conformance.py", args, tmp_path)
+        code, out, err = result.returncode, result.stdout, result.stderr
+    else:
+        code = tool.main(args)
+        output = capsys.readouterr()
+        out, err = output.out, output.err
+    assert code == 2 and out == ""
+    message = "unpack_from" if field == "money" else "index out of range"
+    assert err.startswith("error:") and message in err
+    assert len(err) < 420 and "Traceback" not in err
+    assert inventory(tmp_path) == before

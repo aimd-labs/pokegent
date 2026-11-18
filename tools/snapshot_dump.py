@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import struct
 import sys
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         port = load_mgba_state_ram(args.ram_image)
         snapshot = FireRedReader(port, profile, party_source=args.party_source).read_snapshot()
     except (OSError, StateFormatError, ProfileError, ValueError, KeyError,
-            TypeError, AttributeError) as exc:
+            TypeError, AttributeError, struct.error, IndexError) as exc:
         # Profile parsing can also reject malformed YAML shapes/field layouts.
         message = " ".join(str(exc).split())[:400]
         print(f"error: {message}", file=sys.stderr)

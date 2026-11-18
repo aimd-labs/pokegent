@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import struct
 import sys
 from pathlib import Path
 
@@ -49,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         if not report["tested"]:
             raise ValueError("no states tested")
     except (OSError, StateFormatError, ProfileError, ValueError, KeyError,
-            TypeError, AttributeError, NotImplementedError) as exc:
+            TypeError, AttributeError, NotImplementedError, struct.error, IndexError) as exc:
         message = " ".join(str(exc).split())[:400]
         print(f"error: {message}", file=sys.stderr)
         return 2
