@@ -730,6 +730,16 @@ class Runner:
             and self._hybrid_recovery_decisions >= self.config.no_progress_limit
         ):
             return self._report_no_progress("agent recovery window exhausted", perception.frame)
+        # Loop detection is INDEPENDENT of progressed: a warp ping changes position on every
+        # step (progressed=True) yet is a closed client loop.  Surface it as a stall even though
+        # the semantic signature resets the window each step (issue #35).
+        if (
+            not (self.objectives is not None and self.objectives.done)
+            and self._progress_tracks_scene(perception.scene.scene_id)
+        ):
+            loop_due = self._progress.loop_reason()
+            if loop_due is not None:
+                return self._report_no_progress(loop_due, perception.frame)
         if (
             not progressed
             and not (self.objectives is not None and self.objectives.done)
@@ -1784,6 +1794,7 @@ class Runner:
                     or result.progressed is True
                     or self._interrupted_by_battle(result)
                 ),
+                option_id=option_id,
             )
         self._record_dialog_block(frame, option_id, result, source=source)
         self._record_result(frame, option_id, result)
