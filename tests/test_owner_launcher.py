@@ -340,3 +340,108 @@ def test_wrong_owner_and_root_fail_before_launch(owner, monkeypatch):
 def test_invalid_manifest_is_rejected(config):
     with pytest.raises(ValueError):
         build(config, synthetic_test=True)
+
+
+@pytest.fixture
+def status_owner(owner, tmp_path):
+    config, record = owner
+    adapter = tmp_path / "owner_status.py"
+    adapter.write_text("# reviewed single-file adapter\n")
+    bootstrap = (
+        "import os, sys, runpy; "
+        "os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); "
+        "os.environ.pop('VIRTUAL_ENV', None); "
+        f"sys.path.insert(0, {config['agent_runtime']!r}); "
+        "sys._hermes_pin_default_home = True; import hermes_bootstrap; "
+        "os.environ.get('HERMES_HOME') or os.environ.__setitem__('HERMES_HOME', "
+        "str(__import__('hermes_constants').get_default_hermes_root())); "
+        "runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)"
+    )
+    config.update(status_adapter=str(adapter), resume="always",
+                  resume_args=["--resume", "exact_session"],
+                  native_runtime_command=[config["agent_command"][0], "-I", "-c", bootstrap])
+    config["agent_command"] += ["--profile", "example-profile", "--no-restore-cwd"]
+    return config, record
+
+
+def test_native_status_launch_preserves_profile_resume_and_import_closure(status_owner, tmp_path):
+    config, record = status_owner
+    result = invoke(config, tmp_path)
+    assert result.returncode == 0, result.stderr
+    recorded = json.loads(record.read_text())
+    args = recorded["argv"]
+    command = args[args.index("--") + 1:]
+    assert command[:3] == config["native_runtime_command"][:3]
+    assert command[3] == config["native_runtime_command"][3].replace(
+        "runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)",
+        f"runpy.run_path({config['status_adapter']!r}, run_name='__main__')")
+    assert command[4:] == config["agent_command"][1:] + config["resume_args"]
+    assert ["--ro-bind", config["status_adapter"], config["status_adapter"]] == args[
+        args.index(config["status_adapter"]) - 1:args.index(config["status_adapter"]) + 2]
+    env = {args[i + 1]: args[i + 2] for i, a in enumerate(args) if a == "--setenv"}
+    assert env["POKEGENT_OWNER_SESSION"] == "exact_session"
+    assert env["HERMES_PROFILE"] == "example-profile"
+    assert env["HERMES_HOME"] == config["profile"]
+    assert json.loads(env["POKEGENT_OWNER_CODE_ROOTS"]) == [config["agent_runtime"],
+        next(m["path"] for m in config["mounts"] if m["role"] == "runtime")]
+    assert "PYTHONPATH" not in env
+    assert recorded["env"] == {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+
+
+@pytest.mark.parametrize("broken", ["auto", "latest", "missing", "entry", "flags", "python",
+                                   "writable_adapter", "duplicate", "closure"])
+def test_status_launch_prerequisites_refuse_before_child(status_owner, tmp_path, broken):
+    config, record = status_owner
+    if broken == "auto":
+        config["resume"] = "auto"
+    elif broken == "latest":
+        config["resume_args"][1] = "latest"
+    elif broken == "missing":
+        config.pop("resume_args")
+    elif broken == "entry":
+        config["native_runtime_command"][3] += "; arbitrary_code()"
+    elif broken == "flags":
+        config["native_runtime_command"][1] = "-E"
+    elif broken == "python":
+        config["native_runtime_command"][0] = config["bwrap"]
+    elif broken == "duplicate":
+        config["agent_command"] += ["--resume", "other"]
+    elif broken == "writable_adapter":
+        new = Path(config["repo"]) / "owner_status.py"
+        new.write_text("# writable")
+        config["status_adapter"] = str(new)
+    else:
+        # Even mode 0555 is owner-replaceable; protection is an operator prerequisite.
+        with pytest.raises(ValueError, match="protected from the owner"):
+            launcher["protected_tree"](Path(config["agent_runtime"]), [])
+        return
+    result = invoke(config, tmp_path)
+    assert result.returncode == 2 and not record.exists()
+
+
+def test_operator_protected_status_adapter_and_runtime_closure(protected_layout, tmp_path):
+    config, _, manifest, protected, _, _ = protected_layout
+    adapter = tmp_path / "operator/owner_status.py"
+    adapter.write_text("# single reviewed file")
+    # Capture the exact supported bootstrap shape from a synthetic native command, never run it.
+    root = config["agent_runtime"]
+    bootstrap = (
+        "import os, sys, runpy; "
+        "os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); "
+        "os.environ.pop('VIRTUAL_ENV', None); "
+        f"sys.path.insert(0, {root!r}); "
+        "sys._hermes_pin_default_home = True; import hermes_bootstrap; "
+        "os.environ.get('HERMES_HOME') or os.environ.__setitem__('HERMES_HOME', "
+        "str(__import__('hermes_constants').get_default_hermes_root())); "
+        "runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)"
+    )
+    config.update(status_adapter=str(adapter), resume="always",
+                  resume_args=["--resume", "exact_session"],
+                  native_runtime_command=[config["agent_command"][0], "-I", "-c", bootstrap])
+    protected.add(adapter)
+    for directory in [Path(root), *[Path(m["path"]) for m in config["mounts"]
+                                   if m["role"] == "runtime"]]:
+        protected.update((directory, *directory.parents, *directory.rglob("*")))
+    command = build(config, manifest=manifest)
+    assert command[-2:] == ["--resume", "exact_session"]
+    assert "runpy.run_path(" in command[-4]

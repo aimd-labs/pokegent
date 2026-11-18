@@ -205,3 +205,95 @@ agent instruction loading, and verify latest-session resumption before live cuto
 unsandboxed launchers and remove their active PATH entries during that separately approved rollout.
 Do not reset a profile, migrate a live save, restart a stream or run a real credential probe as part
 of these synthetic checks. Unknown legality and the one-emulator/one-writer invariant remain in force.
+
+## Optional native owner status and progress heartbeat
+
+`ops/hermes/owner_status.py` is a single-file, process-local OSC 7501 adapter for the inspected
+classic Hermes TUI. It changes no installed Hermes/Core files or provider configuration. It
+reports working at input admission/dispatch, blocked across overlapping approval/question/auth
+callbacks, and error on failed or uncertain turns. It reports idle only after native idle
+housekeeping, initial rendering and session validation, with no command, modal, local/gateway
+queue, held input, continuation or living turn worker. A still-running interrupted worker prevents
+idle. Neither chat return, first render nor process exit alone reports idle. Unchanged status is
+not re-emitted, preserving Core's idle epoch. Source hashes pin the inspected lifecycle; an upgrade
+requires review of those sources and synthetic tests before changing the pins. Unsupported or
+missing interfaces fail closed. Voice mode conservatively remains non-idle.
+
+For this adapter the existing launcher additionally accepts:
+
+| Field | Contract |
+|---|---|
+| `status_adapter` | Absolute canonical, separately mounted, operator-protected copy of the reviewed `owner_status.py`, outside every writable mount. |
+| `native_runtime_command` | JSON argv emitted by that installation's `hermes --print-runtime-command`, **without startup arguments**. Only the inspected `python -I -c` bootstrap and its exact `hermes_cli.main` entry are accepted. |
+| `resume` | Must be `always`. |
+| `resume_args` | Must be `["--resume", "EXACT_EXISTING_SESSION_ID"]`; latest/continue/fresh fallback is refused. |
+
+The parent operator captures the runtime command during installation; construction of the public
+sandbox command never executes the native launcher (which may perform startup repair). The public
+launcher substitutes only that known entry with `runpy.run_path` of the reviewed absolute adapter.
+All native bootstrap text, profile preprocessing, startup/resume argument tokens and the existing
+cleared sandbox environment remain in place. No cwd import, PYTHONPATH injection, additional
+executable root or plain-Python fallback is supported. Native main preprocesses the profile before
+`cli` is imported; a different resulting profile or initialized session refuses idle. Session
+identity remains pinned at every readiness check; a session rollover needs operator reconciliation,
+not automatic latest-session selection. The process holds a private profile lock for its lifetime,
+and native active-session exclusion remains enabled.
+
+The native interpreter, source, dependency generations, dependency selection/lease metadata and
+all native imports must already have an explicit readable sandbox closure using `agent_runtime`
+and existing read-only `runtime` mounts. Code roots and all their contents/parents must be protected
+from owner ownership/writes, with no symlinks; the adapter additionally checks activated imports
+against these roots (plus `/usr`). Native dependency maintenance/leases may require a layout that
+can separate writable bookkeeping from immutable code without overlapping mounts. **Do not weaken
+the mount or protection rules to fit an existing home-directory installation.** If the installed
+native bootstrap cannot run within this closure, report the missing protected installation or
+layout prerequisite and stop before launch. The launcher intentionally refuses owner-owned
+runtime trees even if their files are chmod 0555. Install the reviewed launcher, adapter and private
+manifest with protected parents before the parent schedules a same-session boundary handoff.
+No files in a live profile need to be changed by this feature's implementation.
+
+`ops/hermes/owner_heartbeat.py` is an optional one-shot companion, separate from B2's durable
+objective/run review journal. Run it with the existing installed Python environment containing
+Pillow; it adds no dependencies. Example operator timer command (all paths/addresses are examples):
+
+```sh
+/opt/pokegent-env/bin/python /opt/pokegent-owner-bootstrap/owner_heartbeat.py \
+  --state /var/lib/pokegent-notify/heartbeat --target t123 \
+  --dashboard http://127.0.0.1:19771 --stream http://127.0.0.1:19770
+```
+
+A normal process-manager timer may invoke it every 30 seconds. The data directory must be absolute,
+canonical, owned by its caller, mode 0700, and outside Git; lock/receipt files use 0600. Use one
+private directory per configured target. No service/timer is installed by this repository.
+The helper never restarts the owner or game, writes objectives, clears B2 state or changes legality.
+
+The helper reads Core's supported Terminal schema (`state`, `status.state/app`, `status_ms`,
+`created_ms`, `pid`, `foreground.pid`, `address`), requiring a live Hermes idle epoch strictly older
+than 300 seconds. Unknown/malformed/blocked/busy/future evidence suppresses delivery. It requires
+a bounded, verified 240x160 PNG and supported operator `/ops/telemetry` plus `/ops/health`: attached
+emulator, running current run, matching run IDs, valid state updated within its positive TTL (at most
+5 seconds), document age at most 5 seconds, no recorded capture errors, and matching media/health/
+telemetry frame identities. Cached PNG alone never qualifies. Missing operator telemetry, detached
+capture, any recorded capture failure, old RAM state or a sampling race suppresses delivery; this
+conservative check may skip a healthy run until evidence agrees. Pixels need not change and no
+emulator advancement is requested. The complete media check runs in a disposable child with a
+three-second parent timeout covering DNS, open/headers, body reads and PNG verification. On expiry
+the child is killed and reaped before the transaction lock is released; no reminder is sent.
+HTTP retains bounded reads, no redirects or ambient proxy;
+Core subprocesses have five-second deadlines and use argv without shell expansion.
+
+A nonblocking private file lock covers receipt read, eligibility, media probe, Core epoch/process
+recheck, final `hc send --if idle`, and atomic fsynced receipt commit. The receipt names the configured
+target, terminal creation, process IDs and **original** idle epoch. Busy/refused/failed/timed-out
+sends do not create a success receipt. Success is validated against the installed Core SendResult
+schema. A crash, lost acknowledgement or receipt-write failure after accepted delivery can lead
+to another delivery: this is **at least once**, like B2, with a stable review ID in the static prompt.
+B2 and heartbeat can coexist; both retain the final atomic idle guard. The heartbeat does not drain
+or replace B2. The prompt asks the owner to inspect fresh status/objective/private notes and continue
+already authorized legal progress without another GO.
+
+Parent acceptance after independent review: verify protected closure first, preserve the exact
+current profile/session, and hand off at a run boundary with one owner. Then verify real working,
+blocked and idle transitions, refusal while busy, controlled idle delivery and private receipt,
+fresh supported telemetry and game picture. Those live steps are operator work; synthetic tests
+neither send owner messages nor prove a target installation ready.
