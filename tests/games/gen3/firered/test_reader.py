@@ -6,33 +6,14 @@ Existing AIMD Labs / Nous Research MIT notices remain in LICENSE.
 """
 
 import struct
-from pathlib import Path
 
 import pytest
 
-from pokegent.games.gen3.firered.reader import ui_symbols as U
 from pokegent.games.gen3.firered.reader.memory_port import EWRAM_END, SnapshotMemoryReader
 from pokegent.games.gen3.firered.reader.reader import FireRedReader, StorageDecodeCache
 from pokegent.games.gen3.firered.reader.schemas import ReadError
 from pokegent.games.gen3.firered.rom import constants as C
-from pokegent.games.gen3.firered.rom.rom_data import ProfileError, load_profiles
-
-
-@pytest.fixture
-def ram():
-    profile_path = Path(__file__).resolve().parents[4] / "pokegent/references/rom_profiles.yaml"
-    profile = load_profiles(profile_path).get("firered-us-rev0")
-    port = SnapshotMemoryReader({0x02000000: bytes(0x40000), 0x03000000: bytes(0x8000)})
-    sb1, sb2 = 0x0201007C, 0x0201803C
-    port.poke_u32(profile.symbol("gSaveBlock1Ptr").address, sb1)
-    port.poke_u32(profile.symbol("gSaveBlock2Ptr").address, sb2)
-    port.poke_u32(profile.symbol("gMain").address + U.MAIN_CALLBACK2,
-                  profile.symbol(U.PRE_FIELD_AVATAR_CALLBACKS[0]).address | 1)
-    snapshot = FireRedReader(port, profile).read_snapshot()
-    assert snapshot.usable, snapshot.health.read_errors
-    assert snapshot.player.money == 0 and snapshot.party == ()
-    port.clear_log()
-    return profile, port, sb1, sb2
+from pokegent.games.gen3.firered.rom.rom_data import ProfileError
 
 
 def assert_no_payload(snapshot):
