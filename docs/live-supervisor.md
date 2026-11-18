@@ -109,6 +109,15 @@ neither a crash nor game clear. Crash/whiteout counts are scoped to one supervis
 manager restart limits should also be bounded. Automatic process-manager restarts must not bypass
 owner review of a blocked record.
 
+**Bounded restart policy (supported).** A supervised `systemd` unit must bound auto-restarts and must
+not auto-revive the exit codes that mean "a human must review". Ship the drop-in
+[`ops/systemd/pokegent-live-dropin.conf`](../ops/systemd/pokegent-live-dropin.conf) (or the equivalent
+`systemd-run` `-p` flags): `StartLimitIntervalSec=600` + `StartLimitBurst=3` bounds the empty-port
+restart spin (observed 29x, issue #33), and `RestartPreventExitStatus=3 4 78` (whitespace-separated;
+systemd ignores the comma form) keeps the supervisor's
+owner-review exits (3 = stalled `owner_review`, 4 = blocked/crash-limit, 78 = provider hard-abort)
+from being auto-restarted into a loop that keeps re-reading the same blocked `live-run.json`.
+
 SAFE_PAUSE/no-progress segments may resume from their accepted successor until
 `MAX_STALLED_SEGMENTS` is reached. Executor action-result events with `progressed: true` reset
 the streak, even when the segment later pauses; verified taps, position/scene changes and valid

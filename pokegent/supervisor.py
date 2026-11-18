@@ -124,6 +124,11 @@ class Settings:
 
 
 class Supervisor:
+    # Owner-review exit codes. A process manager must never auto-revive these
+    # (RestartPreventExitStatus in the supported unit drop-in, ops/systemd/).
+    exit_owner_review = 3
+    exit_blocked = 4
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.home = settings.home
@@ -226,14 +231,74 @@ class Supervisor:
     def recover(self) -> dict | None:
         record_path = self.home / "live-run.json"
         if not record_path.exists():
-            return
+            return None
         record = read_json(record_path)
         if not record or record.get("status") not in (
             "preparing", "running", "finished", "blocked"
         ):
             raise ValueError("unrecognized live-run metadata; ownership needs review")
         if record["status"] == "blocked":
-            raise ValueError("previous run is blocked; review live-run.json before resuming")
+            # A controlled interrupt (a ``requested`` stop — the operator touched
+            # ``restart``/``stop`` or the unit got SIGTERM/SIGINT) whose runner never
+            # published a successor must resume from the last verified state the run
+            # started from rather than stay blocked forever and spin empty-port
+            # restarts.  That start pointer was validated as a nonempty absolute file
+            # before the segment launched.  Genuine unrequested failures (corruption,
+            # rejected/missing successor) stay fail-closed below.
+            requested_flag = record.get("requested")
+            forced_flag = record.get("forced")
+            # Only genuine boolean flags resume; a JSON string like "false" must not.
+            requested = requested_flag is True or forced_flag is True
+            state_value = record.get("state")
+            out_value = record.get("out")
+            run_id = record.get("run_id")
+            valid_start = (
+                requested and isinstance(state_value, str) and bool(state_value)
+                and Path(state_value).is_absolute()
+                and Path(state_value).is_file()
+                and Path(state_value).stat().st_size > 0
+            )
+            valid_out = (
+                isinstance(out_value, str) and isinstance(run_id, str)
+                and Path(out_value).parent == self.home / "runs"
+                and Path(out_value).name == run_id
+            )
+            if valid_start and valid_out:
+                assert isinstance(out_value, str) and isinstance(run_id, str)
+                assert isinstance(state_value, str)
+                # Reuse the counter validation the regular path applies: a negative or
+                # non-int stalled_segments in the record must not resume (issue #33 review).
+                stalled = record.get("stalled_segments", 0)
+                if type(stalled) is not int or stalled < 0:
+                    raise ValueError(
+                        "invalid stalled segment count; ownership needs review"
+                    )
+                out = Path(out_value)
+                start = Path(state_value)
+                self.journal(
+                    "blocked record was a controlled interrupt without a successor; "
+                    "resuming from last verified state " + str(start.resolve())
+                )
+                result = payload(record, out)
+                result.update(
+                    state_path=str(start.resolve()), recovered=True,
+                    verdict="interrupted",
+                )
+                record.update(
+                    result, status="finished", state_error=None,
+                    state=result["state_path"],
+                    objective_revision=self.objective_revision(),
+                )
+                self.stalled_segments = record.get("stalled_segments", 0)
+                write_json(out / "exit.json", result)
+                write_json(record_path, record)
+                return record
+            # Invalid start pointer or out directory, or a non-interrupt block: the
+            # metadata cannot be trusted enough to resume; keep the whole record
+            # fail-closed and require an owner review (issue #33).
+            raise ValueError(
+                "previous run is blocked; review live-run.json before resuming"
+            )
         self.stalled_segments = record.get("stalled_segments", 0)
         if type(self.stalled_segments) is not int or self.stalled_segments < 0:
             raise ValueError("invalid stalled segment count; ownership needs review")
