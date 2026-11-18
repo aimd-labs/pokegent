@@ -183,7 +183,7 @@ def media(heartbeat, monkeypatch):
            "game": {"run_id": "synthetic"}}
     health = {"ok": True, "emulator_ready": True, "status": "running",
               "frames": {"attached": True, "errors": 0, "last_error": None,
-                         "seq": 2, "emulator_frame": 30}}
+                         "seq": 2, "captures": 2, "emulator_frame": 30}}
     png = io.BytesIO()
     Image.new("RGB", (240, 160)).save(png, format="PNG")
     picture = [png.getvalue()]
@@ -320,10 +320,11 @@ def probe_child(media, tmp_path, monkeypatch):
     driver = r'''
 import io, json, os, runpy, socket, sys, time, urllib.request
 from pathlib import Path
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
 stage, marker, payload, script, flag, dashboard, stream = sys.argv[1:]
 doc, health, png = json.loads(payload)
+reads = 0
 
 def stall(*args, **kwargs):
     Path(marker).write_text(str(os.getpid()))
@@ -349,6 +350,10 @@ class Connection:
         self.path = data.split(b" ")[1].decode()
 
     def makefile(self, *args):
+        global reads
+        reads += 1
+        if stage == "read" + str(reads):
+            stall()
         if stage == "cumulative":
             Path(marker).write_text(str(os.getpid()))
             time.sleep(1.1)
@@ -375,14 +380,16 @@ else:
     socket.create_connection = stall if stage == "open" else lambda *a, **kw: Connection()
 if stage == "png":
     Image.open = stall
+if stage == "verify":
+    PngImagePlugin.PngImageFile.verify = stall
 sys.argv = [script, flag, dashboard, stream]
 runpy.run_path(script, run_name="__main__")
 '''
 
-    def install(stage):
+    def install(stage, paired=False):
         def start(command, **kwargs):
             assert command == [sys.executable, str(MODULE), "--media-probe",
-                               "http://dashboard", "http://stream"]
+                               "http://dashboard", "http://dashboard" if paired else "http://stream"]
             assert kwargs["close_fds"] is True
             child = popen([sys.executable, "-c", driver, stage, str(marker), payload,
                            *command[1:]], **kwargs)
@@ -420,3 +427,32 @@ def test_supervised_media_success_preserves_expiry_and_guard(heartbeat, probe_ch
     assert len(children) == 1 and children[0].returncode == 0
     assert calls[-1][:5] == ("send", "--json", "--if", "idle", "t1")
     assert (state / "receipt.json").exists()
+
+
+@pytest.mark.parametrize("stage", ["read1", "read2", "read3", "read4", "read5", "verify"])
+def test_paired_probe_stall_kills_reaps_and_releases_lock(heartbeat, probe_child, stage):
+    module, state, _, calls, _, run = heartbeat
+    marker, children = probe_child(stage, paired=True)
+
+    def media(*args):
+        return module["media_available"]("http://dashboard", "http://dashboard")
+
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        run(media=media)
+    assert 3 <= time.monotonic() - started < 6
+    assert int(marker.read_text()) == children[0].pid
+    assert children[0].returncode == -signal.SIGKILL
+    with pytest.raises(ChildProcessError):
+        os.waitpid(children[0].pid, os.WNOHANG)
+    assert all(c[0] == "get" for c in calls)
+    assert not (state / "receipt.json").exists()
+    assert run()
+
+
+def test_supervised_paired_probe_accepts_still_image(heartbeat, probe_child):
+    module, _, _, calls, _, run = heartbeat
+    _, children = probe_child("success", paired=True)
+    assert run(media=lambda *args: module["media_available"]("http://dashboard", "http://dashboard"))
+    assert children[0].returncode == 0
+    assert calls[-1][:5] == ("send", "--json", "--if", "idle", "t1")

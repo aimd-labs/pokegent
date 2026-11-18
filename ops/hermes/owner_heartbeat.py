@@ -27,6 +27,8 @@ PROMPT = (
     "or control services. This idle-epoch review may arrive twice; treat it as one."
 )
 LIMIT = 1024 * 1024
+SAMPLE_BUDGET = 0.5
+OBSERVATION_GAP = 0.05
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -75,8 +77,9 @@ def media_available(dashboard, stream):
 def media_evidence(dashboard, stream):
     """Supported operator telemetry + attached/capture health + bounded verified PNG.
 
-    Equality may suppress a moving game during a sample race. Still images are allowed;
-    missing evidence, old state and any recorded capture failure suppress delivery.
+    Identical configured origins require the supported shared ViewerState/FrameHub topology.
+    One bounded bracket proves a moving PNG was captured after H0; still images are allowed.
+    Distinct origins retain strict equality; coincident counters cannot establish pairing.
     """
     def document(path):
         headers, body = fetch(dashboard + path)
@@ -84,7 +87,12 @@ def media_evidence(dashboard, stream):
             raise ValueError("expected supported JSON telemetry")
         return json.loads(body)
 
+    paired = dashboard == stream
+    started = time.monotonic()
     doc = document("/ops/telemetry")
+    if paired:
+        before = document("/ops/health")
+        time.sleep(OBSERVATION_GAP)
     headers, body = fetch(stream + "/frame.png")
     if headers.get_content_type() != "image/png":
         return False
@@ -93,28 +101,63 @@ def media_evidence(dashboard, stream):
             return False
         picture.verify()
     health = document("/ops/health")
+    last = document("/ops/telemetry") if paired else doc
     now = time.time()
-    state = doc["freshness"]["state"]
-    frames, run = health["frames"], doc["run"]
-    ttl = state["ttl_s"]
-    valid = (
-        doc["schema"] == "pokegent-viewer/1"
-        and doc["server"]["emulator_ready"] is True
-        and doc["state"]["valid"] is True
-        and fresh(doc["generated_at"], now, 5)
-        and number(ttl) and 0 < ttl <= 5 and fresh(state["updated_at"], now, ttl)
-        and isinstance(run["run_id"], str) and bool(run["run_id"])
-        and doc["game"]["run_id"] == run["run_id"] and run["status"] == "running"
-        and health["ok"] is True and health["emulator_ready"] is True
-        and health["status"] == "running" and frames["attached"] is True
-        and type(frames["errors"]) is int and frames["errors"] == 0
-        and frames["last_error"] is None
-        and type(frames["seq"]) is int and frames["seq"] > 0
-        and frames["seq"] == int(headers["X-Frame-Seq"])
-        and type(run["emulator_frame"]) is int and run["emulator_frame"] >= 0
-        and run["emulator_frame"] == frames["emulator_frame"] == int(headers["X-Emulator-Frame"])
-    )
-    return min(doc["generated_at"] + 5, state["updated_at"] + ttl) if valid else 0
+    expiry = []
+    for item in (doc, last):
+        state, run = item["freshness"]["state"], item["run"]
+        ttl = state["ttl_s"]
+        if not (
+            item["schema"] == "pokegent-viewer/1"
+            and item["server"]["emulator_ready"] is True and item["state"]["valid"] is True
+            and fresh(item["generated_at"], now, 5)
+            and number(ttl) and 0 < ttl <= 5 and fresh(state["updated_at"], now, ttl)
+            and isinstance(run["run_id"], str) and bool(run["run_id"])
+            and item["game"]["run_id"] == run["run_id"] and run["status"] == "running"
+            and type(run["emulator_frame"]) is int and run["emulator_frame"] >= 0
+        ):
+            return 0
+        expiry.extend((item["generated_at"] + 5, state["updated_at"] + ttl))
+    for item in ((before, health) if paired else (health,)):
+        frames = item["frames"]
+        if not (
+            item["ok"] is True and item["emulator_ready"] is True
+            and item["status"] == "running" and frames["attached"] is True
+            and type(frames["errors"]) is int and frames["errors"] == 0
+            and frames["last_error"] is None
+            and type(frames["seq"]) is int and frames["seq"] > 0
+            and type(frames["emulator_frame"]) is int and frames["emulator_frame"] >= 0
+            and (not paired or (type(frames["captures"]) is int and frames["captures"] > 0))
+        ):
+            return 0
+    pf, ps = int(headers["X-Emulator-Frame"]), int(headers["X-Frame-Seq"])
+    df0, df1 = doc["run"]["emulator_frame"], last["run"]["emulator_frame"]
+    after = health["frames"]
+    if not paired:
+        return min(expiry) if df0 == pf == after["emulator_frame"] and ps == after["seq"] else 0
+    before = before["frames"]
+    if not (
+        doc["run"]["run_id"] == last["run"]["run_id"]
+        and doc["generated_at"] <= last["generated_at"]
+        and doc["freshness"]["state"]["updated_at"] <= last["freshness"]["state"]["updated_at"]
+        and df0 <= df1 and df0 <= pf
+        and before["emulator_frame"] <= pf <= after["emulator_frame"]
+        and before["seq"] <= ps <= after["seq"]
+        and after["captures"] - before["captures"] == after["seq"] - before["seq"]
+    ):
+        return 0
+    pairs = [(before["seq"], before["emulator_frame"]), (ps, pf),
+             (after["seq"], after["emulator_frame"])]
+    for (seq0, frame0), (seq1, frame1) in zip(pairs, pairs[1:]):
+        if (seq0 == seq1 and frame0 != frame1) or (seq0 < seq1 and frame0 >= frame1):
+            return 0
+    still = df0 == df1 == before["emulator_frame"] == pf == after["emulator_frame"]
+    if not still and not (ps > before["seq"] and after["captures"] > before["captures"]):
+        return 0
+    # Retain original RAM/document deadlines and only the unspent sample validity.
+    remaining = SAMPLE_BUDGET - (time.monotonic() - started)
+    valid_until = min(*expiry, now + remaining)
+    return valid_until if remaining > 0 and valid_until > time.time() else 0
 
 
 def core(hc, *args):
