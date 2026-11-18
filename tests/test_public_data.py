@@ -59,6 +59,35 @@ def test_guard_catches_ignored_game_files_before_git_init(tmp_path):
     assert module.violations(tmp_path) == ("synthetic.gba",)
 
 
+def _load_guard():
+    spec = importlib.util.spec_from_file_location(
+        "rom_guard", Path(__file__).resolve().parents[1] / "tools/check_rom_data.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_packaged_item_classes_path_also_guarded(tmp_path):
+    """After references/*.yaml moved into the package (pokegent/references/), the ROM-data
+    guard must still refuse a synthetic reference_item marker at the NEW packaged path,
+    not only at the legacy top-level path (issue #39 review probe)."""
+    module = _load_guard()
+    # New packaged path carries the forbidden ROM-derived marker -> violation flagged.
+    new_dir = tmp_path / "pokegent" / "references"
+    new_dir.mkdir(parents=True)
+    (new_dir / "battle_item_classes.yaml").write_text("reference_item: invented\n")
+    violations = module.violations(tmp_path)
+    assert "pokegent/references/battle_item_classes.yaml" in violations[0]
+
+    # Legacy top-level path still guarded (regression: refusal behavior preserved).
+    legacy = tmp_path / "references"
+    legacy.mkdir()
+    (legacy / "battle_item_classes.yaml").write_text("reference_item: invented\n")
+    violations = module.violations(tmp_path)
+    assert "references/battle_item_classes.yaml" in violations[0]
+
+
 @pytest.mark.parametrize("suffix", [".gb", ".gbc", ".zip", ".7z", ".ss3", ".ss42"])
 def test_guard_rejects_game_and_archive_extensions_even_if_text(tmp_path, suffix):
     spec = importlib.util.spec_from_file_location(
