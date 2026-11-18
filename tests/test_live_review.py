@@ -174,25 +174,57 @@ def test_stable_review_id_uses_run_kind_revision_and_survives_rebatching(setting
     queue.close()
 
 
-@pytest.mark.parametrize("delivered", [False, True])
-def test_existing_review_journal_keeps_pending_facts_and_receipts(settings, delivered):
-    import hashlib
-
+@pytest.mark.parametrize("schema", [
+    "CREATE TABLE reviews (id TEXT PRIMARY KEY, body TEXT, "
+    "delivered INTEGER NOT NULL DEFAULT 0)",
+    "CREATE TABLE unknown_queue (id TEXT PRIMARY KEY)",
+])
+def test_unknown_queue_schema_refuses_start_without_migration(settings, capsys, schema):
     directory = settings.home / "owner-review"
     directory.mkdir()
-    body = json.dumps(sanitize(review()), sort_keys=True, separators=(",", ":"))
-    legacy_key = hashlib.sha256(body.encode()).hexdigest()
-    with sqlite3.connect(directory / "queue.sqlite3") as db:
-        db.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY, body TEXT, "
-                   "delivered INTEGER NOT NULL DEFAULT 0)")
-        db.execute("INSERT INTO reviews VALUES (?, ?, ?)",
-                   (legacy_key, None if delivered else body, int(delivered)))
+    path = directory / "queue.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute(schema)
+    original = path.read_bytes()
+    assert main(["monitor", "--once"]) == 2
+    error = capsys.readouterr().err
+    assert "unsupported owner review queue schema" in error
+    assert "operator must delete the private $LIVE_HOME/owner-review/queue.sqlite3" in error
+    assert path.read_bytes() == original
+    assert not (settings.home / "attempts").exists()
+
+
+@pytest.mark.parametrize("batch_limit", [1, 4])
+def test_completion_and_later_run_end_have_distinct_ids_across_restarts(settings, batch_limit):
+    settings = replace(settings, batch_limit=batch_limit)
+    out = settings.home / "runs/live-0001"
+    append_event(out / "events.jsonl", event())
     queue = Queue(settings)
-    assert queue.enqueue(review())
-    assert pending(queue) == int(not delivered)
+    queue.observe()
     assert queue.drain() and pending(queue) == 0
-    assert (settings.home / "delivered").exists() is not delivered
-    assert queue.db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 1
+    completion = json.loads((settings.home / "delivered").read_text())
+    queue.close()
+
+    write(out / "exit.json", {"verdict": "other", "rc": 0, "active_objective_revision": 1})
+    queue = Queue(settings)
+    queue.observe()
+    assert pending(queue) == 1
+    assert queue.drain()
+    queue.close()
+    deliveries = [json.loads(row) for row in (settings.home / "delivered").read_text().splitlines()]
+    assert len(deliveries) == 2
+    run_end = deliveries[1]
+    assert completion["run_id"] == run_end["run_id"] == "live-0001"
+    assert completion["active_objective_revision"] == run_end["active_objective_revision"] == 1
+    assert completion["verdict"] == "objective_done" and run_end["verdict"] == "other"
+    assert completion["review_id"] != run_end["review_id"]
+
+    queue = Queue(settings)
+    assert queue.enqueue(review(), kind="objective_completion")
+    assert queue.enqueue(review(verdict="other", rc=0))
+    queue.observe()
+    assert pending(queue) == 0 and queue.drain()
+    assert len((settings.home / "delivered").read_text().splitlines()) == 2
     queue.close()
 
 

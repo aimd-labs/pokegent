@@ -67,10 +67,12 @@ older reviews. Keep run records and rotated logs until the observer has consumed
 The private `owner-review/queue.sqlite3` stores pending facts, event cursors, completed-run
 receipts and delivery hashes. Delivery uses one file lock; acknowledged facts are removed
 while their hashes remain for deduplication. Queue and receipts survive monitor restarts.
-Do not delete this journal or its lock while using the same run history. Receipt metadata
-grows with completed runs/revisions; archive it together with retired run data.
-Upgrading from inode-only cursors rescans retained logs into the existing deduplicated
-review queue; the old cursor table is left intact for rollback.
+Keep the current-schema journal and its lock while using the same run history. Receipt
+metadata grows with completed runs/revisions; archive it together with retired run data.
+Unknown or older queue schemas fail closed with an explicit error; there is no migration
+or legacy receipt lookup. On that error, the operator must stop the observer and delete
+the private `$LIVE_HOME/owner-review/queue.sqlite3` file before restarting. Retained run
+logs are rescanned into a fresh queue, so previously delivered reviews may arrive again.
 
 Delivery is **at-least-once**. Every review includes a stable `review_id` in both the
 delivered owner text and stdin JSON, derived from run ID, kind (`objective_completion`

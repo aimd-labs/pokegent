@@ -102,6 +102,10 @@ class Settings:
         )
 
 
+class QueueSchemaError(ValueError):
+    """An unsupported private journal requires explicit operator removal."""
+
+
 class Queue:
     """The queue, delivery receipts and log cursors share one private SQLite journal."""
 
@@ -111,7 +115,7 @@ class Queue:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.directory = directory
         self.db = sqlite3.connect(directory / "queue.sqlite3", timeout=1)
-        self.db.executescript("""
+        schema = """
             CREATE TABLE IF NOT EXISTS reviews (
                 id TEXT PRIMARY KEY, body TEXT, delivered INTEGER NOT NULL DEFAULT 0,
                 kind TEXT NOT NULL DEFAULT 'run_end'
@@ -122,13 +126,33 @@ class Queue:
             );
             CREATE TABLE IF NOT EXISTS finished (run TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS clock (id INTEGER PRIMARY KEY, attempted REAL NOT NULL);
-        """)
-        with self.db:
-            self.db.execute("BEGIN IMMEDIATE")
-            columns = {column[1] for column in self.db.execute("PRAGMA table_info(reviews)")}
-            if "kind" not in columns:
-                self.db.execute("ALTER TABLE reviews ADD COLUMN kind TEXT NOT NULL "
-                                "DEFAULT 'run_end'")
+        """
+        expected = {
+            "reviews": ("id", "body", "delivered", "kind"),
+            "event_cursors": ("generation", "identity", "offset", "skipping", "boundary"),
+            "finished": ("run",),
+            "clock": ("id", "attempted"),
+        }
+        try:
+            with self.db:
+                self.db.execute("BEGIN IMMEDIATE")
+                tables = {row[0] for row in self.db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )}
+                if tables and (tables != expected.keys() or any(
+                    tuple(row[1] for row in self.db.execute(f"PRAGMA table_info({table})"))
+                    != columns for table, columns in expected.items()
+                )):
+                    raise QueueSchemaError(
+                        "unsupported owner review queue schema; operator must delete the private "
+                        "$LIVE_HOME/owner-review/queue.sqlite3 file before restarting"
+                    )
+                for statement in schema.split(";"):
+                    if statement.strip():
+                        self.db.execute(statement)
+        except Exception:
+            self.db.close()
+            raise
 
     def close(self):
         self.db.close()
@@ -137,11 +161,9 @@ class Queue:
         facts = sanitize(value, home=self.settings.home)
         body = json.dumps(facts, sort_keys=True, separators=(",", ":"))
         key = review_id(facts, kind)
-        legacy_key = hashlib.sha256(body.encode()).hexdigest()
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            if self.db.execute("SELECT 1 FROM reviews WHERE id IN (?, ?)",
-                               (key, legacy_key)).fetchone():
+            if self.db.execute("SELECT 1 FROM reviews WHERE id=?", (key,)).fetchone():
                 return True
             if self.db.execute("SELECT COUNT(*) FROM reviews WHERE delivered=0").fetchone()[0] >= (
                 self.settings.queue_limit
@@ -365,6 +387,9 @@ def main(argv=None) -> int:
                     time.sleep(settings.poll)
         finally:
             queue.close()
+    except QueueSchemaError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     except (ValueError, OSError, sqlite3.Error):
         print("owner review failed; check private configuration/journal", file=sys.stderr)
         return 2

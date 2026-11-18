@@ -126,6 +126,8 @@ retry the same ID; the same review id may arrive twice, so treat it as one. See 
 provider-neutral
 [owner skill](../skill/pokegent/SKILL.md) and
 [delivery configuration](../skill/pokegent/review-delivery.md).
+Unknown or older private queue schemas stop the observer with an explicit error. The operator
+must delete `$LIVE_HOME/owner-review/queue.sqlite3` before restarting; no migration is attempted.
 
 `pokegent.live.verdict(run_dir)` and `payload(metadata, run_dir, verdict_name=None)` are shared by
 supervisors and observers. `ops/pokegent_live_verdict.py RUN_DIR` prints `clear`, `whiteout`,
