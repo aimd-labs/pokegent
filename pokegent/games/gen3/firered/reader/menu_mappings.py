@@ -8,67 +8,6 @@ from pokegent.games.gen3 import mechanics_ids as ids
 from pokegent.games.gen3.firered.rom.move_mappings import HM_MOVE_IDS
 from pokegent.options.models import Legality, Option, Risk
 
-TMHM_MOVES = (
-    264,
-    337,
-    352,
-    347,
-    46,
-    92,
-    258,
-    339,
-    331,
-    237,
-    241,
-    269,
-    58,
-    59,
-    63,
-    113,
-    182,
-    240,
-    202,
-    219,
-    218,
-    76,
-    231,
-    85,
-    87,
-    89,
-    216,
-    91,
-    94,
-    247,
-    280,
-    104,
-    115,
-    351,
-    53,
-    188,
-    201,
-    126,
-    317,
-    332,
-    259,
-    263,
-    290,
-    156,
-    213,
-    168,
-    211,
-    285,
-    289,
-    315,
-    15,
-    19,
-    57,
-    70,
-    148,
-    249,
-    127,
-    291,
-)
-
 ITEM_EFFECTS = {
     ids.ITEM_POTION: ("hp", 20),
     ids.ITEM_FULL_RESTORE: ("full_restore", 999),
@@ -242,7 +181,13 @@ def tm_options(snapshot: Any, tables: Any) -> list[Option]:
         for entry in pocket.items:
             if not 289 <= entry.item_id <= 346 or entry.quantity <= 0:
                 continue
-            move_id = TMHM_MOVES[entry.item_id - 289]
+            try:
+                move_id = tables.tmhm_move(entry.item_id)
+                if type(move_id) is not int or move_id <= 0:
+                    continue
+                new = tables.move(move_id)
+            except Exception:
+                continue
             for mon in snapshot.party:
                 if any(m.move_id == move_id for m in mon.moves):
                     continue
@@ -266,10 +211,6 @@ def tm_options(snapshot: Any, tables: Any) -> list[Option]:
                 )
                 candidates = [choice for choice in choices if choice["can_forget"]]
                 if not has_free_slot and not candidates:
-                    continue
-                try:
-                    new = tables.move(move_id)
-                except Exception:
                     continue
                 default_forget_move = (
                     0
