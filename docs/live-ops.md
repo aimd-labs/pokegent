@@ -259,7 +259,7 @@ Pillow; it adds no dependencies. Example operator timer command (all paths/addre
 ```sh
 /opt/pokegent-env/bin/python /opt/pokegent-owner-bootstrap/owner_heartbeat.py \
   --state /var/lib/pokegent-notify/heartbeat --target t123 \
-  --dashboard http://127.0.0.1:19771 --stream http://127.0.0.1:19770
+  --dashboard http://127.0.0.1:19770 --stream http://127.0.0.1:19770
 ```
 
 A normal process-manager timer may invoke it every 30 seconds. The data directory must be absolute,
@@ -272,13 +272,44 @@ The helper reads Core's supported Terminal schema (`state`, `status.state/app`, 
 than 300 seconds. Unknown/malformed/blocked/busy/future evidence suppresses delivery. It requires
 a bounded, verified 240x160 PNG and supported operator `/ops/telemetry` plus `/ops/health`: attached
 emulator, running current run, matching run IDs, valid state updated within its positive TTL (at most
-5 seconds), document age at most 5 seconds, no recorded capture errors, and matching media/health/
-telemetry frame identities. Cached PNG alone never qualifies. Missing operator telemetry, detached
-capture, any recorded capture failure, old RAM state or a sampling race suppresses delivery; this
-conservative check may skip a healthy run until evidence agrees. Pixels need not change and no
-emulator advancement is requested. The complete media check runs in a disposable child with a
-three-second parent timeout covering DNS, open/headers, body reads and PNG verification. On expiry
-the child is killed and reaped before the transaction lock is released; no reminder is sent.
+5 seconds), document age at most 5 seconds and no recorded capture errors. Cached PNG alone never
+qualifies. Identical validated configured origins use the supported paired deployment: one
+ViewerState and one FrameHub shared by operator and stream handlers (for example both origins
+`http://127.0.0.1:19770`). This is an operator topology prerequisite, not a runtime identity token;
+a reverse proxy or multiple workers without that shared hub need a separate pairing protocol.
+Distinct origins retain the strict telemetry/PNG/health frame and PNG/health sequence equality.
+The helper never discovers ports or substitutes another runtime.
+
+For the paired topology the child takes one ordered telemetry D0, health H0, PNG P, health H1,
+telemetry D1 sample, with a 50 ms observation gap between H0 and P. A monotonic 500 ms budget
+includes all reads, the gap, parsing and PNG verification; there is no retry loop. Both documents
+must independently satisfy freshness/readiness/valid-state/running checks, retain the same nonempty
+run ID (also in their game fields), and have nondecreasing document/RAM timestamps and frame cursors.
+Both health samples must be running, ready, attached, error-free, with typed positive sequence and
+capture counts and nonnegative frame counters. Booleans are not counters. Capture-count growth must
+match sequence growth; ambiguous sampled stats suppress delivery.
+
+The partial ordering is D0.frame <= D1.frame, D0.frame <= P.frame,
+H0.frame <= P.frame <= H1.frame and H0.seq <= P.seq <= H1.seq. Adjacent equal sequences require equal
+frames; advancing sequences require advancing frames. Fresh telemetry may lag a newer PNG, so
+P.frame <= D1.frame is deliberately not required. If all five frame cursors agree, a genuine still
+image qualifies. Otherwise P.seq must exceed H0.seq and H1 must show capture-count growth, proving
+in this shared hub that P was captured after the baseline. An old P followed by a newer H1 cannot
+qualify. Pixels need not change and no emulator advancement is requested.
+
+A 50 ms gap spans the default 30 Hz and maximum 60 Hz capture periods, but cannot guarantee a new
+capture at the supported 1 Hz minimum. A fixed periodic timer may repeatedly hit a
+nonqualifying phase and keep suppressing moving samples; this is a known timing follow-up.
+This bounded sampler intentionally keeps the cache proof and does not claim liveness for every supported capture cadence. Slow deployments need
+separately reviewed timing or a run-bound capture envelope before claiming that guarantee.
+Missing/old/future RAM, run changes, detach/error, rollback, contradictory counters, bad PNG or an
+exhausted budget suppress delivery. The returned expiry is the earliest original document/RAM
+expiry across D0/D1, capped by the remaining 500 ms sample validity; neither timestamp gets a new
+TTL. Expiry during the Core recheck still suppresses delivery.
+
+The complete media check runs in a disposable child with an independent three-second parent timeout
+covering DNS, open/headers, all five reads and PNG verification. On expiry the child is killed and
+reaped before the transaction lock is released; no reminder is sent.
 HTTP retains bounded reads, no redirects or ambient proxy;
 Core subprocesses have five-second deadlines and use argv without shell expansion.
 
