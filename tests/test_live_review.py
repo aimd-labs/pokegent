@@ -209,6 +209,10 @@ def test_unknown_queue_schema_refuses_start_without_migration(settings, capsys, 
     ("delivered INTEGER NOT NULL DEFAULT 0", "delivered TEXT NOT NULL DEFAULT 0"),
     ("delivered INTEGER NOT NULL DEFAULT 0", "delivered INTEGER DEFAULT 0"),
     ("id TEXT PRIMARY KEY", "id TEXT"),
+    ("body TEXT", "body TEXT UNIQUE"),
+    ("delivered INTEGER NOT NULL DEFAULT 0",
+     "delivered INTEGER NOT NULL DEFAULT 0 CHECK (delivered = 1)"),
+    ("id TEXT PRIMARY KEY", "id TEXT PRIMARY KEY COLLATE NOCASE"),
 ])
 def test_queue_refuses_incompatible_column_properties(
     settings, original_column, incompatible_column,
@@ -227,6 +231,42 @@ def test_queue_refuses_incompatible_column_properties(
         Queue(settings)
     assert path.read_bytes() == original
     assert not (settings.home / "attempts").exists()
+
+
+@pytest.mark.parametrize("schema_change", [
+    pytest.param(
+        "CREATE TRIGGER ignore_review BEFORE INSERT ON reviews "
+        "BEGIN SELECT RAISE(IGNORE); END;", id="ignore-insert",
+    ),
+    pytest.param(
+        "CREATE TRIGGER mark_delivered AFTER INSERT ON reviews "
+        "BEGIN UPDATE reviews SET delivered=1 WHERE id=NEW.id; END;", id="mark-delivered",
+    ),
+    pytest.param(
+        "DROP TABLE reviews; DROP TABLE event_cursors; DROP TABLE finished; DROP TABLE clock; "
+        "CREATE VIEW reviews AS SELECT 1 AS id; PRAGMA user_version=0;", id="view-only",
+    ),
+    pytest.param(
+        "ALTER TABLE reviews ADD COLUMN hidden TEXT GENERATED ALWAYS AS (body) VIRTUAL;",
+        id="generated-column",
+    ),
+    pytest.param("CREATE INDEX review_body ON reviews(body);", id="extra-index"),
+    pytest.param(
+        "CREATE UNIQUE INDEX review_body ON reviews(body COLLATE NOCASE);", id="unique-index",
+    ),
+])
+def test_queue_refuses_unsupported_schema_catalog(settings, schema_change):
+    queue = Queue(settings)
+    assert queue.enqueue(review())
+    queue.db.executescript(schema_change)
+    queue.close()
+    path = settings.home / "owner-review/queue.sqlite3"
+    original = path.read_bytes()
+    with pytest.raises(QueueSchemaError, match="unsupported owner review queue schema"):
+        Queue(settings)
+    assert path.read_bytes() == original
+    assert not (settings.home / "attempts").exists()
+    assert not (settings.home / "delivered").exists()
 
 
 @pytest.mark.parametrize("version", [0, QUEUE_SCHEMA_VERSION + 1])
@@ -289,10 +329,10 @@ def test_accepted_delivery_receipt_failure_retries_identical_id(settings):
     with pytest.raises(sqlite3.IntegrityError, match="synthetic receipt failure"):
         queue.drain()
     assert pending(queue) == 1
-    queue.close()
-    queue = Queue(settings)
     with queue.db:
         queue.db.execute("DROP TRIGGER receipt_failure")
+    queue.close()
+    queue = Queue(settings)
     assert queue.drain() and pending(queue) == 0
     deliveries = [json.loads(row) for row in (settings.home / "delivered").read_text().splitlines()]
     assert len(deliveries) == 2

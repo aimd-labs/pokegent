@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -128,40 +129,31 @@ class Queue:
             CREATE TABLE IF NOT EXISTS finished (run TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS clock (id INTEGER PRIMARY KEY, attempted REAL NOT NULL);
         """
-        expected = {
-            "reviews": (
-                ("id", "TEXT", 0, None, 1), ("body", "TEXT", 0, None, 0),
-                ("delivered", "INTEGER", 1, "0", 0), ("kind", "TEXT", 1, "'run_end'", 0),
-            ),
-            "event_cursors": (
-                ("generation", "TEXT", 0, None, 1), ("identity", "TEXT", 1, None, 0),
-                ("offset", "INTEGER", 1, None, 0), ("skipping", "INTEGER", 1, None, 0),
-                ("boundary", "TEXT", 1, None, 0),
-            ),
-            "finished": (("run", "TEXT", 0, None, 1),),
-            "clock": (("id", "INTEGER", 0, None, 1), ("attempted", "REAL", 1, None, 0)),
-        }
+        # Include implicit constraint indexes, but ignore SQLite's internal bookkeeping tables.
+        catalog_query = """
+            SELECT type, name, tbl_name, sql FROM sqlite_master
+            WHERE name NOT GLOB 'sqlite_*' OR name GLOB 'sqlite_autoindex_*'
+            ORDER BY type, name
+        """
         try:
+            with closing(sqlite3.connect(":memory:")) as reference:
+                reference.executescript(schema)
+                expected = reference.execute(catalog_query).fetchall()
             with self.db:
                 self.db.execute("BEGIN IMMEDIATE")
-                tables = {row[0] for row in self.db.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )}
+                catalog = self.db.execute(catalog_query).fetchall()
                 version = self.db.execute("PRAGMA user_version").fetchone()[0]
-                if (tables or version) and (
-                    version != QUEUE_SCHEMA_VERSION or tables != expected.keys() or any(
-                        tuple(row[1:] for row in self.db.execute(f"PRAGMA table_info({table})"))
-                        != columns for table, columns in expected.items()
-                    )
+                if (catalog or version) and (
+                    version != QUEUE_SCHEMA_VERSION or catalog != expected
                 ):
                     raise QueueSchemaError(
                         "unsupported owner review queue schema; operator must delete the private "
                         "$LIVE_HOME/owner-review/queue.sqlite3 file before restarting"
                     )
-                for statement in schema.split(";"):
-                    if statement.strip():
-                        self.db.execute(statement)
-                if not tables:
+                if not catalog:
+                    for statement in schema.split(";"):
+                        if statement.strip():
+                            self.db.execute(statement)
                     self.db.execute(f"PRAGMA user_version = {QUEUE_SCHEMA_VERSION}")
         except Exception:
             self.db.close()
