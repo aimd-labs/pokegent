@@ -117,9 +117,9 @@ class SystemOneConfig(_Strict):
     provider_url: str | None = None
     endpoint_path: str = "/v1/systemone"
     #: The model id this endpoint is EXPECTED to report (log, manifest, ``strict_model_pin``). It is
-    #: never sent: the live server validates its body with ``extra="forbid"`` (only ``state``,
-    #: ``questions``, ``request_id`` and ``lane``), so a ``model`` field is an HTTP 422.
+    #: never sent; request-side model selection is configured separately below.
     model: str | None = None
+    #: Explicit selector sent as JSON ``model``; omitted when unset. Endpoint support varies.
     request_model: str | None = None
     api_key: SecretStr | None = None
     timeout_seconds: float = Field(default=8.0, gt=0, le=120)  # hard budget of one decision

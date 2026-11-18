@@ -51,6 +51,7 @@ def _env(environ: Mapping[str, str]) -> dict[str, Any]:
         "SYSTEM1_API_KEY": ("system1.api_key", str),
         "SYSTEM1_MODEL": ("system1.model", str),
         "SYSTEM1_MODEL_ID": ("system1.model", str),
+        "SYSTEM1_REQUEST_MODEL": ("system1.request_model", str),
         "SYSTEM1_TIMEOUT": ("system1.timeouts", float),
         "SYSTEM1_OUTAGE": ("system1.outage", str),
         "SYSTEM1_MAX_OUTAGE_S": ("system1.max_outage_s", float),

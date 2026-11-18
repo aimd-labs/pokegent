@@ -1,9 +1,10 @@
 """SYSTEM1 HTTP client and provider (spec 8.1, 8.4, 12.3). Own implementation of the documented API.
 
 Wire protocol (wfzyx/von README, pinned in ``source-lock.md``): ``POST {base}/v1/systemone`` with
-``{"state", "questions": {name: {"type": "choice", "instructions", "criteria"}}}``. The server
-validates the body with ``extra="forbid"`` (also accepted: ``request_id``, ``lane``), so a ``model``
-field is an HTTP 422: the model is fixed server side. Answer ``{"model", "answers": {name:
+``{"state", "questions": {name: {"type": "choice", "instructions", "criteria"}}}``.
+An explicit ``config.request_model`` adds JSON ``model``; unset means omitted. The pinned
+historical upstream rejected that field; other endpoints may require it. ``config.model``
+is only the expected response id, never a request selector. Answer ``{"model", "answers": {name:
 {"type": "choice", "choice", "probabilities", "confidence"}}, "usage": {"input_tokens",
 "output_tokens"}, "truncation"?}``, where ``model`` is a string or an object holding ``model``.
 Optional bearer auth

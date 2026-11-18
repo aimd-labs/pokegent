@@ -3,20 +3,22 @@
 Code: `addons/system_one/`. Spec: chapter 8 (interface, questions, calibration), 12.3 (error
 classes), 14 (config), 16.3 (measurements). Contract: `docs/contracts.md`.
 
-## Upstream facts (wfzyx/von, pinned in `source-lock.md`)
+## Historical upstream facts (wfzyx/von, pinned in `source-lock.md`)
 
 Read at `56e845299f573af06480db6035f5d13f0f3baf51` (README.md, `src/von/types.py`), Apache-2.0,
-own client, no code copied.
+own client, no code copied. These are historical contract evidence for that revision,
+not a universal contract for every compatible endpoint.
 
 - `POST {base}/v1/systemone`, JSON:
   `{"state": <any JSON or text>, "questions": {"<name>": {"type": "choice",
   "instructions": "...", "criteria": {"<key>": "<description or null>"}}}}`.
-- The provider wire contract accepts only `state`,
+- That historical server's wire contract accepts only `state`,
   `questions`, `request_id` and `lane` (`extra="forbid"`); a `model` field is an HTTP 422. The model is
   fixed server side (weights `wfzyx/von @ 5df8185a`); it reports itself as `von-1.3.0` (the SDK does not
   count patch versions) in the answer as `model` / `model.model`. `GET /health` answers
-  `von_version` and `weights_revision`. The client therefore sends no `model`, reads a string or an
-  object, and only compares against the configured id when one is set.
+  `von_version` and `weights_revision`. Leave `request_model` unset for that contract.
+  The client reads a string or an object response model and compares against the expected
+  response id when one is configured.
 - Response: `{"model", "answers": {"<name>": {"type": "choice", "choice", "probabilities",
   "confidence"}}, "usage": {"input_tokens", "output_tokens"}, "truncation"?}`.
 - Auth: optional `Authorization: Bearer <SYSTEM1_API_KEY>` (server enables it with `SYSTEM1_API_KEY`).
@@ -37,7 +39,7 @@ system_one:
   provider_url: ${SYSTEM1_BASE_URL}   # http(s) base URL; /v1/systemone is appended
   endpoint_path: /v1/systemone  # optional path override
   model: ${SYSTEM1_MODEL_ID:-}        # optional: the id the server is EXPECTED to report; never sent
-  request_model: ${REQUEST_MODEL:-} # optional: sent as `model` when set
+  request_model: ${SYSTEM1_REQUEST_MODEL:-} # sent as `model` only when set
   api_key: ${SYSTEM1_API_KEY}         # optional; SecretStr, never printed
   timeout_seconds: 8              # hard budget of ONE decision (all stages, all retries)
   connect_timeout_seconds: 2      # *
@@ -69,7 +71,8 @@ under `pokegent run`, and no file elsewhere. `addons.system_one.factory.build_de
 refuses a path that still contains the placeholder.
 
 Environment: `SYSTEM1_API_KEY` may be unset (warning, no Authorization header);
-`SYSTEM1_BASE_URL` is required when System One is enabled; `SYSTEM1_MODEL_ID` is optional
+`SYSTEM1_BASE_URL` is required when System One is enabled; `SYSTEM1_MODEL_ID` is an optional
+expected response ID, while `SYSTEM1_REQUEST_MODEL` is a separate request selector
 (`${NAME}` and `${NAME:-default}` expand in every string). Expired legacy names fail with a migration error; use
 this release. Unknown keys, bad ranges and a non-http(s) URL are errors, all listed
 at once with their path; rejected values are never echoed. Plain `repr`/`str`/`model_dump` of the
@@ -77,7 +80,14 @@ config show `SecretStr('**********')`.
 
 Set `provider_url`, `endpoint_path`, `request_model` and `api_key` for an endpoint you are
 authorized to use. Confirm its supported model IDs and wire format with the provider.
-The default SYSTEM1 wire omits a request model because the server selects it.
+The client omits JSON `model` when `request_model` is unset; it sends the explicit value
+when set. Endpoint contracts vary: some select a model server side or reject this field,
+while others require it. Configure a supported selector explicitly for the latter;
+there is no built-in endpoint or model default. `model` / `SYSTEM1_MODEL_ID` remains
+the expected response ID for telemetry and `strict_model_pin`, never a selector fallback.
+For user-facing YAML use `system1.request_model`; `SYSTEM1_REQUEST_MODEL` overrides
+it when non-empty. The environment-only `provider check` and app fallback use the same
+variable. Explicit legacy `system_one` YAML uses the expansion shown above.
 
 ## Wiring
 
@@ -212,8 +222,8 @@ conservative starting points to be tuned against measured p95 (spec 14).
 System One is the generic user-facing decider name: use `--decider system1`.
 The provider id is the neutral `http` (`system_one.primary: http`). The HTTP implementation
 may retain `system1` internally for protocol compatibility. Configuration uses
-`SYSTEM1_BASE_URL`, `SYSTEM1_API_KEY`, and
-`SYSTEM1_MODEL_ID`; the corresponding legacy `SYSTEM1_BASE_URL`, `SYSTEM1_API_KEY`, and
-`SYSTEM1_MODEL_ID` values are fallbacks. The endpoint `/v1/systemone` and `X-Von-*`
+`SYSTEM1_BASE_URL`, `SYSTEM1_API_KEY`, `SYSTEM1_REQUEST_MODEL`, and
+`SYSTEM1_MODEL_ID` (expected response ID; `SYSTEM1_MODEL` also maps to this in user config).
+The endpoint `/v1/systemone` and `X-Von-*`
 wire headers are unchanged protocol names.
 
