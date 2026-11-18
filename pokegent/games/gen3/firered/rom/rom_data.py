@@ -33,6 +33,7 @@ from pokegent.games.gen3.firered.reader.memory_port import (
     IWRAM_START,
     ROM_START,
 )
+from pokegent.resources import reference_path
 
 ROM_PATH_ENV = "FIRERED_ROM_PATH"
 PROFILES_PATH_ENV = "POKEGENT_ROM_PROFILES"
@@ -241,7 +242,7 @@ def default_profiles_path() -> Path:
     override = os.environ.get(PROFILES_PATH_ENV)
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[5] / "references" / "rom_profiles.yaml"
+    return reference_path("rom_profiles.yaml")
 
 
 def parse_profiles(document: Mapping[str, object]) -> ProfileSet:

@@ -18,6 +18,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from pokegent.resources import reference_path
+
 SCENE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 VERB_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
@@ -141,7 +143,7 @@ def default_catalog_path() -> Path:
     override = os.environ.get("POKEGENT_SCENES")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[2] / "references" / "scenes.yaml"
+    return reference_path("scenes.yaml")
 
 
 def load_scene_catalog(path: str | os.PathLike[str] | None = None) -> SceneCatalog:
