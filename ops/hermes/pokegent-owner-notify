@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# stdin queues a review durably; --drain attempts one idle-only delivery batch.
+set -eu
+CODE=${CODE:-$(cd -- "$(dirname -- "$0")/../.." && pwd)}
+cd -- "$CODE"
+exec "${PY:-python3}" -m pokegent.review notify "$@"
