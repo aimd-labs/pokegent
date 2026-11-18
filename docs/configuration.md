@@ -7,7 +7,7 @@ present, then applies environment variables, then explicit CLI flags. The real
 The main keys are `rom_path`, `decider` (`agent`, `system1`, `hybrid`, `first`, or
 `forced`). The one-release `external` alias runs `agent` with a deprecation warning.
 `system1.base_url`, `system1.api_key` or `system1.api_key_env`, optional
-`system1.model` and `system1.timeouts`, `external.port` (19700–19799) and
+`system1.model`, `system1.request_model` and `system1.timeouts`, `external.port` (19700–19799) and
 and `hybrid.escalate_below_confidence` (default `0.35`, or a mapping of `scene_id` to thresholds
 with optional `default`; unknown scenes use `default`, or `0.35` when omitted),
 `hybrid.override_window_s` (default `0`), and `hybrid.force_agent_after_repeats` (positive integer,
@@ -62,11 +62,21 @@ Old `recovery:`, `objectives:` and `runner.busy_nudge_after`
 keys are rejected with an error, never silently ignored.
 
 Environment overrides include `POKEGENT_ROM_PATH`, `POKEGENT_DECIDER`,
-`SYSTEM1_BASE_URL`, `SYSTEM1_API_KEY`, `SYSTEM1_MODEL`,
+`SYSTEM1_BASE_URL`, `SYSTEM1_API_KEY`, `SYSTEM1_MODEL`, `SYSTEM1_MODEL_ID`,
+`SYSTEM1_REQUEST_MODEL`,
 `POKEGENT_EXTERNAL_PORT`, `POKEGENT_FIELD_MENU`,
 `POKEGENT_HYBRID_ESCALATE_BELOW_CONFIDENCE`,
 and `POKEGENT_HYBRID_OVERRIDE_WINDOW_S`. API keys are never printed by the configuration layer;
 prefer `api_key_env` so the secret is not stored in the file.
+
+`SYSTEM1_REQUEST_MODEL` overrides `system1.request_model` and is sent as the HTTP JSON
+`model` selector. If neither is set, the field is omitted; an empty environment value does
+not override a YAML value. Endpoints that require a selector need an explicit supported
+value. No endpoint or model default is inferred. `SYSTEM1_MODEL_ID` (or `SYSTEM1_MODEL`)
+sets `system1.model`, the expected response ID for telemetry and optional strict pinning;
+it is never reused as the request selector. The legacy `system_one` section also supports
+`request_model`, including `${SYSTEM1_REQUEST_MODEL:-}` expansion. See
+[provider configuration](provider-integration.md#configuration).
 
 Compatible TM/HM teaching options are always available; legal game actions are not hidden behind
 configuration or objective relevance. `POKEGENT_FIELD_MENU` still controls non-teaching field-item

@@ -5,7 +5,8 @@ system1:
   base_url: http://127.0.0.1:8799 # placeholder; set to your System One endpoint
   api_key_env: SYSTEM1_API_KEY
   # api_key: never commit real keys
-  model: null
+  model: null # optional expected response ID; never sent
+  request_model: null # optional request selector; set if required by your endpoint
   timeouts: 8
 external:
   port: 19760 # must be 19700-19799

@@ -34,6 +34,7 @@ def env_config() -> dict[str, str | None]:
     return {
         "provider_url": base_url if base_url is not None else "${SYSTEM1_BASE_URL}",
         "model": get_system1_env("SYSTEM1_MODEL_ID", ""),
+        "request_model": get_system1_env("SYSTEM1_REQUEST_MODEL"),
         "api_key": api_key if api_key is not None else "${SYSTEM1_API_KEY}",
     }
 
