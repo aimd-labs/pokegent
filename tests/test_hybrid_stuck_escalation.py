@@ -264,3 +264,56 @@ def test_agent_wait_interruption_still_exits_without_another_action(harness):
     assert runner.run().status is RunStatus.INTERRUPTED
     assert len(actions) == 2
     assert len(requests) == 1
+
+
+def test_option_loop_opens_recovery_and_agent_action_executes(harness):
+    """Issue #35 connected recovery: a due option_loop must let the agent run recovery,
+    not SAFE_PAUSE with zero agent requests/actions (review gap 3)."""
+    runner, calls, exes, requests, _ = harness(no_progress_limit=1)
+    # Prime the monitor with a full closed loop (2 options, state ping, full interval).
+    m = runner._progress
+    m.loop_window = 2
+    m.loop_min_cycles = 2
+    m._capacity = 4
+    it = 0
+    for i in range(4):
+        sig = "SA" if i % 2 == 0 else "SB"  # semantic ping: position changes every step
+        m.observe(sig, now=float(it), iteration=it)
+        m.note_decision(verified=True,
+                        option_id="warp:a:1" if i % 2 == 0 else "warp:b:1")
+        it += 1
+    assert m.loop_reason() is not None  # due BEFORE the run starts
+    summary = runner.run()
+    # The loop-guard fires once -> _report_no_progress -> _escalate opens a hybrid
+    # recovery window.  With _hybrid_no_progress_active now set, the guard is silenced
+    # and the agent may actually run through the pedestrian recovery path.
+    assert summary.verdict == "no_progress"
+    # The bridge agent must have been consulted and produced executed actions during
+    # the recovery window (real recovery contract preserved), not 0 requests/actions.
+    assert len(requests) >= 1
+    assert len(exes) >= 1
+
+
+def test_option_loop_rearm_on_durable_progress_in_runner(harness):
+    """A durable-progress reset inside the runner (clear_loop=True) re-arms the detector
+    so a later step may carry the run forward (review: durable progress rearming)."""
+    runner, _, exes, requests, _ = harness(progress_at=(5,), no_progress_limit=1)
+    m = runner._progress
+    m.loop_window = 2
+    m.loop_min_cycles = 2
+    m._capacity = 4
+    it = 0
+    for i in range(4):
+        sig = "SA" if i % 2 == 0 else "SB"
+        m.observe(sig, now=float(it), iteration=it)
+        m.note_decision(verified=True,
+                        option_id="warp:a:1" if i % 2 == 0 else "warp:b:1")
+        it += 1
+    assert m.loop_reason() is not None
+    # Force a durable-progress rearm before the run so the monitor is fresh.
+    m.reset_window(now=1000.0, iteration=1000, clear_loop=True)
+    assert m.loop_reason() is None
+    summary = runner.run()
+    assert summary.status is RunStatus.SAFE_PAUSE
+    # A real recovery action executed (progress_at rewarded action index 5).
+    assert len(exes) >= 1

@@ -19,11 +19,13 @@ class ProgressMonitor:
 
     * ``decision_limit``  — ``decision_limit`` consecutive decisions with no
       semantic state change (position / party / bag / flags all unchanged).
-    * ``option_loop``     — a closed CLIENT-side loop: over the recent window only a
-      small set of option ids (< = ``loop_distinct_limit``) recur, and the semantic
-      signature RETURNS to an earlier value (e.g. a warp ping ``warp:a:* <-> warp:b:*``
-      that hops between two cells forever).  This catches loops that *change position*
-      on every step, which by design never trip ``decision_limit``.
+    * ``option_loop``     — a closed CLIENT-side loop: over the FULL claimed
+      repetition interval only ``<= loop_distinct_limit`` distinct option ids
+      recur, AND the semantic signature RETURNS to an earlier value (a backdrop
+      e.g. a warp ping ``warp:a:* <-> warp:b:*`` that hops between two cells
+      forever).  This catches loops that *change position* on every step, which
+      by design never trip ``decision_limit``, while a monotone grind that
+      changes party state each step while reusing one option stays clean.
     """
 
     def __init__(
@@ -35,21 +37,26 @@ class ProgressMonitor:
         loop_distinct_limit: int = 2,
         loop_min_cycles: int = 3,
     ) -> None:
-        if isinstance(decision_limit, bool) or not isinstance(decision_limit, int):
-            raise ValueError("decision_limit must be an integer")
-        if decision_limit < 1:
-            raise ValueError("decision_limit must be >= 1")
+        for name, value in (
+            ("decision_limit", decision_limit),
+            ("loop_window", loop_window),
+            ("loop_distinct_limit", loop_distinct_limit),
+            ("loop_min_cycles", loop_min_cycles),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be an integer >= 1")
         self.decision_limit = decision_limit
         self.last_progress_at = now
         self.last_progress_iteration = 0
         self.decisions_since_progress = 0
         self._signature: str | None = None
         self._verified_before: str | None = None
-        self._window: list[str] = []
-        self._option_ids: list[str] = []
         self.loop_window = loop_window
         self.loop_distinct_limit = loop_distinct_limit
         self.loop_min_cycles = loop_min_cycles
+        self._capacity = loop_window * loop_min_cycles
+        # Bounded (option_id, signature) pairs covering the FULL claimed interval.
+        self._window: list[tuple[str, str]] = []
 
     def observe(self, signature: str, *, now: float, iteration: int) -> bool:
         """Return true only for a verified action followed by a semantic state change."""
@@ -68,10 +75,10 @@ class ProgressMonitor:
     def note_decision(self, *, verified: bool, option_id: str | None = None) -> None:
         self.decisions_since_progress += 1
         self._verified_before = self._signature if verified else None
-        if verified and option_id:
-            self._option_ids.append(option_id)
-            while len(self._option_ids) > self.loop_window * self.loop_min_cycles:
-                self._option_ids.pop(0)
+        if verified and option_id and self._signature is not None:
+            self._window.append((option_id, self._signature))
+            if len(self._window) > self._capacity:
+                del self._window[0]
 
     def due_reason(self) -> str | None:
         if self.decisions_since_progress >= self.decision_limit:
@@ -82,29 +89,47 @@ class ProgressMonitor:
         return None
 
     def loop_reason(self) -> str | None:
-        """``option_loop`` when a small option set recurs while the signature ping-pongs.
+        """``option_loop`` when the FULL interval is a closed loop.
 
         The semantic signature is hashed over position/party/bag/flags, so a warp ping
         that alternates two cells changes position every step and never trips
-        ``decision_limit``.  This detector instead tracks how many distinct option ids
-        appear in the recent window and how often the client re-sees an EARLIER
-        signature (a return to a previously-visited state = a closed loop, not progress).
-        """
-        # Need enough verified decisions to judge the window.
-        if len(self._option_ids) < self.loop_window * self.loop_min_cycles:
-            return None
-        recent = self._option_ids[-self.loop_window:]
-        distinct = len(set(recent))
-        if distinct > self.loop_distinct_limit:
-            return None
-        # Distinct mask of the canonical recent window.
-        return f"option_loop:distinct={distinct},window={self.loop_window}"
+        ``decision_limit``.  This detector requires BOTH, over the FULL claimed interval
+        (``loop_window * loop_min_cycles``):
 
-    def reset_window(self, *, now: float, iteration: int) -> None:
+        * the distinct option-id count ``<= loop_distinct_limit`` (a small option set),
+        * and ``>= loop_min_cycles`` signature REVISITS (an entry whose semantic signature
+          was already seen earlier INSIDE the same window) — the return to a previously
+          visited state that distinguishes a closed loop from monotone durable progress.
+
+        Unrelated earlier history never leaks: the bound is the full interval, and a
+        ``128 distinct + 64 alternating`` sequence yields ``>= 130`` distinct option ids,
+        so it stays below the loop threshold.
+        """
+        if len(self._window) != self._capacity:
+            return None  # need the FULL claimed interval, not a tail
+        distinct_options = {opt for opt, _ in self._window}
+        if len(distinct_options) > self.loop_distinct_limit:
+            return None
+        seen: set[str] = set()
+        revisits = 0
+        for _, sig in self._window:
+            if sig in seen:
+                revisits += 1
+            seen.add(sig)
+        if revisits < self.loop_min_cycles:
+            return None
+        return (f"option_loop:options={len(distinct_options)},"
+                f"revisits={revisits},window={self._capacity}")
+
+    def reset_window(self, *, now: float, iteration: int, clear_loop: bool = False) -> None:
         self.last_progress_at = now
         self.last_progress_iteration = iteration
         self.decisions_since_progress = 0
         self._verified_before = None
+        # Loop evidence is cleared ONLY on durable-progress rearm / recovery arm, never on
+        # a positional ping (which changes position yet is still a closed loop, issue #35).
+        if clear_loop:
+            self._window.clear()
 
     @property
     def signature(self) -> str | None:
