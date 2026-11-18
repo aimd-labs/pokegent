@@ -333,6 +333,36 @@ def test_cli_io_redaction_and_help_outside_cwd(inputs, tmp_path, monkeypatch, ca
     assert bad.returncode == 2 and 'Traceback' not in bad.stderr
 
 
+@pytest.mark.parametrize('which', ['rom', 'out'])
+def test_cli_cyclic_ancestor_is_redacted(tmp_path, which):
+    loop = tmp_path / 'loop'
+    loop.symlink_to('loop')
+    source = tmp_path / 'invented.bin'
+    source.write_bytes(b'invented unused input')
+    output = tmp_path / 'out'
+    output.mkdir()
+    def inventory():
+        return {p.name: os.readlink(p) if p.is_symlink() else
+                p.read_bytes() if p.is_file() else None for p in tmp_path.iterdir()}
+    before = inventory()
+    supplied = loop / f'invented-private-{which}-marker'
+    args = ['rom-data', 'map-index', '--numeric-labels', '--rom',
+            str(supplied if which == 'rom' else source), '--out-dir',
+            str(supplied if which == 'out' else output)]
+    result = run_python(f'from pokegent.cli import main; main({args!r})', tmp_path,
+                        index=tmp_path / 'absent.json')
+    print(json.dumps({'case': which, 'exit': result.returncode,
+                      'traceback': 'Traceback' in result.stderr,
+                      'path_leaked': str(supplied) in result.stderr,
+                      'files_unchanged': inventory() == before}))
+    assert result.returncode == 2
+    assert result.stdout == ''
+    assert result.stderr == (
+        'error: numeric map index failed; check ROM and empty external output.\n')
+    assert str(supplied) not in result.stderr and 'Traceback' not in result.stderr
+    assert inventory() == before and not list(output.iterdir())
+
+
 def test_manual_mixed_fly_and_other_sidecar_contracts(inputs, tmp_path):
     _, _, rom, output = inputs
     numeric = tool.build_map_index(rom, output)

@@ -79,7 +79,10 @@ def extract_map_index(image: bytes, profile: RomProfile) -> dict:
 def _external(path: Path) -> Path:
     if path.is_symlink():
         raise MapIndexError('final path must not be a symlink')
-    resolved = path.resolve()
+    try:
+        resolved = path.resolve()
+    except RuntimeError:
+        raise MapIndexError('path resolution failed') from None
     if resolved.is_relative_to(_CHECKOUT) or '.git' in resolved.parts:
         raise MapIndexError('input and output must stay outside the checkout')
     return resolved
