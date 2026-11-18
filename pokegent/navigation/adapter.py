@@ -147,6 +147,19 @@ class NavigationAdapter:
                         f"candidate map: {name}"
                     ),
                 )
+                decision = self.planner.plan_next_decision(
+                    start, target, capabilities, live=state
+                )
+                if decision is not None:
+                    plan = NavigationPlan(
+                        start,
+                        target,
+                        None,
+                        unmet=decision.unmet,
+                        explored=max(plan.explored, decision.explored),
+                        blocked_route_fact=decision.blocked_route_fact or plan.blocked_route_fact,
+                        blocked_choice_step=decision.blocked_choice_step,
+                    )
         elif target is not None:
             plan = train_plan or self.planner.plan(start, target, capabilities, live=state)
         else:
@@ -278,12 +291,26 @@ class NavigationAdapter:
         if selected is not None:
             return selected.target, selected
         map_name = destination.identity.name or resolved.target.map_name or str(target.map_key)
-        return target, NavigationPlan(
+        plan = NavigationPlan(
             start,
             target,
             None,
             blocked_route_fact=f"no reachable encounter tile on {map_name}",
         )
+        decision = self.planner.plan_next_decision(
+            start, target, capabilities, live=live
+        )
+        if decision is not None:
+            plan = NavigationPlan(
+                start,
+                target,
+                None,
+                unmet=decision.unmet,
+                explored=max(plan.explored, decision.explored),
+                blocked_route_fact=decision.blocked_route_fact or plan.blocked_route_fact,
+                blocked_choice_step=decision.blocked_choice_step,
+            )
+        return target, plan
 
     @staticmethod
     def _stage_boulder_action(plan, target):
