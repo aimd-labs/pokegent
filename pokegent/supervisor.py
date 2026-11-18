@@ -237,6 +237,25 @@ class Supervisor:
             "preparing", "running", "finished", "blocked"
         ):
             raise ValueError("unrecognized live-run metadata; ownership needs review")
+        if (record["status"] == "blocked" and record.get("requested") is not True
+                and record.get("forced") is not True):
+            raise ValueError("previous run is blocked; review live-run.json before resuming")
+        out_value = record.get("out")
+        run_id = record.get("run_id")
+        valid_out = (
+            isinstance(out_value, str) and isinstance(run_id, str)
+            and Path(out_value).parent == self.home / "runs"
+            and Path(out_value).name == run_id
+            and Path(out_value).is_dir() and not Path(out_value).is_symlink()
+            and Path(out_value).resolve().parent == (self.home / "runs").resolve()
+        )
+        # Check terminal publications before any controlled-interrupt fallback.
+        if valid_out:
+            if self.block_provider(record, Path(out_value)):
+                return record
+        elif record.get("verdict") == "owner_review":
+            self.block(record, "provider_configuration: owner review required")
+            return record
         if record["status"] == "blocked":
             # A controlled interrupt (a ``requested`` stop — the operator touched
             # ``restart``/``stop`` or the unit got SIGTERM/SIGINT) whose runner never
@@ -250,18 +269,11 @@ class Supervisor:
             # Only genuine boolean flags resume; a JSON string like "false" must not.
             requested = requested_flag is True or forced_flag is True
             state_value = record.get("state")
-            out_value = record.get("out")
-            run_id = record.get("run_id")
             valid_start = (
                 requested and isinstance(state_value, str) and bool(state_value)
                 and Path(state_value).is_absolute()
                 and Path(state_value).is_file()
                 and Path(state_value).stat().st_size > 0
-            )
-            valid_out = (
-                isinstance(out_value, str) and isinstance(run_id, str)
-                and Path(out_value).parent == self.home / "runs"
-                and Path(out_value).name == run_id
             )
             if valid_start and valid_out:
                 assert isinstance(out_value, str) and isinstance(run_id, str)
@@ -303,14 +315,10 @@ class Supervisor:
         if type(self.stalled_segments) is not int or self.stalled_segments < 0:
             raise ValueError("invalid stalled segment count; ownership needs review")
         if record["status"] == "finished" and not record.get("out"):
-            if record.get("verdict") == "owner_review":
-                self.block(record, "provider_configuration: owner review required")
             return record
-        out = Path(record.get("out", ""))
-        if out.parent != self.home / "runs" or out.name != record.get("run_id"):
+        if not valid_out:
             raise ValueError("invalid previous run directory")
-        if self.block_provider(record, out):
-            return record
+        out = Path(out_value)
         if record["status"] == "finished":
             return record
         pid = record.get("pid")

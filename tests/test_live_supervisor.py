@@ -15,7 +15,7 @@ import pytest
 from test_hybrid_stuck_escalation import harness as hybrid_harness  # noqa: F401
 
 from pokegent.live import payload, successor_state, verdict
-from pokegent.supervisor import Settings, atomic_write
+from pokegent.supervisor import Settings, Supervisor, atomic_write, write_json
 
 FAKE_RUNNER = r'''
 import argparse
@@ -358,8 +358,9 @@ def test_controlled_stop_without_final_restarts_from_last_verified_state(live):
     assert load(home / "runs/live-0001/exit.json")["recovered"] is True
 
 
-def test_interrupt_recovery_rejects_negative_stalled_segments(live):
-    """A controlled-interrupt blocked record with a negative stalled_segments count must
+@pytest.mark.parametrize("stalled", [-1, True, "1", 1.5, None])
+def test_interrupt_recovery_rejects_invalid_stalled_segments(live, stalled):
+    """A controlled-interrupt blocked record with an invalid stalled_segments count must
     NOT resume: reuse the existing counter validation so a corrupt/invalid record cannot
     launch (review)."""
     home, start = live
@@ -371,7 +372,7 @@ def test_interrupt_recovery_rejects_negative_stalled_segments(live):
         "run_id": "live-0093", "out": str(out), "state": str(initial),
         "status": "blocked", "verdict": "interrupted",
         "requested": True, "forced": False, "rc": -15,
-        "stalled_segments": -1, "state_error": "no final state", "state_path": None,
+        "stalled_segments": stalled, "state_error": "no final state", "state_path": None,
     }))
     child = start([{"summary": {"game_cleared": True}}])
     assert child.wait(timeout=5) == 4
@@ -853,3 +854,166 @@ def test_terminal_recovery_windows_precede_any_promotion(live, status, publicati
     assert (home / "current.state").read_text() == initial_pointer
     assert load(home / "objective.json") == objective
     assert (home / "objective.json.history.jsonl").read_text() == '{"revision":8}\n'
+
+
+TERMINAL_DETAILS = {
+    "reason": "provider_configuration",
+    "status": 401,
+    "error": "synthetic rejection",
+}
+
+
+@pytest.mark.parametrize("publication", ["summary", "exit", "lifecycle", "all"])
+@pytest.mark.parametrize("status", ["preparing", "running", "finished", "blocked"])
+@pytest.mark.parametrize(
+    "flags", [{"requested": True}, {"forced": True}, {"requested": True, "forced": True}]
+)
+@pytest.mark.parametrize("final", [False, True])
+def test_terminal_survives_every_interrupt_publication(tmp_path, publication, status, flags, final):
+    home = tmp_path / "synthetic"
+    out = home / "runs/live-0001"
+    out.mkdir(parents=True)
+    initial = home / "initial.state"
+    initial.write_text("invented prior state")
+    pointer = home / "current.state"
+    pointer.write_text(str(initial) + "\n")
+    objective = home / "objective.json"
+    objective.write_text('{"revision": 7}')
+    history = home / "objective.json.history.jsonl"
+    history.write_text("invented history\n")
+    saved = {p: p.read_bytes() for p in (pointer, objective, history)}
+    record = dict(
+        status=status,
+        out=str(out),
+        run_id=out.name,
+        state=str(initial),
+        verdict="interrupted",
+        state_path=None,
+        state_error="no final state",
+        **flags,
+    )
+    terminal = dict(verdict="owner_review", stop_details=TERMINAL_DETAILS)
+    summary = dict(stop_reason="interrupted", states={"final": "final.state" if final else None})
+    if final:
+        (out / "final.state").write_text("invented successor")
+    if publication in ("summary", "all"):
+        summary.update(terminal)
+    if publication in ("lifecycle", "all"):
+        record.update(terminal)
+    write_json(out / "summary.json", summary)
+    if publication in ("exit", "all"):
+        write_json(out / "exit.json", terminal)
+    write_json(home / "live-run.json", record)
+    supervisor = Supervisor(
+        Settings(home=home, config=home / "run.yaml", objective=objective, runner="unused")
+    )
+    recovered = supervisor.recover()
+    assert recovered["status"] == "blocked", recovered
+    assert recovered["verdict"] == "owner_review", recovered
+    assert recovered["stop_details"] == TERMINAL_DETAILS, recovered
+    published = load(home / "live-run.json")
+    assert published["status"] == "blocked", published
+    assert load(out / "summary.json") == summary
+    assert load(out / "exit.json")["verdict"] == "owner_review"
+    assert load(out / "exit.json")["stop_details"] == TERMINAL_DETAILS
+    assert all(p.read_bytes() == content for p, content in saved.items())
+
+
+@pytest.mark.parametrize("trigger", ["signal", "restart"])
+@pytest.mark.parametrize("final", [False, True])
+def test_concurrent_interrupt_terminal_remains_blocked_on_second_start(live, trigger, final):
+    home, start = live
+    first = start(
+        [
+            dict(
+                wait=True,
+                final=final,
+                rc=3,
+                summary={"verdict": "owner_review", "stop_details": TERMINAL_DETAILS},
+            )
+        ]
+    )
+    out = home / "runs/live-0001"
+    wait_until(lambda: (out / "ready").exists())
+    pointer = (home / "current.state").read_bytes()
+    if trigger == "signal":
+        first.send_signal(signal.SIGTERM)
+    else:
+        (home / "restart").touch()
+    assert first.wait(timeout=5) == 3
+    blocked = load(home / "live-run.json")
+    assert blocked["status"] == "blocked" and blocked["requested"] is True
+    assert blocked["verdict"] == "owner_review"
+    assert (home / "current.state").read_bytes() == pointer
+    publications = {p: p.read_bytes() for p in (out / "summary.json", out / "exit.json")}
+    second = start([{"summary": {"game_cleared": True}}])
+    rc = second.wait(timeout=5)
+    assert len(calls(home)) == 1, {"rc": rc, "calls": calls(home)}
+    assert rc in (3, 4)
+    assert load(home / "live-run.json")["status"] == "blocked"
+    assert verdict(out) == "owner_review"
+    assert load(home / "live-run.json")["stop_details"] == TERMINAL_DETAILS
+    assert all(p.read_bytes() == content for p, content in publications.items())
+    assert (home / "current.state").read_bytes() == pointer
+
+
+@pytest.mark.parametrize("status", ["preparing", "running", "finished", "blocked"])
+@pytest.mark.parametrize("bad_path", [
+    "missing", "empty", "number", "list", "absent", "mismatch", "outside", "symlink", "parent",
+])
+def test_terminal_without_usable_run_path_blocks_before_publication_access(
+    tmp_path, monkeypatch, status, bad_path,
+):
+    from pokegent import supervisor as module
+
+    home = tmp_path / "synthetic"
+    runs = home / "runs"
+    runs.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    # Foreign publications must never be consulted or overwritten.
+    write_json(outside / "summary.json", {"game_cleared": True})
+    write_json(outside / "exit.json", {"verdict": "interrupted"})
+    saved = {p: p.read_bytes() for p in outside.iterdir()}
+    initial = home / "initial.state"
+    initial.write_text("invented verified state")
+    pointer = home / "current.state"
+    pointer.write_text(str(initial) + "\n")
+    saved[pointer] = pointer.read_bytes()
+    out = runs / "live-0001"
+    run_id = out.name
+    if bad_path == "symlink":
+        out.symlink_to(outside, target_is_directory=True)
+    elif bad_path == "mismatch":
+        out.mkdir()
+        run_id = "live-0002"
+    elif bad_path == "outside":
+        out = outside
+        run_id = outside.name
+    elif bad_path == "parent":
+        out = runs / ".."
+        run_id = ".."
+    out_value = {"missing": None, "empty": "", "number": 17, "list": []}.get(bad_path, str(out))
+    record = dict(
+        status=status, out=out_value, run_id=run_id, state=str(initial),
+        verdict="owner_review", stop_details=TERMINAL_DETAILS, requested=True, forced=True,
+    )
+    record_path = home / "live-run.json"
+    write_json(record_path, record)
+
+    def read_metadata(path):
+        assert path == record_path, "unvalidated publication read"
+        return load(path)
+
+    monkeypatch.setattr(module, "read_json", read_metadata)
+    supervisor = Supervisor(Settings(
+        home=home, config=home / "run.yaml", objective=home / "objective.json", runner="unused",
+    ))
+    recovered = supervisor.recover()
+    assert recovered["status"] == "blocked"
+    assert recovered["verdict"] == "owner_review"
+    assert recovered["stop_details"] == TERMINAL_DETAILS
+    assert load(record_path) == recovered
+    assert all(p.read_bytes() == content for p, content in saved.items())
+    if bad_path == "absent":
+        assert not (out / "exit.json").exists()
