@@ -37,6 +37,8 @@ import logging
 import math
 import random
 import socket
+import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -67,6 +69,13 @@ from .redact import RedactingFilter, Scrubber, safe_url
 CLIENT_VERSION = "system1-http/1"
 ENDPOINT = "/v1/systemone"
 MAX_RESPONSE_BYTES = 1_048_576
+CONFIGURATION_STATUSES = frozenset({400, 401, 403, 404, 405, 415, 422})
+# A resolver in a thread cannot be interrupted or safely abandoned at interpreter exit.
+_RESOLVE_CODE = (
+    "import json,socket,sys; "
+    "print(json.dumps(socket.getaddrinfo(sys.argv[1],int(sys.argv[2]),"
+    "type=socket.SOCK_STREAM)))"
+)
 UPSTREAM_SHA = "56e845299f573af06480db6035f5d13f0f3baf51"  # wfzyx/von, see source-lock.md
 
 # Wire names of the pinned upstream server. Neutral aliases are accepted for test doubles and
@@ -226,8 +235,12 @@ def _short(value: Any, n: int = 80) -> str:
     return text if len(text) <= n else text[: n - 3] + "..."
 
 
-def _cap_text(value: str | None, n: int = 200) -> str | None:
-    return None if value is None else value[:n]
+def _published_text(value: str | None, scrubber: Scrubber, n: int = 200) -> str | None:
+    if value is None:
+        return None
+    safe = scrubber.text(value)
+    safe = " ".join("".join(c if c.isprintable() else " " for c in safe).split())
+    return scrubber.text(safe)[:n]
 
 
 def _cap_json(value: Any, n: int = 2000) -> Any:
@@ -428,10 +441,44 @@ class VonClient:
 
     # -- one HTTP attempt ---------------------------------------------------------------------
 
+    def _resolve(self, deadline, expired):
+        port = self._port or (443 if self._https else 80)
+        # Numeric addresses need no resolver process (including ordinary loopback tests).
+        for family in (socket.AF_INET, socket.AF_INET6):
+            try:
+                socket.inet_pton(family, self._host)
+            except OSError:
+                continue
+            address = ((self._host, port) if family == socket.AF_INET
+                       else (self._host, port, 0, 0))
+            return [(family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", address)]
+        with subprocess.Popen(
+            [sys.executable, "-I", "-c", _RESOLVE_CODE, self._host, str(port)],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        ) as resolver:
+            try:
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or expired.is_set() or self._cancelled.is_set():
+                        raise TimeoutError("resolver deadline expired or cancelled")
+                    try:
+                        output, _ = resolver.communicate(timeout=min(remaining, .02))
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                if resolver.returncode:
+                    raise socket.gaierror("name resolution failed")
+                return json.loads(output)
+            finally:
+                if resolver.poll() is None:
+                    resolver.kill()
+                resolver.wait()
+
     def _exchange(self, method, path, body, headers, remaining):
         if self._cancelled.is_set():
             raise ConnectionAbortedError("request cancelled")
         connect_t = min(self.connect_timeout_s, remaining)
+        deadline = time.monotonic() + remaining
         read_t = min(self.read_timeout_s, remaining)
         cls = http.client.HTTPSConnection if self._https else http.client.HTTPConnection
         conn = cls(self._host, self._port, timeout=connect_t)
@@ -447,7 +494,34 @@ class VonClient:
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
+            # Only the reader closes HTTPResponse/HTTPConnection. Closing here races
+            # HTTPResponse._close_conn during chunked reads on Python 3.11.
             self._abort_connection(conn)
+
+        def connect(address, timeout, source_address=None):
+            connect_deadline = min(deadline, time.monotonic() + connect_t)
+            addresses = self._resolve(connect_deadline, expired)
+            last = None
+            for family, kind, proto, _, target in addresses:
+                left = connect_deadline - time.monotonic()
+                if left <= 0 or expired.is_set() or self._cancelled.is_set():
+                    raise TimeoutError("connect deadline expired or cancelled")
+                sock = socket.socket(family, kind, proto)
+                sockets.append(sock)
+                try:
+                    sock.settimeout(left)
+                    if source_address:
+                        sock.bind(source_address)
+                    sock.connect(tuple(target))
+                    # TLS opening must use only the budget left after DNS/TCP opening.
+                    sock.settimeout(max(.001, connect_deadline - time.monotonic()))
+                    return sock
+                except OSError as exc:
+                    last = exc
+                    sock.close()
+            raise last or OSError("resolver returned no addresses")
+
+        conn._create_connection = connect
 
         timer = threading.Timer(remaining, expire)
         timer.daemon = True
@@ -466,8 +540,23 @@ class VonClient:
             conn.request(method, path, body=body, headers=headers)
             resp = conn.getresponse()
             try:
-                data = resp.read(MAX_RESPONSE_BYTES + 1)
-                if expired.is_set():
+                terminal = resp.status in CONFIGURATION_STATUSES
+                if terminal:
+                    # A reason is optional: leave time to publish the authoritative status
+                    # before the caller's decision deadline, even for a dribbling error body.
+                    timer.cancel()
+                    timer = threading.Timer(
+                        max(0, min(read_t, (deadline - time.monotonic()) / 2)), expire
+                    )
+                    timer.daemon = True
+                    timer.start()
+                try:
+                    data = resp.read(MAX_RESPONSE_BYTES + 1)
+                except (OSError, http.client.HTTPException):
+                    if not terminal:
+                        raise
+                    data = b""  # The HTTP rejection remains authoritative without a reason.
+                if expired.is_set() and not terminal:
                     raise TimeoutError("request deadline expired")
                 return resp.status, {k.lower(): v for k, v in resp.getheaders()}, data
             finally:
@@ -493,7 +582,6 @@ class VonClient:
                 sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
-        conn.close()
 
     def cancel(self) -> None:
         """Abort active reads and make a pre-connect race fail immediately after connect."""
@@ -531,10 +619,11 @@ class VonClient:
             ),
             None,
         )
-        result = {"system1_version": _cap_text(str(version), 80)} if version else {}
+        result = ({"system1_version": _published_text(str(version), self.scrubber, 80)}
+                  if version else {})
         result.update(
             {
-                k: _cap_text(str(parsed[k]), 80)
+                k: _published_text(str(parsed[k]), self.scrubber, 80)
                 for k in ("weights_revision", "status")
                 if parsed.get(k) is not None
             }
@@ -591,11 +680,10 @@ class VonClient:
                     self.scrubber.text(f"connection failed: {type(exc).__name__}"), attempt=attempt
                 )
             else:
-                if len(data) > MAX_RESPONSE_BYTES:
-                    self.breaker.record_success()
-                    raise InvalidResponse("response body too large")
                 if 200 <= status < 300:
                     self.breaker.record_success()
+                    if len(data) > MAX_RESPONSE_BYTES:
+                        raise InvalidResponse("response body too large")
                     return RawResponse(status, hdrs, data, attempt)
                 if status == 408:
                     last = ProviderTimeout("server reported request timeout", status=status)
@@ -605,11 +693,14 @@ class VonClient:
                     last = ProviderUnavailable(f"server answered HTTP {status}", status=status)
                 else:  # 4xx: the request is wrong; the server is fine; never retry
                     self.breaker.record_success()
-                    reason = rejection_reason(data, self.scrubber)
+                    reason = (rejection_reason(data, self.scrubber)
+                              if len(data) <= MAX_RESPONSE_BYTES
+                              else self.scrubber.text(
+                                  "response body too large; explanation discarded"))
                     hint = ("check credentials/auth_header" if status in {401, 403}
                             else "check request_model, protocol and endpoint_path")
                     error = (ProviderConfigurationError
-                             if status in {400, 401, 403, 404, 405, 415, 422}
+                             if status in CONFIGURATION_STATUSES
                              else ProviderRejected)
                     raise error(
                         self.scrubber.text(f"server rejected HTTP {status}: {reason}; {hint}"),
@@ -739,8 +830,8 @@ class HttpProvider:
         latency_ms = (self._clock() - t0) * 1000.0
         truncated = raw.truncated_header or bool(parsed.truncation)
         self.stats.ok(latency_ms, truncated=truncated)
-        self.response_model = parsed.response_model
-        self.server_version = _cap_text(
+        self.response_model = _published_text(parsed.response_model, self.scrubber)
+        self.server_version = _published_text(
             next(
                 (
                     raw.headers.get(k)
@@ -751,13 +842,13 @@ class HttpProvider:
             )
             or raw.headers.get("server")
             or None,
-            80,
+            self.scrubber, 80,
         )
         return ProviderChoice(
             option_id=parsed.choice,
             probabilities=parsed.probabilities,
             confidence=parsed.confidence,
-            model_id=parsed.response_model or "",
+            model_id=self.response_model or "",
             provider_id=self.provider_id,
             latency_ms=latency_ms,
             truncated=truncated,
@@ -766,9 +857,9 @@ class HttpProvider:
                 "attempts": raw.attempts,
                 "usage_in": parsed.usage_in,
                 "usage_out": parsed.usage_out,
-                "truncation": _cap_json(parsed.truncation),
-                "truncation_warning": _cap_text(raw.headers.get("warning")),
-                "response_model": parsed.response_model,
+                "truncation": _cap_json(self.scrubber.value(parsed.truncation)),
+                "truncation_warning": _published_text(raw.headers.get("warning"), self.scrubber),
+                "response_model": self.response_model,
                 "model_mismatch": bool(
                     self.model_id
                     and parsed.response_model
@@ -788,7 +879,7 @@ class HttpProvider:
             state=state,
             provider_id=self.provider_id,
             provider_version=self.provider_version,
-            model_id=self.model_id,
+            model_id=_published_text(self.model_id, self.scrubber) or "",
             prompt_schema_version=PROMPT_SCHEMA_VERSION,
             requests=self.stats.requests,
             failures=self.stats.failures,
@@ -823,9 +914,9 @@ class HttpProvider:
         return {
             "provider_id": self.provider_id,
             "provider_version": self.provider_version,
-            "server_version": self.server_version,
-            "model_id": self.model_id,
-            "response_model": self.response_model,
+            "server_version": _published_text(self.server_version, self.scrubber, 80),
+            "model_id": _published_text(self.model_id, self.scrubber),
+            "response_model": _published_text(self.response_model, self.scrubber),
             "prompt_schema_version": PROMPT_SCHEMA_VERSION,
             "upstream_sha": UPSTREAM_SHA,
         }

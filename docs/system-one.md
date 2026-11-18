@@ -96,7 +96,10 @@ pokegent provider check --config /path/to/private/run.yaml --live
 This makes an informational unauthenticated health request and **one logical model decision**;
 configured transient retries can make multiple HTTP attempts. Health has a total budget of
 `min(3, timeout_seconds)` seconds and the decision has its own `timeout_seconds` total budget.
-Both close active connections on expiry, including peers dribbling bytes. A health/config
+Both budgets include DNS, connection opening and reads. Hostnames use a short-lived resolver
+process that is killed and reaped on expiry or cancellation; no resolver thread is abandoned.
+Expiry interrupts active sockets, including peers dribbling chunked bytes, and the reader owns
+response cleanup. A health/config
 success alone does not prove inference. Safe config summaries show key presence only;
 check the actual reported response identity in the probe result, not just the configured pin.
 Do not paste credentials into commands, logs or reports.

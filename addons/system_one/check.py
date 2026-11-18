@@ -204,12 +204,12 @@ def _live(rep: _Report, loaded: LoadedConfig) -> None:
 
     scrubber = Scrubber([cfg.api_key_value() or ""])
     provider = build_provider(cfg, scrubber=scrubber)
-    info = provider.client.fetch_health(timeout_s=min(3.0, cfg.timeout_seconds))
-    if info:
-        print("  server /health: " + ", ".join(f"{k}={v}" for k, v in sorted(info.items())))
-    else:
-        print("  server /health: not available (informational)")
     try:
+        info = provider.client.fetch_health(timeout_s=min(3.0, cfg.timeout_seconds))
+        if info:
+            print("  server /health: " + ", ".join(f"{k}={v}" for k, v in sorted(info.items())))
+        else:
+            print("  server /health: not available (informational)")
         res = asyncio.run(provider.probe())
     except Exception as exc:
         rep.line(False, "live request", scrubber.text(f"{type(exc).__name__}: {exc}"))
