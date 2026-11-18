@@ -612,3 +612,56 @@ def test_run_cli_forwards_state_fallback_flag(tmp_path, monkeypatch, strict):
         cli.main(command + (["--no-state-fallback"] if strict else []))
     assert ended.value.code == 0
     assert forwarded["state_fallback"] is not strict
+
+
+def test_provider_configuration_ends_chain_without_promoting_successor(live):
+    home, start = live
+    initial_pointer = (home / "current.state").read_text()
+    details = {"reason": "provider_configuration", "status": 404,
+               "error": "server rejected HTTP 404: unknown model; check request_model"}
+    child = start([{"rc": 3, "summary": {"verdict": "owner_review", "stop_details": details}}])
+    assert child.wait(timeout=5) == 3
+    assert len(calls(home)) == 1
+    record = load(home / "live-run.json")
+    assert record["status"] == "blocked" and record["verdict"] == "owner_review"
+    assert record["stop_details"] == details
+    assert load(Path(record["out"]) / "exit.json")["stop_details"] == details
+    assert (Path(record["out"]) / "final.state").is_file()
+    assert (home / "current.state").read_text() == initial_pointer
+    # Persisted block survives another supervisor process; the valid final state is retained.
+    restarted = start([{"summary": {"game_cleared": True}}])
+    assert restarted.wait(timeout=5) != 0
+    assert len(calls(home)) == 1
+    assert (home / "current.state").read_text() == initial_pointer
+
+
+@pytest.mark.parametrize("status", ["running", "finished", "blocked"])
+@pytest.mark.parametrize("publication", ["summary", "exit", "lifecycle"])
+def test_terminal_recovery_windows_precede_any_promotion(live, status, publication):
+    home, start = live
+    initial_pointer = (home / "current.state").read_text()
+    old = home / "runs/live-0001"
+    old.mkdir(parents=True)
+    (old / "final.state").write_text("valid successor retained for owner review")
+    record = {"run_id": old.name, "out": str(old), "status": status}
+    summary = {"states": {"final": "final.state"}, "game_cleared": True,
+               "objective": {"done": True}}
+    if publication == "summary":
+        summary["verdict"] = "owner_review"
+    elif publication == "exit":
+        # Interrupted/requested metadata must not hide an already published rejection.
+        (old / "exit.json").write_text(json.dumps({"verdict": "owner_review", "requested": True}))
+    else:
+        record["verdict"] = "owner_review"
+    (old / "summary.json").write_text(json.dumps(summary))
+    (home / "live-run.json").write_text(json.dumps(record))
+    objective = {"revision": 8, "set_by": "operator", "forbid": ["pc"]}
+    (home / "objective.json").write_text(json.dumps(objective))
+    (home / "objective.json.history.jsonl").write_text('{"revision":8}\n')
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) != 0
+    assert not (home / "calls.jsonl").exists()
+    assert load(home / "live-run.json")["status"] == "blocked"
+    assert (home / "current.state").read_text() == initial_pointer
+    assert load(home / "objective.json") == objective
+    assert (home / "objective.json.history.jsonl").read_text() == '{"revision":8}\n'

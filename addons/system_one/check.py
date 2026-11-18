@@ -26,6 +26,7 @@ from .mock import MockProvider
 from .policy import ConfigError, LoadedConfig, SystemOneConfig, load_config
 from .provider import InvalidResponse, SyncDecider
 from .questions import QuestionLimits
+from .redact import Scrubber
 
 
 def env_config() -> dict[str, str | None]:
@@ -33,7 +34,11 @@ def env_config() -> dict[str, str | None]:
     api_key = get_system1_env("SYSTEM1_API_KEY")
     return {
         "provider_url": base_url if base_url is not None else "${SYSTEM1_BASE_URL}",
-        "model": get_system1_env("SYSTEM1_MODEL_ID", ""),
+        "model": (get_system1_env("SYSTEM1_MODEL_ID")
+                  or get_system1_env("SYSTEM1_MODEL", "")),
+        "protocol": get_system1_env("SYSTEM1_PROTOCOL") or "systemone",
+        "auth_header": get_system1_env("SYSTEM1_AUTH_HEADER") or "Authorization",
+        "timeout_seconds": get_system1_env("SYSTEM1_TIMEOUT") or 8.0,
         "request_model": get_system1_env("SYSTEM1_REQUEST_MODEL"),
         "api_key": api_key if api_key is not None else "${SYSTEM1_API_KEY}",
     }
@@ -55,7 +60,7 @@ def add_parser(sub: Any) -> None:
     check.add_argument(
         "--live",
         action="store_true",
-        help="make ONE tiny Choice request to the configured endpoint (a real call; use only "
+        help="make one tiny logical Choice decision (transient attempts may retry; use only "
         "an endpoint you are authorized to call)",
     )
     check.add_argument(
@@ -190,15 +195,16 @@ def _stub_self_test(rep: _Report) -> None:
 
 
 def _live(rep: _Report, loaded: LoadedConfig) -> None:
-    print("live probe (ONE real request)")
+    print("live probe (one logical decision; transient attempts may retry)")
     cfg = loaded.config
     if not cfg.enabled or cfg.primary != "http":
         rep.line(False, "live", "system_one is disabled or not primary 'http' in this config")
         return
-    from .http_provider import HttpProvider
+    from .factory import build_provider
 
-    provider = HttpProvider(cfg)
-    info = provider.client.fetch_health()
+    scrubber = Scrubber([cfg.api_key_value() or ""])
+    provider = build_provider(cfg, scrubber=scrubber)
+    info = provider.client.fetch_health(timeout_s=min(3.0, cfg.timeout_seconds))
     if info:
         print("  server /health: " + ", ".join(f"{k}={v}" for k, v in sorted(info.items())))
     else:
@@ -206,7 +212,7 @@ def _live(rep: _Report, loaded: LoadedConfig) -> None:
     try:
         res = asyncio.run(provider.probe())
     except Exception as exc:
-        rep.line(False, "live request", f"{type(exc).__name__}: {exc}")
+        rep.line(False, "live request", scrubber.text(f"{type(exc).__name__}: {exc}"))
         return
     finally:
         provider.close()
@@ -215,9 +221,11 @@ def _live(rep: _Report, loaded: LoadedConfig) -> None:
     rep.line(
         True,
         "live request",
-        f"choice={res.option_id} confidence={res.confidence} latency_ms={res.latency_ms:.0f} "
-        f"model={res.model_id!r}{note} "
-        f"truncated={res.truncated} attempts={res.meta.get('attempts')}",
+        scrubber.text(
+            f"choice={res.option_id} confidence={res.confidence} latency_ms={res.latency_ms:.0f} "
+            f"model={res.model_id!r}{note} "
+            f"truncated={res.truncated} attempts={res.meta.get('attempts')}"
+        ),
     )
 
 

@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from pokegent.events import EventSink
 
+from .chat_provider import ChatCompletionsProvider
 from .http_provider import HttpProvider
 from .mock import MockProvider, NullProvider
 from .policy import RUN_ID_PLACEHOLDER, SystemOneConfig
@@ -27,7 +28,8 @@ def build_provider(
         return NullProvider()
     if config.primary == "mock":
         return MockProvider()
-    return HttpProvider(config, scrubber=scrubber)
+    provider = ChatCompletionsProvider if config.protocol == "openai-chat" else HttpProvider
+    return provider(config, scrubber=scrubber)
 
 
 def build_decider(

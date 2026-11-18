@@ -17,7 +17,6 @@ from pokegent.events import REDACTED, default_redact
 _PATTERN = re.compile(
     r"(\bBearer\s+[A-Za-z0-9._\-~+/=]{6,}|\b(sk|pk|ghp|gho|xox[bap])[-_][A-Za-z0-9_\-]{12,})"
 )
-_MIN_SECRET_LEN = 4  # shorter strings would shred ordinary text
 
 
 class Scrubber:
@@ -29,7 +28,7 @@ class Scrubber:
             self.add(s)
 
     def add(self, secret: str | None) -> None:
-        if secret and len(secret) >= _MIN_SECRET_LEN and secret not in self._secrets:
+        if secret and secret not in self._secrets:
             self._secrets.append(secret)
             self._secrets.sort(key=len, reverse=True)  # longest first: no partial leftovers
 
@@ -37,9 +36,9 @@ class Scrubber:
         return f"Scrubber(n={len(self._secrets)})"
 
     def text(self, value: str) -> str:
-        for secret in self._secrets:
-            if secret in value:
-                value = value.replace(secret, REDACTED)
+        if self._secrets:
+            value = re.sub("|".join(re.escape(s) for s in self._secrets),
+                           lambda _: REDACTED, value)
         return _PATTERN.sub(REDACTED, value)
 
     def value(self, value: Any) -> Any:

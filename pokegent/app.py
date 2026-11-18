@@ -1093,6 +1093,7 @@ def summarize(
         # supervisor ops/pokegent_live.sh still decides 'clear' from the objective block
         "game_cleared": summary.game_cleared,
         "verdict": summary.verdict,
+        "stop_details": summary.stop_details,
         "wall_seconds": round(wall_s, 3),
         "actions": {
             "applied": c["actions_applied"],

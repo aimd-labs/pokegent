@@ -82,6 +82,10 @@ class ProviderRejected(ProviderError):
     """A 4xx answer: our request is wrong or unauthorized. Never retried."""
 
 
+class ProviderConfigurationError(ProviderRejected):
+    """Explicit request/auth rejection or failed response pin; owner review is required."""
+
+
 class InvalidResponse(ProviderError):
     """The server answered, but the answer is unusable. No input may follow from it.
 

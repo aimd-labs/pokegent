@@ -1,7 +1,9 @@
 # Copy to pokegent.yaml. Environment variables override this file; CLI flags win.
 rom_path: /path/to/your/FireRed.gba
 decider: hybrid   # hybrid | agent | system1 | first
-system1:
+system1: # protocols and switching: docs/system-one.md
+  protocol: systemone # default custom contract; openai-chat requires request_model
+  auth_header: Authorization # Bearer; custom allowed names send the raw key
   base_url: http://127.0.0.1:8799 # placeholder; set to your System One endpoint
   api_key_env: SYSTEM1_API_KEY
   # api_key: never commit real keys

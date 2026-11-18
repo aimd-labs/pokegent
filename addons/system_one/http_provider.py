@@ -54,6 +54,7 @@ from .provider import (
     CircuitOpen,
     InvalidResponse,
     ProviderChoice,
+    ProviderConfigurationError,
     ProviderHealth,
     ProviderRejected,
     ProviderTimeout,
@@ -339,6 +340,29 @@ def response_ref(parsed: ParsedChoice) -> str:
     return "http:sha256:" + hashlib.sha256(canon.encode()).hexdigest()[:24]
 
 
+def rejection_reason(body: bytes, scrubber: Scrubber) -> str:
+    """Only recognized JSON error fields; scrub before bounding, never dump raw bodies."""
+    try:
+        value = json.loads(body)
+    except (ValueError, UnicodeError, RecursionError):
+        return "no recognized JSON reason"
+
+    def extract(value, depth=0):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict) and depth < 3:
+            for key in ("message", "detail", "error"):
+                text = extract(value.get(key), depth + 1)
+                if text:
+                    return text
+        return None
+
+    reason = extract(value) if isinstance(value, dict) else None
+    safe = scrubber.text(reason or "no recognized JSON reason")
+    normalized = " ".join("".join(c if c.isprintable() else " " for c in safe).split())
+    return scrubber.text(normalized)[:240]
+
+
 # -- transport ----------------------------------------------------------------------------------
 
 
@@ -374,10 +398,11 @@ class VonClient:
     rng: Callable[[], float] = random.random
     scrubber: Scrubber = field(default_factory=Scrubber)
     endpoint_path: str = ENDPOINT
+    auth_header: str = "Authorization"
 
     def __post_init__(self) -> None:
         self._active_lock = threading.Lock()
-        self._active: set[http.client.HTTPConnection] = set()
+        self._active: dict[http.client.HTTPConnection, Callable[[], None]] = {}
         self._cancelled = threading.Event()
         self.scrubber.add(self.api_key)
         LOG_SCRUBBER.add(self.api_key)
@@ -387,43 +412,78 @@ class VonClient:
         self._port = parts.port
         path = parts.path.rstrip("/")
         endpoint = self.endpoint_path.rstrip("/") or "/"
-        self._path = path if path.endswith(endpoint) else path + endpoint
-        self.url_for_log = safe_url(self.base_url) + ("" if path.endswith(endpoint) else endpoint)
+        # Preserve base prefixes, and overlap e.g. /api/v1 with /v1/chat/completions.
+        prefix, suffix = path.split("/"), endpoint.split("/")[1:]
+        overlap = 0
+        for count in range(1, min(len(prefix), len(suffix)) + 1):
+            if prefix[-count:] == suffix[:count]:
+                overlap = count
+        self._path = path + ("/" + "/".join(suffix[overlap:]) if suffix[overlap:] else "")
+        self._health_path = self._path.removesuffix(endpoint) + "/health"
+        self.url_for_log = safe_url(self.base_url).removesuffix(path) + self._path
+
 
     def __repr__(self) -> str:
         return f"VonClient(url={self.url_for_log!r}, auth={'on' if self.api_key else 'off'})"
 
     # -- one HTTP attempt ---------------------------------------------------------------------
 
-    def _post(self, body: bytes, headers: dict[str, str], remaining: float):
+    def _exchange(self, method, path, body, headers, remaining):
         if self._cancelled.is_set():
             raise ConnectionAbortedError("request cancelled")
-        connect_t = max(0.05, min(self.connect_timeout_s, remaining))
-        read_t = max(0.05, min(self.read_timeout_s, remaining))
+        connect_t = min(self.connect_timeout_s, remaining)
+        read_t = min(self.read_timeout_s, remaining)
         cls = http.client.HTTPSConnection if self._https else http.client.HTTPConnection
         conn = cls(self._host, self._port, timeout=connect_t)
+        expired = threading.Event()
+        sockets = []
+
+        def expire():
+            expired.set()
+            # HTTPConnection can detach its socket for a Connection: close response.
+            # Retain it so shutdown interrupts the response file's blocking reads too.
+            for sock in sockets:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+            self._abort_connection(conn)
+
+        timer = threading.Timer(remaining, expire)
+        timer.daemon = True
         with self._active_lock:
-            self._active.add(conn)
-            cancelled = self._cancelled.is_set()
+            self._active[conn] = expire
+        timer.start()
         try:
-            if cancelled:
+            if self._cancelled.is_set():
                 raise ConnectionAbortedError("request cancelled")
             conn.connect()
-            # ``cancel`` can win before ``connect`` publishes ``conn.sock``.  Recheck after
-            # connect so that race cannot proceed into a blocking response read.
-            if self._cancelled.is_set():
-                self._abort_connection(conn)
-                raise ConnectionAbortedError("request cancelled")
             assert conn.sock is not None
+            sockets.append(conn.sock)
+            if expired.is_set() or self._cancelled.is_set():
+                raise TimeoutError("request deadline expired or cancelled")
             conn.sock.settimeout(read_t)
-            conn.request("POST", self._path, body=body, headers=headers)
+            conn.request(method, path, body=body, headers=headers)
             resp = conn.getresponse()
-            data = resp.read(MAX_RESPONSE_BYTES + 1)
-            return resp.status, {k.lower(): v for k, v in resp.getheaders()}, data
+            try:
+                data = resp.read(MAX_RESPONSE_BYTES + 1)
+                if expired.is_set():
+                    raise TimeoutError("request deadline expired")
+                return resp.status, {k.lower(): v for k, v in resp.getheaders()}, data
+            finally:
+                resp.close()
+        except (OSError, http.client.HTTPException):
+            if expired.is_set():
+                raise TimeoutError("request deadline expired") from None
+            raise
         finally:
+            timer.cancel()
             with self._active_lock:
-                self._active.discard(conn)
+                self._active.pop(conn, None)
             conn.close()
+
+    def _post(self, body: bytes, headers: dict[str, str], remaining: float):
+        return self._exchange("POST", self._path, body, headers, remaining)
 
     @staticmethod
     def _abort_connection(conn: http.client.HTTPConnection) -> None:
@@ -438,32 +498,31 @@ class VonClient:
     def cancel(self) -> None:
         """Abort active reads and make a pre-connect race fail immediately after connect."""
         self._cancelled.set()
+        self.abort_active()
+
+    def abort_active(self) -> None:
         with self._active_lock:
-            active = tuple(self._active)
-        for conn in active:
-            self._abort_connection(conn)
+            active = tuple(self._active.values())
+        for abort in active:
+            abort()
 
     def fetch_health(self, *, timeout_s: float = 3.0) -> dict[str, Any] | None:
         """``GET {base}/health``: server and weights revision, no inference, no credential sent.
 
         Informational only (``provider check --live``): any failure or odd shape gives ``None``.
         """
-        base = self._path[: -len(ENDPOINT)] if self._path.endswith(ENDPOINT) else self._path
-        cls = http.client.HTTPSConnection if self._https else http.client.HTTPConnection
-        conn = cls(self._host, self._port, timeout=max(0.05, timeout_s))
         try:
-            conn.request("GET", base + "/health", headers={"Accept": "application/json"})
-            resp = conn.getresponse()
-            data = resp.read(MAX_RESPONSE_BYTES + 1)
-            if resp.status != 200 or len(data) > MAX_RESPONSE_BYTES:
+            status, _, data = self._exchange(
+                "GET", self._health_path, None, {"Accept": "application/json"}, timeout_s
+            )
+            if status != 200 or len(data) > MAX_RESPONSE_BYTES:
                 return None
             parsed = json.loads(data)
         except (OSError, ValueError, http.client.HTTPException):
             return None
-        finally:
-            conn.close()
         if not isinstance(parsed, dict):
             return None
+        parsed = self.scrubber.value(parsed)
         version = next(
             (
                 parsed.get(k)
@@ -516,7 +575,9 @@ class VonClient:
                 "X-Request-Id": f"{request_id}.a{attempt}",
             }
             if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
+                headers[self.auth_header] = (f"Bearer {self.api_key}"
+                                             if self.auth_header.lower() == "authorization"
+                                             else self.api_key)
             log.debug("POST %s request_id=%s attempt=%d", self.url_for_log, request_id, attempt)
             retry_after: float | None = None
             try:
@@ -544,12 +605,17 @@ class VonClient:
                     last = ProviderUnavailable(f"server answered HTTP {status}", status=status)
                 else:  # 4xx: the request is wrong; the server is fine; never retry
                     self.breaker.record_success()
-                    snippet = self.scrubber.text(data[:200].decode("utf-8", "replace"))
-                    raise ProviderRejected(
-                        f"server rejected the request with HTTP {status}",
-                        status=status,
-                        body=snippet,
+                    reason = rejection_reason(data, self.scrubber)
+                    hint = ("check credentials/auth_header" if status in {401, 403}
+                            else "check request_model, protocol and endpoint_path")
+                    error = (ProviderConfigurationError
+                             if status in {400, 401, 403, 404, 405, 415, 422}
+                             else ProviderRejected)
+                    raise error(
+                        self.scrubber.text(f"server rejected HTTP {status}: {reason}; {hint}"),
+                        status=status, reason=reason,
                     )
+
             self.breaker.record_failure()
             if attempt >= self.retry.max_attempts:
                 break
@@ -606,6 +672,7 @@ class HttpProvider:
             budget=RequestBudget(config.rate, clock=clock),
             clock=clock,
             endpoint_path=config.endpoint_path,
+            auth_header=config.auth_header,
             scrubber=self.scrubber,
         )
         self.stats = ProviderStats()
@@ -623,47 +690,56 @@ class HttpProvider:
                 self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="system1-http")
             return self._pool
 
+    def _payload(self, state, question, name):
+        wire_q = {k: question[k] for k in ("type", "instructions", "criteria")}
+        payload = {"state": state, "questions": {name: wire_q}}
+        if self.config.request_model:
+            payload["model"] = self.config.request_model
+        return payload
+
+    def _parse(self, body, name, criteria):
+        return parse_choice_response(body, question_name=name, criteria_keys=criteria)
+
     # -- SystemOneProvider --------------------------------------------------------------------
 
     async def decide(
         self, *, state: dict, question: dict, request_id: str, timeout_s: float
     ) -> ProviderChoice:
         name = str(question.get("name") or "action")
-        wire_q = {k: question[k] for k in ("type", "instructions", "criteria")}
-        payload = {"state": state, "questions": {name: wire_q}}
-        if self.config.request_model:
-            payload["model"] = self.config.request_model
+        payload = self._payload(state, question, name)
         t0 = self._clock()
         deadline = t0 + timeout_s
         loop = asyncio.get_running_loop()
         try:
-            raw = await loop.run_in_executor(
+            raw = await asyncio.wait_for(loop.run_in_executor(
                 self._executor(),
                 partial(self.client.request, payload, request_id=request_id, deadline=deadline),
-            )
-            parsed = parse_choice_response(
-                raw.body, question_name=name, criteria_keys=list(question["criteria"])
-            )
-            if (
-                self.config.strict_model_pin
-                and self.model_id
-                and parsed.response_model
-                and parsed.response_model != self.model_id
-            ):
-                raise InvalidResponse(
-                    f"server answered with model {_short(parsed.response_model)}, "
-                    f"pinned {_short(self.model_id)}"
+            ), timeout=timeout_s)
+            parsed = self._parse(raw.body, name, list(question["criteria"]))
+            if self.config.strict_model_pin and parsed.response_model != self.model_id:
+                raise ProviderConfigurationError(
+                    "reported model is missing or differs from pinned model; "
+                    "check the actual response identity and configured pin",
+                    reason="response_model_pin",
                 )
-        except InvalidResponse as exc:
-            self.stats.failure(str(exc), invalid=True)
+        except asyncio.CancelledError:
+            self.client.abort_active()
             raise
+        except TimeoutError:
+            # Abort these attempts without poisoning future outage recovery decisions.
+            self.client.abort_active()
+            raise ProviderTimeout("decision deadline used up") from None
+        except InvalidResponse as exc:
+            safe = self.scrubber.text(str(exc))
+            self.stats.failure(safe, invalid=True)
+            raise InvalidResponse(safe, code=exc.code) from None
         except Exception as exc:
             self.stats.failure(self.scrubber.text(str(exc)))
             raise
         latency_ms = (self._clock() - t0) * 1000.0
         truncated = raw.truncated_header or bool(parsed.truncation)
         self.stats.ok(latency_ms, truncated=truncated)
-        self.response_model = parsed.response_model or self.response_model
+        self.response_model = parsed.response_model
         self.server_version = _cap_text(
             next(
                 (
@@ -681,7 +757,7 @@ class HttpProvider:
             option_id=parsed.choice,
             probabilities=parsed.probabilities,
             confidence=parsed.confidence,
-            model_id=parsed.response_model or self.model_id,
+            model_id=parsed.response_model or "",
             provider_id=self.provider_id,
             latency_ms=latency_ms,
             truncated=truncated,
@@ -755,6 +831,7 @@ class HttpProvider:
         }
 
     def close(self) -> None:
+        self.cancel()
         with self._pool_lock:
             pool, self._pool = self._pool, None
         if pool is not None:

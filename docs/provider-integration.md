@@ -1,5 +1,8 @@
 # System One provider integration
 
+See [System One endpoints and model switching](system-one.md) for the supported custom/chat
+protocols, generic configuration, local/hosted examples and terminal-rejection lifecycle.
+
 Code: `addons/system_one/`. Spec: chapter 8 (interface, questions, calibration), 12.3 (error
 classes), 14 (config), 16.3 (measurements). Contract: `docs/contracts.md`.
 
@@ -36,6 +39,8 @@ not a universal contract for every compatible endpoint.
 system_one:
   enabled: true
   primary: http                    # http | mock
+  protocol: systemone              # default; openai-chat requires request_model
+  auth_header: Authorization       # Bearer; other allowed names carry raw key
   provider_url: ${SYSTEM1_BASE_URL}   # http(s) base URL; /v1/systemone is appended
   endpoint_path: /v1/systemone  # optional path override
   model: ${SYSTEM1_MODEL_ID:-}        # optional: the id the server is EXPECTED to report; never sent
@@ -49,7 +54,7 @@ system_one:
   max_options_per_question: 32
   option_order: frame             # * experiment switch: frame | shuffle (see "Option order experiment")
   require_fresh_snapshot: true    # enforced by the executor's revalidation; recorded here
-  strict_model_pin: false         # * true: a response from another model id is invalid
+  strict_model_pin: false         # * true: requires the configured pin and matching reported identity
   retry:    {max_attempts: 3, backoff_base_seconds: 0.25, backoff_max_seconds: 4.0, jitter: 0.5}  # *
   breaker:  {failure_threshold: 5, open_seconds: 30, half_open_max_calls: 1}                      # *
   rate:     {max_requests: 120, per_seconds: 60, burst: null}                                     # *

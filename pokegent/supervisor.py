@@ -203,6 +203,26 @@ class Supervisor:
                 supervisor_stop_reason="stalled segment limit reached: owner review required",
             )
 
+    def block_provider(self, record: dict, out: Path) -> bool:
+        """A published terminal disposition wins over recovery and state promotion."""
+        if record.get("verdict") != "owner_review" and verdict(out) != "owner_review":
+            return False
+        record.update(status="blocked", verdict="owner_review",
+                      supervisor_stop_reason="provider_configuration: owner review required")
+        # Publish both artifacts before returning; either one prevents restart recovery.
+        result = payload(record, out, "owner_review")
+        result["reason"] = "provider_configuration"
+        result["rc"] = record.get("rc", result["rc"])
+        details = ((read_json(out / "summary.json") or {}).get("stop_details")
+                   or (read_json(out / "exit.json") or {}).get("stop_details")
+                   or record.get("stop_details"))
+        if isinstance(details, dict):
+            result["stop_details"] = details
+            record["stop_details"] = details
+        write_json(out / "exit.json", result)
+        write_json(self.home / "live-run.json", record)
+        return True
+
     def recover(self) -> dict | None:
         record_path = self.home / "live-run.json"
         if not record_path.exists():
@@ -217,6 +237,15 @@ class Supervisor:
         self.stalled_segments = record.get("stalled_segments", 0)
         if type(self.stalled_segments) is not int or self.stalled_segments < 0:
             raise ValueError("invalid stalled segment count; ownership needs review")
+        if record["status"] == "finished" and not record.get("out"):
+            if record.get("verdict") == "owner_review":
+                self.block(record, "provider_configuration: owner review required")
+            return record
+        out = Path(record.get("out", ""))
+        if out.parent != self.home / "runs" or out.name != record.get("run_id"):
+            raise ValueError("invalid previous run directory")
+        if self.block_provider(record, out):
+            return record
         if record["status"] == "finished":
             return record
         pid = record.get("pid")
@@ -229,9 +258,6 @@ class Supervisor:
                 pass
             else:
                 raise ValueError("previous PID still exists; ownership needs review")
-        out = Path(record.get("out", ""))
-        if out.parent != self.home / "runs" or out.name != record.get("run_id"):
-            raise ValueError("invalid previous run directory")
         state = self.promote(out)
         result = payload(record, out)
         result.update(state_path=str(state), recovered=True)
@@ -303,6 +329,9 @@ class Supervisor:
                 if child.poll() is None:
                     child.kill()
                     child.wait(timeout=5)
+        metadata.update(rc=rc, requested=requested, forced=forced)
+        if self.block_provider(metadata, out):
+            return metadata, read_json(out / "summary.json") is not None
         name = "interrupted" if requested else verdict(out)
         state_error = None
         try:

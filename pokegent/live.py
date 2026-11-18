@@ -24,11 +24,12 @@ def read_json(path: Path) -> dict[str, Any] | None:
 def verdict(run_dir: str | Path) -> str:
     out = Path(run_dir)
     exit_record = read_json(out / "exit.json") or {}
+    data = read_json(out / "summary.json")
+    if (exit_record.get("verdict") == "owner_review"
+            or (data or {}).get("verdict") == "owner_review"):
+        return "owner_review"
     if exit_record.get("requested") is True:
         return "interrupted"
-    if exit_record.get("verdict") == "owner_review":
-        return "owner_review"
-    data = read_json(out / "summary.json")
     if data is None:
         return "none"
     if data.get("stop_reason") in ("interrupted", "forced_interrupt", "graceful_stop_timeout"):
