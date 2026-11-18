@@ -96,6 +96,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     Any,
     Callable,
@@ -1174,6 +1175,12 @@ class AtomicSnapshot:
     region_defs: Tuple[MemoryRegion, ...] = field(repr=False)
     taken_at: float = field(repr=False)  # perf_counter seconds (wall clock)
     rom: Optional[bytes] = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # Own both the mapping and its buffers so cached digests cannot go stale.
+        object.__setattr__(self, "regions", MappingProxyType(
+            {name: bytes(data) for name, data in self.regions.items()}
+        ))
 
     def region(self, name: str) -> bytes:
         return self.regions[name]
