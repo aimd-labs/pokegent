@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from pokegent.actions.battle import state as S
+from pokegent.resources import reference_path
 
 PATH_ENV = "POKEGENT_BATTLE_ITEM_CLASSES"
 TARGETS = frozenset({"party_member", "active", "field"})
@@ -104,7 +105,7 @@ def default_path() -> Path:
     override = os.environ.get(PATH_ENV)
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[3] / "references" / "battle_item_classes.yaml"
+    return reference_path("battle_item_classes.yaml")
 
 
 def parse(document: dict) -> ItemClassTable:

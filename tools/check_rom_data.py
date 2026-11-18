@@ -72,11 +72,14 @@ def violations(root: Path) -> tuple[str, ...]:
                 bad.append(f"{relative} is an unexpected binary")
 
     item_classes = root / "references" / "battle_item_classes.yaml"
-    if item_classes.is_file():
-        text = item_classes.read_text(encoding="utf-8")
-        for token in ("reference_item:", "reference_name:", "rom_tables:"):
-            if token in text:
-                bad.append(f"references/battle_item_classes.yaml contains {token}")
+    packaged_item_classes = root / "pokegent" / "references" / "battle_item_classes.yaml"
+    for item_classes_path in (item_classes, packaged_item_classes):
+        if item_classes_path.is_file():
+            text = item_classes_path.read_text(encoding="utf-8")
+            badge = f"{item_classes_path.relative_to(root)} contains {{token}}"
+            for token in ("reference_item:", "reference_name:", "rom_tables:"):
+                if token in text:
+                    bad.append(badge.format(token=token))
     return tuple(sorted(set(bad)))
 
 

@@ -58,6 +58,7 @@ pokegent = "pokegent.cli:main"
 include = ["pokegent*", "addons*"]
 
 [tool.setuptools.package-data]
+"pokegent" = ["references/*.yaml"]
 "pokegent.dashboard" = ["static/**/*", "fallback.html"]
 
 [tool.ruff]
