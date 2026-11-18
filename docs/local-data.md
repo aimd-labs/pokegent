@@ -62,3 +62,9 @@ No test fixture contains a real game dataset.
 The scene catalog is shipped interface vocabulary. `docs/viewer/synthetic-telemetry.json` is
 an authored demo stub, with no game/run extraction. Keep all local game-data files out of PRs;
 the ROM/binary guard rejects these filenames in the public tree.
+
+The guard also inspects Python ASTs for literal numeric tables containing at least 64 distinct
+integer payload IDs, including nested integer-keyed collections and literal `frozenset` wrappers.
+Named protocol/struct fields, text decoders and repeated small layout permutations do not match
+this shape. This is a content-review tripwire: smaller tables, symbolic/computed data and game
+text still require manual review. A clean guard result does not establish data provenance.
