@@ -28,6 +28,37 @@ No map label, answer or destination is inferred from model prose.
 
 ## File formats
 
+### Generate a numeric structural index
+
+For the exact supported FireRed USA Rev 0 image, a local generator can create an index for
+numeric map diagnostics. It uses labels such as `Map_G000_N000`, with `label_kind: numeric-id-v1`
+and `named_compatibility: false`. These are generated ID tokens, not recovered pret names.
+The metadata documents the kind; existing loaders do not enforce compatibility from it.
+
+```sh
+mkdir -m 700 /absolute/private/map-index-ids
+pokegent rom-data map-index --numeric-labels --rom /absolute/private/game.gba --out-dir /absolute/private/map-index-ids
+env -u POKEGENT_LOCAL_DATA_DIR POKEGENT_MAP_GROUPS=/absolute/private/map-index-ids/pret_map_groups.json python tools/map_dump.py --rom /absolute/private/game.gba --map 0 0
+```
+
+Supply an existing empty absolute output directory outside source checkouts. The command verifies
+the complete input against the packaged profile and writes only `pret_map_groups.json`; it refuses
+existing output, symlinks at final paths and mixed/nonempty output directories. No overwrite flag
+exists. Parent paths are resolved for checkout containment; this unprivileged tool assumes
+user-controlled local paths, not a hostile process racing ancestor paths. Atomic no-clobber
+publication preserves an existing target even if it appears during generation. Errors before
+publication leave existing files unchanged; a postpublication durability/cleanup warning means the
+complete new artifact exists, with no rollback claim. The warning retains success exit status.
+
+Use a fresh diagnostics process with `POKEGENT_LOCAL_DATA_DIR` unset and the explicit index override.
+Manual named indexes and their consumers retain their existing behavior. Generated tokens work in
+the existing string-based objective resolver; historical names receive no new aliases. Combining
+this numeric override with a mismatched named Fly sidecar raises `LocalDataError` during import,
+rather than silently disabling Fly. Other sidecars retain their existing validation; there is no
+blanket mixed-data guard. No sidecars are generated. This slice does not provide named-data/cache
+compatibility, Fly or special-action tables, or a complete emulator run. Issue #1 remains open;
+synthetic checks do not demonstrate real-game capability.
+
 The first six filenames retain the earlier runtime's document schemas. Extra provenance fields
 such as `rom_profile`, `verified_by`, `schema`, `rom` and `provenance` are accepted. All required
 fields, ranges and enum values are in [local-data-schemas.json](local-data-schemas.json).

@@ -9,6 +9,10 @@ Reader structures, numeric address profiles, symbolic constants and the text dec
 informed by pret/pokefirered at revision `037335f4c725d7c9aecdac87066f2002b4bd7e14`.
 These are technical format descriptions and parser code; this tree omits the copied map-label
 index and all distributed extracted game datasets. Retained profiles carry per-field source notes.
+The numeric map-index recipe follows `tools/mapjson/mapjson.cpp:436-456` at that same pret
+revision: adjacent pointer arrays precede their aligned root. See `data/maps.s:11-17` and
+`map_data_rules.mk:30-31` for the build path. Only the structural rule is used; no map labels,
+per-group count dataset or upstream source dump is bundled.
 A public decompilation repository is not a license grant for game content.
 
 The System One wire protocol was studied at wfzyx/von revision
