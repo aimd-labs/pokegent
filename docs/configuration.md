@@ -1,5 +1,8 @@
 # Configuration
 
+See [System One endpoints and safe model switching](system-one.md) for protocols,
+authentication, timeouts and terminal provider rejection.
+
 Copy `pokegent.example.yaml` to `pokegent.yaml`. The agent loads that file when
 present, then applies environment variables, then explicit CLI flags. The real
 `pokegent.yaml` is ignored by git. Pass another file with `--config PATH`.
@@ -63,7 +66,7 @@ keys are rejected with an error, never silently ignored.
 
 Environment overrides include `POKEGENT_ROM_PATH`, `POKEGENT_DECIDER`,
 `SYSTEM1_BASE_URL`, `SYSTEM1_API_KEY`, `SYSTEM1_MODEL`, `SYSTEM1_MODEL_ID`,
-`SYSTEM1_REQUEST_MODEL`,
+`SYSTEM1_REQUEST_MODEL`, `SYSTEM1_PROTOCOL`, `SYSTEM1_AUTH_HEADER`, `SYSTEM1_TIMEOUT`,
 `POKEGENT_EXTERNAL_PORT`, `POKEGENT_FIELD_MENU`,
 `POKEGENT_HYBRID_ESCALATE_BELOW_CONFIDENCE`,
 and `POKEGENT_HYBRID_OVERRIDE_WINDOW_S`. API keys are never printed by the configuration layer;

@@ -113,6 +113,8 @@ def stop_message(reason: str, details: Mapping[str, Any]) -> str:
         return "stopped: deadline reached"
     if reason == "no_progress":
         return f"stopped: no progress ({details['reason']})"
+    if reason == "provider_configuration":
+        return f"stopped: provider configuration requires owner review: {details['error']}"
     if reason == "escalated":
         return f"stopped: escalated ({details['kind']})"
     return f"stopped: {reason}"
@@ -1476,6 +1478,17 @@ class Runner:
                 break
             except Exception as exc:  # DeciderError or a provider bug: no retry on a hard failure
                 last_error = exc
+                from addons.system_one.provider import ProviderConfigurationError
+
+                if isinstance(exc, ProviderConfigurationError):
+                    details = {"reason": "provider_configuration", "error": str(exc),
+                               "status": exc.detail.get("status"),
+                               "provider_reason": exc.detail.get("reason")}
+                    self._verdict = "owner_review"
+                    self._stop_reason_override = ("provider_configuration", details)
+                    self._emit(EventType.RUNTIME_BLOCKED, outcome="provider_configuration",
+                               details=details)
+                    return RunStatus.SAFE_PAUSE
                 if self.stop_event.is_set():
                     return RunStatus.INTERRUPTED
                 if self._is_system1_transient(exc):

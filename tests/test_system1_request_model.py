@@ -10,7 +10,7 @@ import pytest
 from addons.system_one.check import env_config
 from addons.system_one.factory import build_provider
 from addons.system_one.policy import load_config
-from addons.system_one.provider import InvalidResponse
+from addons.system_one.provider import ProviderConfigurationError
 from pokegent.user_config import load_user_config, to_legacy_config
 
 
@@ -110,7 +110,7 @@ def test_strict_response_pin_still_rejects_mismatch(
     config = _config(source, tmp_path).model_copy(update={"strict_model_pin": True})
     provider = build_provider(config)
     try:
-        with pytest.raises(InvalidResponse, match="pinned"):
+        with pytest.raises(ProviderConfigurationError, match="pinned"):
             asyncio.run(provider.probe())
     finally:
         provider.close()

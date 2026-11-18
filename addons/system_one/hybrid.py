@@ -18,6 +18,8 @@ from pokegent.options.models import (
 )
 from pokegent.server import ExternalDecider
 
+from .provider import ProviderConfigurationError
+
 #: Escalation reason used when more than one option claims the next route step.
 ROUTE_STEP_ESCALATION = "multiple_route_steps"
 
@@ -215,6 +217,8 @@ class HybridDecider:
         try:
             if not force_agent:
                 system_result = self.system1.decide(frame)
+        except ProviderConfigurationError:
+            raise
         except Exception as exc:  # provider and breaker failures both escalate
             system_error = exc
 

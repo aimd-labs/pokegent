@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from collections.abc import Mapping
@@ -115,7 +116,9 @@ class SystemOneConfig(_Strict):
     enabled: bool = True
     primary: Literal["http", "mock"] = "http"
     provider_url: str | None = None
-    endpoint_path: str = "/v1/systemone"
+    protocol: Literal["systemone", "openai-chat"] = "systemone"
+    endpoint_path: str | None = None
+    auth_header: str = "Authorization"
     #: The model id this endpoint is EXPECTED to report (log, manifest, ``strict_model_pin``). It is
     #: never sent; request-side model selection is configured separately below.
     model: str | None = None
@@ -150,10 +153,16 @@ class SystemOneConfig(_Strict):
     def _url(cls, v: str | None) -> str | None:
         if v is None or v == "":
             return None
-        parts = urlsplit(v)
+        try:
+            parts = urlsplit(v)
+            _ = parts.port
+        except ValueError:
+            raise ValueError("must be an http(s) URL with a host and valid port") from None
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise ValueError("must be an http(s) URL with a host")
-        if parts.username or parts.password:
+        if any(ord(c) <= 32 or ord(c) == 127 for c in v):
+            raise ValueError("must not contain whitespace or controls")
+        if parts.username is not None or parts.password is not None:
             raise ValueError("must not contain credentials; use api_key")
         if parts.query or parts.fragment:
             raise ValueError("must not contain a query string or fragment")
@@ -177,9 +186,37 @@ class SystemOneConfig(_Strict):
             raise ValueError("must be a model id without whitespace (max 200 chars)")
         return v
 
+    @field_validator("timeout_seconds", mode="before")
+    @classmethod
+    def _timeout(cls, v: Any) -> Any:
+        try:
+            finite = math.isfinite(float(v))
+        except (TypeError, ValueError, OverflowError):
+            finite = False
+        if isinstance(v, bool) or not finite:
+            raise ValueError("must be a finite numeric decision budget, not a boolean")
+        return v
+
+    @field_validator("auth_header")
+    @classmethod
+    def _auth_header(cls, v: str) -> str:
+        if not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", v):
+            raise ValueError("must be a nonempty HTTP header token")
+        if v.lower() in {
+            "host", "content-type", "content-length", "content-encoding", "connection",
+            "transfer-encoding", "trailer", "te", "upgrade", "expect", "accept",
+            "user-agent", "x-request-id", "proxy-authorization", "proxy-connection",
+        }:
+            raise ValueError("reserved transport header cannot carry authentication")
+        return "Authorization" if v.lower() == "authorization" else v
+
     @field_validator("endpoint_path")
     @classmethod
-    def _endpoint_path(cls, v: str) -> str:
+    def _endpoint_path(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if any(ord(c) <= 32 or ord(c) >= 127 for c in v):
+            raise ValueError("must be an ASCII URL path without whitespace or controls")
         if not v.startswith("/") or "?" in v or "#" in v or "//" in v:
             raise ValueError("must be an absolute URL path without query or fragment")
         return v.rstrip("/") or "/"
@@ -187,13 +224,26 @@ class SystemOneConfig(_Strict):
     @field_validator("api_key", mode="before")
     @classmethod
     def _empty_key(cls, v: Any) -> Any:
-        return None if v in ("", None) else v
+        if v in ("", None):
+            return None
+        key = v.get_secret_value() if isinstance(v, SecretStr) else v
+        if not isinstance(key, str) or any(ord(c) < 32 or ord(c) > 126 for c in key):
+            raise ValueError("must be an ASCII header value without controls")
+        return v
 
     @model_validator(mode="after")
     def _complete(self) -> SystemOneConfig:
         if self.enabled and self.primary == "http":
             if not self.provider_url:
                 raise ValueError("required when enabled with primary 'http': provider_url")
+        if self.protocol == "openai-chat" and not self.request_model:
+            raise ValueError("openai-chat requires an explicit request_model")
+        if self.strict_model_pin and not self.model:
+            raise ValueError("strict_model_pin requires an expected response model")
+        if self.endpoint_path is None:
+            object.__setattr__(self, "endpoint_path",
+                               "/v1/chat/completions" if self.protocol == "openai-chat"
+                               else "/v1/systemone")
         return self
 
     def effective_read_timeout(self) -> float:
