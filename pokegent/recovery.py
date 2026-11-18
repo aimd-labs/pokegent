@@ -35,12 +35,14 @@ class ProgressMonitor:
         now: float,
         loop_window: int = 64,
         loop_distinct_limit: int = 2,
+        loop_signature_limit: int = 4,
         loop_min_cycles: int = 3,
     ) -> None:
         for name, value in (
             ("decision_limit", decision_limit),
             ("loop_window", loop_window),
             ("loop_distinct_limit", loop_distinct_limit),
+            ("loop_signature_limit", loop_signature_limit),
             ("loop_min_cycles", loop_min_cycles),
         ):
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -53,6 +55,7 @@ class ProgressMonitor:
         self._verified_before: str | None = None
         self.loop_window = loop_window
         self.loop_distinct_limit = loop_distinct_limit
+        self.loop_signature_limit = loop_signature_limit
         self.loop_min_cycles = loop_min_cycles
         self._capacity = loop_window * loop_min_cycles
         # Bounded (option_id, signature) pairs covering the FULL claimed interval.
@@ -89,37 +92,52 @@ class ProgressMonitor:
         return None
 
     def loop_reason(self) -> str | None:
-        """``option_loop`` when the FULL interval is a closed loop.
+        """``option_loop`` when the CURRENT tail is a closed loop of a few states/options.
 
         The semantic signature is hashed over position/party/bag/flags, so a warp ping
         that alternates two cells changes position every step and never trips
-        ``decision_limit``.  This detector requires BOTH, over the FULL claimed interval
-        (``loop_window * loop_min_cycles``):
+        ``decision_limit``.  This detector distinguishes a closed loop from durable
+        progress using three requirements over the FULL claimed interval
+        (``loop_window * loop_min_cycles``) PLUS a current-tail recurrence band:
 
-        * the distinct option-id count ``<= loop_distinct_limit`` (a small option set),
-        * and ``>= loop_min_cycles`` signature REVISITS (an entry whose semantic signature
-          was already seen earlier INSIDE the same window) — the return to a previously
-          visited state that distinguishes a closed loop from monotone durable progress.
+        * the distinct **signature** set (the state set the run actually occupies) is
+          ``<= loop_signature_limit`` — a run that leaves an old ping and walks into
+          many fresh states has a large signature set and cannot be a closed loop;
+        * the distinct **option** set is ``<= loop_distinct_limit``; and
+        * the recent tail holds ``>= loop_min_cycles`` GENUINE returns after LEAVING a
+          state (a non-adjacent re-entry into a signature already seen earlier in the
+          same tail), so ``0,0,1,1,0,0,1,1`` (revisited states) trips but monotone
+          ``0,0,1,1,2,2,...`` (adjacent duplicates only, advancing) does not.
 
-        Unrelated earlier history never leaks: the bound is the full interval, and a
-        ``128 distinct + 64 alternating`` sequence yields ``>= 130`` distinct option ids,
-        so it stays below the loop threshold.
+        Unrelated earlier history never leaks: the bound is the full interval (a
+        ``128 distinct + 64 alternating`` sequence yields ``>= 130`` distinct option
+        ids), and a drop-off into steady progress clears the recurrence band.
         """
         if len(self._window) != self._capacity:
             return None  # need the FULL claimed interval, not a tail
         distinct_options = {opt for opt, _ in self._window}
         if len(distinct_options) > self.loop_distinct_limit:
             return None
-        seen: set[str] = set()
-        revisits = 0
-        for _, sig in self._window:
-            if sig in seen:
-                revisits += 1
-            seen.add(sig)
-        if revisits < self.loop_min_cycles:
+        distinct_sigs = {sig for _, sig in self._window}
+        if len(distinct_sigs) > self.loop_signature_limit:
+            return None  # left the closed state set -> not a closed loop
+
+        # Recurrence on the CURRENT tail: count genuine returns-after-leaving.
+        # A return is a non-adjacent re-entry: sig[i] when i>0 differs from sig[i-1]
+        # AND sig[i] was already present before position i in the tail.
+        band_start = max(0, len(self._window) - self.loop_window)
+        band = self._window[band_start:]
+        seen = set()
+        returns = 0
+        for idx, (_, sig) in enumerate(band):
+            if idx > 0 and sig != band[idx - 1][1] and sig in seen:
+                returns += 1
+            else:
+                seen.add(sig)
+        if returns < self.loop_min_cycles:
             return None
         return (f"option_loop:options={len(distinct_options)},"
-                f"revisits={revisits},window={self._capacity}")
+                f"sigs={len(distinct_sigs)},returns={returns},window={self._capacity}")
 
     def reset_window(self, *, now: float, iteration: int, clear_loop: bool = False) -> None:
         self.last_progress_at = now

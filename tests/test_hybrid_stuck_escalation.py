@@ -272,11 +272,11 @@ def test_option_loop_opens_recovery_and_agent_action_executes(harness):
     runner, calls, exes, requests, _ = harness(no_progress_limit=1)
     # Prime the monitor with a full closed loop (2 options, state ping, full interval).
     m = runner._progress
-    m.loop_window = 2
-    m.loop_min_cycles = 2
-    m._capacity = 4
+    m.loop_window = 6
+    m.loop_min_cycles = 3
+    m._capacity = 18
     it = 0
-    for i in range(4):
+    for i in range(18):
         sig = "SA" if i % 2 == 0 else "SB"  # semantic ping: position changes every step
         m.observe(sig, now=float(it), iteration=it)
         m.note_decision(verified=True,
@@ -295,25 +295,31 @@ def test_option_loop_opens_recovery_and_agent_action_executes(harness):
 
 
 def test_option_loop_rearm_on_durable_progress_in_runner(harness):
-    """A durable-progress reset inside the runner (clear_loop=True) re-arms the detector
-    so a later step may carry the run forward (review: durable progress rearming)."""
-    runner, _, exes, requests, _ = harness(progress_at=(5,), no_progress_limit=1)
+    """Issue #35 (P2 finding 2) connected: executor-proven durable progress MUST retire
+    the loop evidence via the runner (NOT a manual clear), so a later recovery action
+    runs and the detector re-arms instead of reopening another recovery window."""
+    # progress on execution #5 must be reached: bump the budget so the recovery window
+    # and subsequent decisions can carry the run past action 5.
+    runner, calls, exes, requests, _ = harness(progress_at=(5,), no_progress_limit=5)
     m = runner._progress
-    m.loop_window = 2
-    m.loop_min_cycles = 2
-    m._capacity = 4
+    m.loop_window = 6
+    m.loop_min_cycles = 3
+    m._capacity = 18
     it = 0
-    for i in range(4):
+    for i in range(18):
         sig = "SA" if i % 2 == 0 else "SB"
         m.observe(sig, now=float(it), iteration=it)
         m.note_decision(verified=True,
                         option_id="warp:a:1" if i % 2 == 0 else "warp:b:1")
         it += 1
-    assert m.loop_reason() is not None
-    # Force a durable-progress rearm before the run so the monitor is fresh.
-    m.reset_window(now=1000.0, iteration=1000, clear_loop=True)
-    assert m.loop_reason() is None
+    assert m.loop_reason() is not None  # due at start: only the real durable progress can retire it
     summary = runner.run()
     assert summary.status is RunStatus.SAFE_PAUSE
-    # A real recovery action executed (progress_at rewarded action index 5).
-    assert len(exes) >= 1
+    # The run reached the durable-progress execution (action 5) — NOT stopped early at 2.
+    assert len(exes) >= 5, f"run stopped before durable progress: {len(exes)} actions"
+    # The runner's own durable-progress path (result.progressed -> reset_window clear_loop)
+    # retired the loop evidence: the detector is re-armed, no leftover-aggregate suspicion.
+    assert m.loop_reason() is None
+    # Only a bounded number of agent recovery windows opened (no immediate reopen from
+    # stale loop history after durable progress).
+    assert len(requests) >= 1

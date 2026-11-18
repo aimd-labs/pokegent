@@ -118,6 +118,40 @@ def test_invalid_loop_params_raise():
         with pytest.raises(ValueError):
             ProgressMonitor(8, now=0.0, loop_distinct_limit=bad)
         with pytest.raises(ValueError):
+            ProgressMonitor(8, now=0.0, loop_signature_limit=bad)
+        with pytest.raises(ValueError):
             ProgressMonitor(8, now=0.0, loop_min_cycles=bad)
     # valid config accepted
-    ProgressMonitor(8, now=0.0, loop_window=64, loop_distinct_limit=2, loop_min_cycles=3)
+    ProgressMonitor(8, now=0.0, loop_window=64, loop_distinct_limit=2,
+                    loop_signature_limit=4, loop_min_cycles=3)
+
+
+# ---- P2 finding 1: unchanged-adjacent must not be a "return"; old ping + fresh must not loop ----
+def test_adjacent_duplicate_monotone_one_option_is_not_a_loop():
+    """`0,0,1,1,...,95,95` with one option must NOT trip: adjacent duplicates are not returns."""
+    m = ProgressMonitor(8, now=0.0, loop_window=64, loop_min_cycles=3)
+    # 192 verified decisions; each signature appears twice adjacently then advances.
+    pairs = [("walk:*", _signature(i // 2)) for i in range(192)]
+    _feed(m, pairs)
+    assert m.loop_reason() is None  # adjacent dups only, plus one fresh state per pair
+
+
+def test_old_short_ping_then_fresh_states_is_not_a_loop():
+    """`0,1,0,1,0` prefix followed by fresh states must NOT loop (obsolete revisits)."""
+    m = ProgressMonitor(8, now=0.0, loop_window=64, loop_min_cycles=3)
+    prefix = [("warp:a:1", "SA"), ("warp:b:1", "SB"),
+              ("warp:a:1", "SA"), ("warp:b:1", "SB"), ("warp:a:1", "SA")]
+    fresh = [("grass:*", _signature(i)) for i in range(192 - len(prefix))]
+    _feed(m, prefix)
+    _feed(m, fresh)
+    # The old short ping is far history; the CURRENT tail has 187 unique signatures.
+    assert m.loop_reason() is None
+
+
+def test_genuine_reentry_after_leaving_is_a_loop():
+    """`0,0,1,1,0,0,1,1,...` (revisited states after LEAVING) trips the loop band."""
+    m = ProgressMonitor(8, now=0.0, loop_window=16, loop_min_cycles=3)
+    # A ring that revisits the two states repeatedly (real closed loop), single option.
+    pairs = [("walk:*", "SA" if (i // 2) % 2 == 0 else "SB") for i in range(16 * 3)]
+    _feed(m, pairs)
+    assert m.loop_reason() is not None

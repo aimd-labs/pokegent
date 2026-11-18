@@ -256,6 +256,7 @@ class RunnerConfig:
     #: revisits (returns to a previously-visited state) required to call it a closed loop.
     loop_window: int = 64
     loop_distinct_limit: int = 2
+    loop_signature_limit: int = 4
     loop_min_cycles: int = 3
     invalid_retries: int = 2
     unknown_retries: int = 2
@@ -308,6 +309,7 @@ class RunnerConfig:
             "no_progress_window",
             "loop_window",
             "loop_distinct_limit",
+            "loop_signature_limit",
             "loop_min_cycles",
             "settle_frames",
             "busy_wait_frames",
@@ -502,6 +504,7 @@ class Runner:
             now=self.clock(),
             loop_window=self.config.loop_window,
             loop_distinct_limit=self.config.loop_distinct_limit,
+            loop_signature_limit=self.config.loop_signature_limit,
             loop_min_cycles=self.config.loop_min_cycles,
         )
         self._last_perception: Perception | None = None
@@ -885,6 +888,11 @@ class Runner:
         self._attempts.clear()
         self._postcondition_attempts.clear()
         self._rejected_choice_attempts.clear()
+        # A completed recovery (durable progress observed) retires the closed-loop
+        # suspicion so the detector re-arms instead of reopening immediately
+        # (issue #35 review gap 2).
+        self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                    clear_loop=True)
         notify = getattr(self.decider, "notify_progress", None)
         if callable(notify):
             notify()
@@ -1935,7 +1943,10 @@ class Runner:
 
         if result.progressed is True:
             self._attempts.clear()
-            self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+            # Executor-proven durable progress retires loop evidence: a real step forward
+            # means the closed-loop suspicion is stale and must re-arm (issue #35 review).
+            self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                        clear_loop=True)
 
         text_wait_changed_state = (
             option is not None
