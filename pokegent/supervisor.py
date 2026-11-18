@@ -124,6 +124,11 @@ class Settings:
 
 
 class Supervisor:
+    # Owner-review exit codes. A process manager must never auto-revive these
+    # (RestartPreventExitStatus in the supported unit drop-in, ops/systemd/).
+    exit_owner_review = 3
+    exit_blocked = 4
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.home = settings.home
