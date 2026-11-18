@@ -2,6 +2,10 @@
 
 Pokegent code is MIT licensed; LICENSE preserves AIMD Labs and Nous Research notices.
 
+The offline tools `tools/snapshot_dump.py` and `tools/ram_conformance.py` adapt the
+same paths from source A, pinned at `7c8742ba50a7a482e24d69bb1364c49e63c4e453`.
+They retain the MIT notices in LICENSE; live and ROM-name lookup paths are excluded.
+
 mGBA and libmgba are optional external dependencies under MPL-2.0, installed separately.
 No mGBA binary or source is bundled here. Consult the installed mGBA distribution's license
 and notices before redistributing it, including in a container or packaged application.
