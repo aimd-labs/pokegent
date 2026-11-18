@@ -1,0 +1,186 @@
+#!/usr/bin/python3 -I
+"""Launch one owner session from an explicit, private JSON mount manifest."""
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def path(value):
+    if not isinstance(value, str) or not Path(value).is_absolute():
+        raise ValueError("mount paths must be absolute")
+    result = Path(value)
+    if str(result) != value or result.resolve() != result or not result.exists():
+        raise ValueError("mount paths must exist and be canonical (no symlinks)")
+    if len(result.parts) < 3:
+        raise ValueError("mounts must select a narrow path, not a system directory")
+    if any(result.is_relative_to(root) for root in ("/usr", "/etc", "/proc", "/dev")):
+        raise ValueError("custom mounts must not overlay system paths")
+    return result
+
+
+def protected_file(value, mounts):
+    result = Path(value)
+    if not result.is_absolute() or result.resolve(strict=True) != result or not result.is_file():
+        raise ValueError("trusted files must be absolute regular files without symlinks")
+    if any(write and result.is_relative_to(source) for source, write in mounts):
+        raise ValueError("trusted files must be outside writable mounts")
+    for component in (result, *result.parents):
+        # The owner of a read-only file/directory can restore write permissions.
+        if (component.stat().st_uid == os.getuid()
+                or os.access(component, os.W_OK, effective_ids=True)):
+            raise ValueError("trusted files and parents must be protected from the owner")
+    return result
+
+
+def build(config, *, synthetic_test=False, manifest=None):
+    if not isinstance(config, dict):
+        raise ValueError("owner configuration must be an object")
+    required = {"repo", "environment", "agent_runtime", "home", "profile", "live_home",
+                "agent_command"}
+    optional = {"mounts", "cwd", "profile_name", "resume", "resume_file", "resume_args",
+                "environment_variables", "owner_uid", "repo_writable", "bwrap"}
+    if not required <= config.keys() or config.keys() - required - optional:
+        raise ValueError("missing or unknown owner configuration fields")
+    if os.getuid() == 0 or os.getuid() != config.get("owner_uid", os.getuid()):
+        raise ValueError("run as the configured unprivileged owner uid")
+    roots = {name: path(config[name]) for name in
+             ("repo", "environment", "agent_runtime", "profile", "live_home")}
+    if any(not root.is_dir() for root in roots.values()):
+        raise ValueError("owner roots must be directories")
+    if not (roots["repo"] / "pokegent").is_dir():
+        raise ValueError("repo must be the public pokegent checkout")
+    console = roots["environment"] / "bin/pokegent"
+    if not console.is_file() or not os.access(console, os.X_OK):
+        raise ValueError("environment must contain the installed pokegent console entry")
+    # A linked worktree would refer to Git metadata outside the single checkout.
+    if (roots["repo"] / ".git").is_file():
+        raise ValueError("use a standalone public clone, not a linked worktree")
+    writable = config.get("repo_writable", True)
+    if not isinstance(writable, bool):
+        raise ValueError("repo_writable must be boolean")
+    mounts = [(root, name in {"profile", "live_home"} or (name == "repo" and writable))
+              for name, root in roots.items()]
+    if not isinstance(config.get("mounts", []), list):
+        raise ValueError("mounts must be an array")
+    for mount in config.get("mounts", []):
+        if not isinstance(mount, dict) or set(mount) != {"path", "role"} or mount["role"] not in {
+            "data", "runtime", "tool", "credential", "state"
+        }:
+            raise ValueError("extra mounts require path and a documented role")
+        source = path(mount["path"])
+        if mount["role"] in {"tool", "credential"} and not source.is_file():
+            raise ValueError("tools and credentials must be individual files")
+        mounts.append((source, mount["role"] == "state"))
+    for index, (source, _) in enumerate(mounts):
+        for other, _ in mounts[:index]:
+            if source.is_relative_to(other) or other.is_relative_to(source):
+                raise ValueError("mounts must not overlap or expose a parent of another mount")
+    if not synthetic_test:
+        protected_file(__file__, mounts)
+        protected_file(manifest, mounts)
+    bwrap = Path(config.get("bwrap", "/usr/bin/bwrap"))
+    if (not bwrap.is_absolute() or bwrap.resolve(strict=True) != bwrap
+            or not bwrap.is_file() or not os.access(bwrap, os.X_OK)):
+        raise ValueError("bwrap must be an absolute canonical executable file")
+    if not synthetic_test:
+        protected_file(bwrap, mounts)
+
+    home = Path(config["home"])
+    if not home.is_absolute() or home.resolve() != home or len(home.parts) < 3:
+        raise ValueError("home must be an absolute, canonical sandbox-only directory")
+    if any(home == root or home.is_relative_to(root) for root, _ in mounts):
+        raise ValueError("home must be empty; mount profile and state separately")
+    cwd = Path(config.get("cwd", str(roots["repo"])))
+    if (not cwd.is_dir() or cwd.resolve() != cwd
+            or not any(cwd.is_relative_to(root) for root in roots.values())):
+        raise ValueError("cwd must be within an owner root")
+    command = config["agent_command"]
+    if (not isinstance(command, list) or not command
+            or any(not isinstance(arg, str) or not arg or "\0" in arg for arg in command)):
+        raise ValueError("agent_command must be a nonempty argv array")
+    executable = Path(command[0])
+    if (not executable.is_absolute() or executable.resolve(strict=True) != executable
+            or not executable.is_relative_to(roots["agent_runtime"])):
+        raise ValueError("agent_command executable must be in agent_runtime")
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise ValueError("agent_command executable is unavailable")
+    resume = config.get("resume", "auto")
+    if resume not in {"auto", "always", "never"}:
+        raise ValueError("resume must be auto, always or never")
+    resume_file = Path(config.get("resume_file", str(roots["profile"] / "state.db")))
+    if resume_file.resolve() != resume_file or not resume_file.is_relative_to(roots["profile"]):
+        raise ValueError("resume_file must be inside profile")
+    resume_args = config.get("resume_args", ["--continue"])
+    if not isinstance(resume_args, list) or any(not isinstance(a, str) for a in resume_args):
+        raise ValueError("resume_args must be an argv array")
+    if resume == "always" or (resume == "auto" and resume_file.is_file()):
+        command = [*command, *resume_args]
+
+    env = {"HOME": str(home), "HERMES_HOME": str(roots["profile"]),
+           "LIVE_HOME": str(roots["live_home"]), "PYTHONNOUSERSITE": "1",
+           "PATH": f'{roots["environment"]}/bin:/usr/bin:/bin', "LANG": "C.UTF-8"}
+    if config.get("profile_name"):
+        env["HERMES_PROFILE"] = config["profile_name"]
+    extras = config.get("environment_variables", {})
+    if not isinstance(extras, dict):
+        raise ValueError("environment_variables must be an object")
+    if extras.keys() - {"POKEGENT_ROM_PATH", "POKEGENT_LOCAL_DATA_DIR", "POKEGENT_MAP_GROUPS",
+                        "LD_LIBRARY_PATH", "TERM"}:
+        raise ValueError("only documented non-secret game-data environment variables are allowed")
+    if any(not isinstance(value, str) or "\0" in value for value in extras.values()):
+        raise ValueError("environment values must be strings")
+    env.update(extras)
+    args = [str(bwrap), "--unshare-user", "--unshare-pid",
+            "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session",
+            "--cap-drop", "ALL", "--clearenv", "--ro-bind", "/usr", "/usr"]
+    for name in ("bin", "sbin", "lib", "lib64"):
+        if Path("/usr", name).exists():
+            args += ["--symlink", f"usr/{name}", f"/{name}"]
+    args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", str(home)]
+    for name in ("ssl", "resolv.conf", "hosts", "nsswitch.conf", "passwd", "group",
+                 "localtime", "ld.so.cache"):
+        source = Path("/etc", name)
+        if source.exists():
+            args += ["--ro-bind", str(source), str(source)]
+    for source, write in mounts:
+        args += ["--bind" if write else "--ro-bind", str(source), str(source)]
+    # The owner runtime may ship credentials/Git remotes of its own: hide both.
+    for name in (".env", ".git/config"):
+        target = roots["agent_runtime"] / name
+        if target.exists():
+            args += ["--ro-bind", "/dev/null", str(target)]
+    for key, value in env.items():
+        args += ["--setenv", key, value]
+    return [*args, "--chdir", str(cwd), "--", *command]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--synthetic-test", action="store_true",
+                        help="allow unprotected files/recording fakes for disposable tests only")
+    args = parser.parse_args()
+    try:
+        if not args.synthetic_test:
+            protected_file(__file__, [])
+            protected_file(args.config, [])
+        command = build(json.loads(args.config.read_text()), synthetic_test=args.synthetic_test,
+                        manifest=args.config)
+        os.umask(0o077)
+        # Mount isolation cannot revoke inherited host file/directory capabilities.
+        for descriptor in os.listdir("/proc/self/fd"):
+            if int(descriptor) > 2:
+                os.closerange(int(descriptor), int(descriptor) + 1)
+        # Inherited proxy/auth/debug variables must not reach even the launcher child.
+        os.execve(command[0], command, {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
+    except (OSError, ValueError, TypeError, KeyError):
+        print("owner launch failed: check the private manifest and mount prerequisites",
+              file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
