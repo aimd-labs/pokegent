@@ -210,6 +210,80 @@ def test_graceful_restart_stop_and_sigterm(live, trigger):
     assert verdict(home / "runs/live-0001") == "interrupted"
 
 
+def test_controlled_interrupt_without_successor_recovers_from_last_verified_state(live):
+    """A blocked record from a controlled interrupt with a valid start-state pointer must
+    resume from that state on the next start instead of staying blocked forever.
+
+    Regression for issue #33: a ``requested`` stop (SIGTERM/restart/stop) whose runner
+    never published a final.state left ``live-run.json`` with ``status=blocked``; every
+    restart then exited rc=4 ("previous run is blocked") and the viewer port spun empty.
+    """
+    home, start = live
+    initial = (home / "initial.state")
+    (home / "runs").mkdir(exist_ok=True)
+    out = home / "runs" / "live-0099"
+    out.mkdir()
+    blocked = {
+        "run_id": "live-0099", "out": str(out), "state": str(initial),
+        "status": "blocked", "verdict": "interrupted", "requested": True, "forced": False,
+        "rc": -15, "state_error": "no final state", "state_path": None,
+    }
+    (home / "live-run.json").write_text(json.dumps(blocked))
+
+    # Supervisor should recover the start state and run a normal segment, not exit 4.
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) == 0
+    assert len(calls(home)) == 1
+    assert calls(home)[0]["input"] == "initial"
+    assert load(out / "exit.json")["recovered"] is True
+    metadata = load(home / "live-run.json")
+    assert metadata["status"] == "finished"
+
+
+def test_controlled_interrupt_without_valid_state_stays_fail_closed(live):
+    """A controlled-interrupt blocked record with a missing or empty start-state pointer
+    must NOT resume: the fail-closed check is preserved when the last verified state is
+    unavailable (genuine corruption / rejected successor).
+    """
+    home, start = live
+    (home / "runs").mkdir(exist_ok=True)
+    for state_value in (str(home / "does-not-exist.state"), ""):
+        out = home / "runs" / ("live-0098" if state_value else "live-0097")
+        out.mkdir()
+        (home / "live-run.json").write_text(json.dumps({
+            "run_id": out.name, "out": str(out), "state": state_value,
+            "status": "blocked", "verdict": "interrupted", "requested": True, "forced": False,
+            "rc": -15, "state_error": "no final state", "state_path": None,
+        }))
+        child = start([{"summary": {"game_cleared": True}}])
+        assert child.wait(timeout=5) == 4
+        # No segment may have been launched: fail-closed blocked must not fake progress.
+        assert not (home / "calls.jsonl").exists()
+        # Make sure the next fixture reuse leaves a clean journal/counter for the next case.
+        (home / "live-run.json").unlink()
+
+
+def test_unrequested_missing_successor_stays_fail_closed(live):
+    """A blocked record from an unrequested (crash/corruption) run with no successor stays
+    blocked: the recovery path only applies to the controlled-interrupt case (#33).
+    """
+    home, start = live
+    initial = (home / "initial.state")
+    (home / "runs").mkdir(exist_ok=True)
+    out = home / "runs" / "live-0096"
+    out.mkdir()
+    (home / "live-run.json").write_text(json.dumps({
+        "run_id": "live-0096", "out": str(out), "state": str(initial),
+        "status": "blocked", "verdict": "other", "requested": False, "forced": False,
+        "rc": 7, "state_error": "no final state", "state_path": None,
+    }))
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) == 4
+    # No segment may have been launched: genuine unrequested failure stays blocked.
+    assert not (home / "calls.jsonl").exists()
+    assert load(home / "live-run.json")["status"] == "blocked"
+
+
 def test_stop_marker_at_start_does_not_spawn(live):
     home, start = live
     (home / "stop").touch()

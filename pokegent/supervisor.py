@@ -206,14 +206,47 @@ class Supervisor:
     def recover(self) -> dict | None:
         record_path = self.home / "live-run.json"
         if not record_path.exists():
-            return
+            return None
         record = read_json(record_path)
         if not record or record.get("status") not in (
             "preparing", "running", "finished", "blocked"
         ):
             raise ValueError("unrecognized live-run metadata; ownership needs review")
         if record["status"] == "blocked":
-            raise ValueError("previous run is blocked; review live-run.json before resuming")
+            # A controlled interrupt (a ``requested`` stop — the operator touched
+            # ``restart``/``stop`` or the unit got SIGTERM/SIGINT) whose runner never
+            # published a successor must resume from the last verified state the run
+            # started from rather than stay blocked forever and spin empty-port
+            # restarts.  That start pointer was validated as a nonempty absolute file
+            # before the segment launched.  Genuine unrequested failures (corruption,
+            # rejected/missing successor) stay fail-closed below.
+            requested = bool(record.get("requested")) or bool(record.get("forced"))
+            state_value = record.get("state")
+            if requested and isinstance(state_value, str):
+                start = Path(state_value)
+                if start.is_absolute() and start.is_file() and start.stat().st_size > 0:
+                    self.journal(
+                        "blocked record was a controlled interrupt without a successor; "
+                        "resuming from last verified state " + str(start.resolve())
+                    )
+                    out = Path(record.get("out", ""))
+                    result = payload(record, out)
+                    result.update(
+                        state_path=str(start.resolve()), recovered=True,
+                        verdict="interrupted",
+                    )
+                    record.update(
+                        result, status="finished", state_error=None,
+                        state=result["state_path"],
+                        objective_revision=self.objective_revision(),
+                    )
+                    self.stalled_segments = record.get("stalled_segments", 0)
+                    write_json(out / "exit.json", result)
+                    write_json(record_path, record)
+                    return record
+            raise ValueError(
+                "previous run is blocked; review live-run.json before resuming"
+            )
         self.stalled_segments = record.get("stalled_segments", 0)
         if type(self.stalled_segments) is not int or self.stalled_segments < 0:
             raise ValueError("invalid stalled segment count; ownership needs review")
