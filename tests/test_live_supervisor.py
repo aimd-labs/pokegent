@@ -284,6 +284,80 @@ def test_unrequested_missing_successor_stays_fail_closed(live):
     assert load(home / "live-run.json")["status"] == "blocked"
 
 
+def test_interrupt_recovery_rejects_invalid_out_dir(live, tmp_path):
+    """Recovery must validate the record's ``out`` directory (home/runs/<run_id>) before
+    writing exit.json: a missing/mismatched ``out`` must stay fail-closed and must not write
+    exit.json into the current working directory (review).
+    """
+    home, start = live
+    initial = (home / "initial.state")
+    (home / "runs").mkdir(exist_ok=True)
+    # out points outside home/runs (and no run_id) — must NOT recover.
+    (home / "live-run.json").write_text(json.dumps({
+        "run_id": "live-0095", "out": str(tmp_path / "elsewhere"),
+        "state": str(initial), "status": "blocked", "verdict": "interrupted",
+        "requested": True, "forced": False, "rc": -15, "state_path": None,
+    }))
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) == 4
+    assert not (home / "calls.jsonl").exists()
+    # No stray exit.json may have been written into the cwd.
+    assert not (tmp_path / "elsewhere").exists() or not (
+        (tmp_path / "elsewhere" / "exit.json").exists()
+        or Path("exit.json").exists()
+    )
+    assert load(home / "live-run.json")["status"] == "blocked"
+
+
+def test_interrupt_recovery_requires_real_boolean_flags(live):
+    """The requested/forced flags must be actual booleans: a JSON string \"false\" must NOT
+    resume the run (review). Fail-closed otherwise."""
+    home, start = live
+    initial = (home / "initial.state")
+    (home / "runs").mkdir(exist_ok=True)
+    out = home / "runs" / "live-0094"
+    out.mkdir()
+    for requested, forced in (("false", False), (False, "false"), ("true", False)):
+        (home / "live-run.json").write_text(json.dumps({
+            "run_id": "live-0094", "out": str(out), "state": str(initial),
+            "status": "blocked", "verdict": "interrupted",
+            "requested": requested, "forced": forced,
+            "rc": -15, "state_error": "no final state", "state_path": None,
+        }))
+        child = start([{"summary": {"game_cleared": True}}])
+        assert child.wait(timeout=5) == 4
+        assert not (home / "calls.jsonl").exists()
+    assert load(home / "live-run.json")["status"] == "blocked"
+
+
+def test_controlled_stop_without_final_restarts_from_last_verified_state(live):
+    """End-to-end drill for issue #33: run a real segment, interrupt it (requested stop) so it
+    leaves a NO-final-state blocked record, then restart and verify the supervisor resumes from
+    the last verified state instead of exiting rc=4 forever.
+    """
+    home, start = live
+    # Segment stays alive (wait) and publishes NO final.state when it exits (final: False),
+    # simulating a hard SIGTERM before a save landed. That produces a blocked record; the
+    # supervisor must exit 4 (blocked) in THIS process and resume on the NEXT start.
+    child = start([{"wait": True, "final": False}, {"summary": {"game_cleared": True}}])
+    wait_until(lambda: (home / "runs/live-0001/ready").exists())
+    child.send_signal(signal.SIGTERM)
+    assert child.wait(timeout=5) == 4  # blocked this process (no successor, owner-review shape)
+    record = load(home / "live-run.json")
+    assert record["status"] == "blocked" and record["requested"] is True
+    assert record["state_path"] is None  # no successor published
+
+    # Restart: systemd Restart=on-failure relaunches; recover() must resume from the last
+    # verified state (initial.state), not block forever.
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) == 0
+    assert len(calls(home)) == 2
+    assert calls(home)[1]["input"] == "initial"
+    metadata = load(home / "live-run.json")
+    assert metadata["status"] == "finished"
+    assert load(home / "runs/live-0001/exit.json")["recovered"] is True
+
+
 def test_stop_marker_at_start_does_not_spawn(live):
     home, start = live
     (home / "stop").touch()

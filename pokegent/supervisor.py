@@ -220,30 +220,50 @@ class Supervisor:
             # restarts.  That start pointer was validated as a nonempty absolute file
             # before the segment launched.  Genuine unrequested failures (corruption,
             # rejected/missing successor) stay fail-closed below.
-            requested = bool(record.get("requested")) or bool(record.get("forced"))
+            requested_flag = record.get("requested")
+            forced_flag = record.get("forced")
+            # Only genuine boolean flags resume; a JSON string like "false" must not.
+            requested = requested_flag is True or forced_flag is True
             state_value = record.get("state")
-            if requested and isinstance(state_value, str):
+            out_value = record.get("out")
+            run_id = record.get("run_id")
+            valid_start = (
+                requested and isinstance(state_value, str) and bool(state_value)
+                and Path(state_value).is_absolute()
+                and Path(state_value).is_file()
+                and Path(state_value).stat().st_size > 0
+            )
+            valid_out = (
+                isinstance(out_value, str) and isinstance(run_id, str)
+                and Path(out_value).parent == self.home / "runs"
+                and Path(out_value).name == run_id
+            )
+            if valid_start and valid_out:
+                assert isinstance(out_value, str) and isinstance(run_id, str)
+                assert isinstance(state_value, str)
+                out = Path(out_value)
                 start = Path(state_value)
-                if start.is_absolute() and start.is_file() and start.stat().st_size > 0:
-                    self.journal(
-                        "blocked record was a controlled interrupt without a successor; "
-                        "resuming from last verified state " + str(start.resolve())
-                    )
-                    out = Path(record.get("out", ""))
-                    result = payload(record, out)
-                    result.update(
-                        state_path=str(start.resolve()), recovered=True,
-                        verdict="interrupted",
-                    )
-                    record.update(
-                        result, status="finished", state_error=None,
-                        state=result["state_path"],
-                        objective_revision=self.objective_revision(),
-                    )
-                    self.stalled_segments = record.get("stalled_segments", 0)
-                    write_json(out / "exit.json", result)
-                    write_json(record_path, record)
-                    return record
+                self.journal(
+                    "blocked record was a controlled interrupt without a successor; "
+                    "resuming from last verified state " + str(start.resolve())
+                )
+                result = payload(record, out)
+                result.update(
+                    state_path=str(start.resolve()), recovered=True,
+                    verdict="interrupted",
+                )
+                record.update(
+                    result, status="finished", state_error=None,
+                    state=result["state_path"],
+                    objective_revision=self.objective_revision(),
+                )
+                self.stalled_segments = record.get("stalled_segments", 0)
+                write_json(out / "exit.json", result)
+                write_json(record_path, record)
+                return record
+            # Invalid start pointer or out directory, or a non-interrupt block: the
+            # metadata cannot be trusted enough to resume; keep the whole record
+            # fail-closed and require an owner review (issue #33).
             raise ValueError(
                 "previous run is blocked; review live-run.json before resuming"
             )
