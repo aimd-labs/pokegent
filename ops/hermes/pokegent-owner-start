@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -35,13 +36,78 @@ def protected_file(value, mounts):
     return result
 
 
+def status_command(config, command, roots, mounts, synthetic_test):
+    """Accept only the inspected native machine-readable isolated bootstrap shape."""
+    adapter = path(config["status_adapter"])
+    native = config.get("native_runtime_command")
+    resume = config.get("resume_args")
+    if (config.get("resume") != "always" or not isinstance(resume, list)
+            or len(resume) != 2 or resume[0] != "--resume"
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", resume[1])
+            or resume[1].lower() == "latest"):
+        raise ValueError("status adapter requires always resuming one exact session id")
+    if any(a in {"--resume", "-r", "--continue", "-c"} or a.startswith(
+        ("--resume=", "--continue=")) for a in config["agent_command"][1:]):
+        raise ValueError("resume identity must occur only in resume_args")
+    if (not adapter.is_file() or not isinstance(native, list) or len(native) != 4
+            or any(not isinstance(a, str) for a in native) or native[1:3] != ["-I", "-c"]):
+        raise ValueError("native_runtime_command must be the native JSON argv without arguments")
+    entry = "runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)"
+    bootstrap = (
+        "import os, sys, runpy; "
+        "os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); "
+        "os.environ.pop('VIRTUAL_ENV', None); "
+        f"sys.path.insert(0, {str(roots['agent_runtime'])!r}); "
+        "sys._hermes_pin_default_home = True; import hermes_bootstrap; "
+        "os.environ.get('HERMES_HOME') or os.environ.__setitem__('HERMES_HOME', "
+        "str(__import__('hermes_constants').get_default_hermes_root())); " + entry
+    )
+    if native[3] != bootstrap:
+        raise ValueError("unsupported native bootstrap; review its machine-readable contract")
+    interpreter = path(native[0])
+    code_roots = [roots["agent_runtime"], *[path(m["path"]) for m in config.get("mounts", [])
+                                          if m["role"] == "runtime"]]
+    if not any(interpreter.is_relative_to(root) for root in code_roots):
+        raise ValueError("native interpreter must be within explicit read-only runtime closure")
+    if not os.access(interpreter, os.X_OK):
+        raise ValueError("native interpreter is not executable")
+    if not synthetic_test:
+        protected_file(adapter, mounts)
+        # Protect the complete explicit code closure, including dependency .pth files.
+        for root in code_roots:
+            protected_file(root, mounts) if root.is_file() else protected_tree(root, mounts)
+    mounts.append((adapter, False))
+    if any(adapter.is_relative_to(root) or root.is_relative_to(adapter)
+           for root, _ in mounts[:-1]):
+        raise ValueError("adapter must be a separate protected single-file mount")
+    return ([*native[:3], bootstrap.replace(entry, f"runpy.run_path({str(adapter)!r}, "
+             "run_name='__main__')"), *command[1:]], code_roots, resume[1])
+
+
+def protected_tree(root, mounts):
+    # Directories obey the same ownership/parent trust rule as trusted files.
+    for item in (root, *root.rglob("*")):
+        if item.is_symlink():
+            raise ValueError("runtime closure must contain no symlinks")
+        if item.is_dir():
+            if any(write and item.is_relative_to(source) for source, write in mounts):
+                raise ValueError("runtime closure intersects writable mount")
+            for component in (item, *item.parents):
+                if (component.stat().st_uid == os.getuid()
+                        or os.access(component, os.W_OK, effective_ids=True)):
+                    raise ValueError("runtime closure must be protected from the owner")
+        else:
+            protected_file(item, mounts)
+
+
 def build(config, *, synthetic_test=False, manifest=None):
     if not isinstance(config, dict):
         raise ValueError("owner configuration must be an object")
     required = {"repo", "environment", "agent_runtime", "home", "profile", "live_home",
                 "agent_command"}
     optional = {"mounts", "cwd", "profile_name", "resume", "resume_file", "resume_args",
-                "environment_variables", "owner_uid", "repo_writable", "bwrap"}
+                "environment_variables", "owner_uid", "repo_writable", "bwrap",
+                "status_adapter", "native_runtime_command"}
     if not required <= config.keys() or config.keys() - required - optional:
         raise ValueError("missing or unknown owner configuration fields")
     if os.getuid() == 0 or os.getuid() != config.get("owner_uid", os.getuid()):
@@ -119,6 +185,15 @@ def build(config, *, synthetic_test=False, manifest=None):
     if resume == "always" or (resume == "auto" and resume_file.is_file()):
         command = [*command, *resume_args]
 
+    status_env = {}
+    if "status_adapter" in config:
+        command, code_roots, session = status_command(
+            config, command, roots, mounts, synthetic_test)
+        status_env = {"POKEGENT_OWNER_SESSION": session,
+                      "POKEGENT_OWNER_CODE_ROOTS": json.dumps([str(r) for r in code_roots])}
+    elif "native_runtime_command" in config:
+        raise ValueError("native runtime command requires the status adapter")
+
     env = {"HOME": str(home), "HERMES_HOME": str(roots["profile"]),
            "LIVE_HOME": str(roots["live_home"]), "PYTHONNOUSERSITE": "1",
            "PATH": f'{roots["environment"]}/bin:/usr/bin:/bin', "LANG": "C.UTF-8"}
@@ -133,6 +208,7 @@ def build(config, *, synthetic_test=False, manifest=None):
     if any(not isinstance(value, str) or "\0" in value for value in extras.values()):
         raise ValueError("environment values must be strings")
     env.update(extras)
+    env.update(status_env)
     args = [str(bwrap), "--unshare-user", "--unshare-pid",
             "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session",
             "--cap-drop", "ALL", "--clearenv", "--ro-bind", "/usr", "/usr"]

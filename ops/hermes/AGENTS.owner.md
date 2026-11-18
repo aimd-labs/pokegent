@@ -20,6 +20,8 @@ revision. Review once at each objective boundary and set a successor. Reject sta
 preserve newer operator objectives. Unknown legality must pause; do not invent success or bypass
 executor checks. See docs/objective-file.md and docs/contracts.md. Do not type raw game inputs,
 write RAM, start a second emulator writer, or restart the live process to change objectives.
+When legality pauses progress, diagnose it immediately and set a fresh, checkable successor
+objective within minutes through the supported objective API, retaining every executor legality check.
 
 Code changes go on a focused branch in this one checkout. Run the synthetic checks from
 CONTRIBUTING.md. Use the configured repository-scoped GitHub App helper to open or update a PR;
