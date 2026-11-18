@@ -3,8 +3,11 @@
 import copy
 import io
 import json
+import os
 import runpy
+import signal
 import subprocess
+import sys
 import threading
 import time
 from email.message import Message
@@ -194,14 +197,14 @@ def media(heartbeat, monkeypatch):
         headers["Content-Type"] = "application/json"
         return headers, json.dumps(health if url.endswith("health") else doc).encode()
 
-    monkeypatch.setitem(module["media_available"].__globals__, "fetch", fetch)
+    monkeypatch.setitem(module["media_evidence"].__globals__, "fetch", fetch)
     return module, doc, health, picture
 
 
 def test_supported_live_evidence_allows_unchanging_pixels(media):
     module, *_ = media
-    assert module["media_available"]("http://dashboard", "http://stream")
-    assert module["media_available"]("http://dashboard", "http://stream")
+    assert module["media_evidence"]("http://dashboard", "http://stream")
+    assert module["media_evidence"]("http://dashboard", "http://stream")
 
 
 @pytest.mark.parametrize("broken", ["detached", "capture_failed", "stale", "future", "ended",
@@ -227,7 +230,7 @@ def test_cached_png_never_substitutes_for_live_freshness(media, broken):
     else:
         picture[0] = b"not png"
     try:
-        assert not module["media_available"]("http://dashboard", "http://stream")
+        assert not module["media_evidence"]("http://dashboard", "http://stream")
     except (ValueError, OSError, KeyError):
         pass  # CLI suppresses malformed/unknown facts; no message can be sent.
 
@@ -305,3 +308,115 @@ def test_freshness_expiring_during_core_recheck_suppresses(heartbeat, monkeypatc
     assert not run(query=slow_recheck, media=lambda *args: now + 2)
     assert not (state / "receipt.json").exists()
     assert all(c[0] == "get" for c in calls)
+
+
+@pytest.fixture
+def probe_child(media, tmp_path, monkeypatch):
+    module, doc, health, picture = media
+    marker = tmp_path / "probe-entered"
+    payload = json.dumps([doc, health, picture[0].hex()])
+    children = []
+    popen = subprocess.Popen
+    driver = r'''
+import io, json, os, runpy, socket, sys, time, urllib.request
+from pathlib import Path
+from PIL import Image
+
+stage, marker, payload, script, flag, dashboard, stream = sys.argv[1:]
+doc, health, png = json.loads(payload)
+
+def stall(*args, **kwargs):
+    Path(marker).write_text(str(os.getpid()))
+    time.sleep(30)
+    raise AssertionError("parent failed to kill stalled probe")
+
+class Body(io.BytesIO):
+    def readline(self, *args):
+        if stage == "headers":
+            stall()
+        return super().readline(*args)
+
+    def read1(self, *args):
+        if stage == "body":
+            stall()
+        return super().read1(*args)
+
+class Connection:
+    def setsockopt(self, *args):
+        pass
+
+    def sendall(self, data):
+        self.path = data.split(b" ")[1].decode()
+
+    def makefile(self, *args):
+        if stage == "cumulative":
+            Path(marker).write_text(str(os.getpid()))
+            time.sleep(1.1)
+        if self.path == "/frame.png":
+            body = bytes.fromhex(png)
+            headers = "Content-Type: image/png\r\nX-Frame-Seq: 2\r\nX-Emulator-Frame: 30"
+        else:
+            body = json.dumps(health if self.path == "/ops/health" else doc).encode()
+            headers = "Content-Type: application/json"
+        return Body(("HTTP/1.1 200 OK\r\n" + headers + "\r\nContent-Length: "
+                     + str(len(body)) + "\r\n\r\n").encode() + body)
+
+    def close(self):
+        pass
+
+def forbidden(*args, **kwargs):
+    raise AssertionError("synthetic probe must never use network")
+
+socket.socket = forbidden
+if stage == "resolver":
+    socket.getaddrinfo = stall
+else:
+    socket.getaddrinfo = forbidden
+    socket.create_connection = stall if stage == "open" else lambda *a, **kw: Connection()
+if stage == "png":
+    Image.open = stall
+sys.argv = [script, flag, dashboard, stream]
+runpy.run_path(script, run_name="__main__")
+'''
+
+    def install(stage):
+        def start(command, **kwargs):
+            assert command == [sys.executable, str(MODULE), "--media-probe",
+                               "http://dashboard", "http://stream"]
+            assert kwargs["close_fds"] is True
+            child = popen([sys.executable, "-c", driver, stage, str(marker), payload,
+                           *command[1:]], **kwargs)
+            children.append(child)
+            return child
+
+        monkeypatch.setattr(module["subprocess"], "Popen", start)
+        return marker, children
+
+    return install
+
+
+@pytest.mark.parametrize("stage", ["resolver", "open", "headers", "body", "png", "cumulative"])
+def test_complete_media_timeout_kills_reaps_and_releases_lock(heartbeat, probe_child, stage):
+    module, state, _, calls, _, run = heartbeat
+    marker, children = probe_child(stage)
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        run(media=module["media_available"])
+    elapsed = time.monotonic() - started
+    assert 3 <= elapsed < 6
+    assert len(children) == 1 and int(marker.read_text()) == children[0].pid
+    assert children[0].returncode == -signal.SIGKILL
+    with pytest.raises(ChildProcessError):
+        os.waitpid(children[0].pid, os.WNOHANG)
+    assert all(c[0] == "get" for c in calls)
+    assert not (state / "receipt.json").exists()
+    assert run()  # Same epoch can acquire the released lock and retry with fresh evidence.
+
+
+def test_supervised_media_success_preserves_expiry_and_guard(heartbeat, probe_child):
+    module, state, _, calls, _, run = heartbeat
+    _, children = probe_child("success")
+    assert run(media=module["media_available"])
+    assert len(children) == 1 and children[0].returncode == 0
+    assert calls[-1][:5] == ("send", "--json", "--if", "idle", "t1")
+    assert (state / "receipt.json").exists()

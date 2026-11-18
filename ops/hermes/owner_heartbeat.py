@@ -63,6 +63,16 @@ def fresh(stamp, now, age):
 
 
 def media_available(dashboard, stream):
+    # A socket timeout cannot bound DNS, headers or decoding. Kill/reap the whole probe.
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--media-probe", dashboard, stream],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=3, check=True, close_fds=True,
+    )
+    return json.loads(result.stdout)
+
+
+def media_evidence(dashboard, stream):
     """Supported operator telemetry + attached/capture health + bounded verified PNG.
 
     Equality may suppress a moving game during a sample race. Still images are allowed;
@@ -233,4 +243,7 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if len(sys.argv) == 4 and sys.argv[1] == "--media-probe":
+        print(json.dumps(media_evidence(sys.argv[2], sys.argv[3])))
+    else:
+        raise SystemExit(main())

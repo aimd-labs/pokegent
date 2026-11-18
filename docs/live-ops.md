@@ -276,7 +276,10 @@ emulator, running current run, matching run IDs, valid state updated within its 
 telemetry frame identities. Cached PNG alone never qualifies. Missing operator telemetry, detached
 capture, any recorded capture failure, old RAM state or a sampling race suppresses delivery; this
 conservative check may skip a healthy run until evidence agrees. Pixels need not change and no
-emulator advancement is requested. HTTP uses bounded reads/deadlines, no redirects or ambient proxy;
+emulator advancement is requested. The complete media check runs in a disposable child with a
+three-second parent timeout covering DNS, open/headers, body reads and PNG verification. On expiry
+the child is killed and reaped before the transaction lock is released; no reminder is sent.
+HTTP retains bounded reads, no redirects or ambient proxy;
 Core subprocesses have five-second deadlines and use argv without shell expansion.
 
 A nonblocking private file lock covers receipt read, eligibility, media probe, Core epoch/process
