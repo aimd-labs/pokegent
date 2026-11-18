@@ -851,6 +851,12 @@ def main(argv=None):
     rom_data_sub = rom_data_p.add_subparsers(dest="rom_data_action", required=True)
     rom_data_build = rom_data_sub.add_parser("build", help="Generate a hash-keyed ROM data cache")
     rom_data_build.add_argument("--rom", default=None, help="ROM path (default $FIRERED_ROM_PATH)")
+    map_index = rom_data_sub.add_parser("map-index", help="Generate a numeric structural index")
+    map_index.add_argument("--numeric-labels", action="store_true", required=True,
+                           help="explicitly accept numeric labels without named compatibility")
+    map_index.add_argument("--rom", type=Path, required=True)
+    map_index.add_argument("--out-dir", type=Path, required=True,
+                           help="new empty directory outside the checkout; never overwritten")
     # --- scenes (ownership / coverage table) ---
     scenes_p = sub.add_parser("scenes", help="Scene ownership and coverage table")
     scenes_p.add_argument("--all", action="store_true", help="include unclaimed P1/P2 rows")
@@ -955,6 +961,18 @@ def main(argv=None):
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(2)
     elif args.command == "rom-data":
+        if args.rom_data_action == "map-index":
+            from pokegent.games.gen3.firered.rom.map_index import MapIndexError, build_map_index
+            from pokegent.games.gen3.firered.rom.rom_data import ProfileError
+
+            try:
+                build_map_index(args.rom, args.out_dir)
+            except (MapIndexError, OSError, ProfileError):
+                print("error: numeric map index failed; check ROM and empty external output.",
+                      file=sys.stderr)
+                sys.exit(2)
+            print("Numeric map index written.")
+            return
         from pokegent.games.gen3.firered.rom.rom_cache import RomDataError, build
 
         try:
