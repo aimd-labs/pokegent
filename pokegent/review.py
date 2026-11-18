@@ -23,6 +23,7 @@ from pokegent.live import payload, read_json
 VERDICTS = {"none", "other", "clear", "whiteout", "objective_done", "interrupted", "owner_review"}
 MAX_INPUT = 16 * 1024
 MAX_LINE = 64 * 1024
+QUEUE_SCHEMA_VERSION = 1
 
 
 def sanitize(value: dict, *, home: Path | None = None) -> dict:
@@ -128,10 +129,17 @@ class Queue:
             CREATE TABLE IF NOT EXISTS clock (id INTEGER PRIMARY KEY, attempted REAL NOT NULL);
         """
         expected = {
-            "reviews": ("id", "body", "delivered", "kind"),
-            "event_cursors": ("generation", "identity", "offset", "skipping", "boundary"),
-            "finished": ("run",),
-            "clock": ("id", "attempted"),
+            "reviews": (
+                ("id", "TEXT", 0, None, 1), ("body", "TEXT", 0, None, 0),
+                ("delivered", "INTEGER", 1, "0", 0), ("kind", "TEXT", 1, "'run_end'", 0),
+            ),
+            "event_cursors": (
+                ("generation", "TEXT", 0, None, 1), ("identity", "TEXT", 1, None, 0),
+                ("offset", "INTEGER", 1, None, 0), ("skipping", "INTEGER", 1, None, 0),
+                ("boundary", "TEXT", 1, None, 0),
+            ),
+            "finished": (("run", "TEXT", 0, None, 1),),
+            "clock": (("id", "INTEGER", 0, None, 1), ("attempted", "REAL", 1, None, 0)),
         }
         try:
             with self.db:
@@ -139,10 +147,13 @@ class Queue:
                 tables = {row[0] for row in self.db.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 )}
-                if tables and (tables != expected.keys() or any(
-                    tuple(row[1] for row in self.db.execute(f"PRAGMA table_info({table})"))
-                    != columns for table, columns in expected.items()
-                )):
+                version = self.db.execute("PRAGMA user_version").fetchone()[0]
+                if (tables or version) and (
+                    version != QUEUE_SCHEMA_VERSION or tables != expected.keys() or any(
+                        tuple(row[1:] for row in self.db.execute(f"PRAGMA table_info({table})"))
+                        != columns for table, columns in expected.items()
+                    )
+                ):
                     raise QueueSchemaError(
                         "unsupported owner review queue schema; operator must delete the private "
                         "$LIVE_HOME/owner-review/queue.sqlite3 file before restarting"
@@ -150,6 +161,8 @@ class Queue:
                 for statement in schema.split(";"):
                     if statement.strip():
                         self.db.execute(statement)
+                if not tables:
+                    self.db.execute(f"PRAGMA user_version = {QUEUE_SCHEMA_VERSION}")
         except Exception:
             self.db.close()
             raise

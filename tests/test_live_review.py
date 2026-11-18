@@ -17,7 +17,16 @@ from types import SimpleNamespace
 import pytest
 
 from pokegent.events import EventLog
-from pokegent.review import MAX_INPUT, MAX_LINE, Queue, Settings, main, sanitize
+from pokegent.review import (
+    MAX_INPUT,
+    MAX_LINE,
+    QUEUE_SCHEMA_VERSION,
+    Queue,
+    QueueSchemaError,
+    Settings,
+    main,
+    sanitize,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 FAKE = '''
@@ -131,6 +140,7 @@ def test_state_reference_is_constructed_from_trusted_run_root(settings, artifact
 def test_busy_failure_retry_restart_and_delivery_once(settings):
     (settings.home / "busy").touch()
     queue = Queue(settings)
+    assert queue.db.execute("PRAGMA user_version").fetchone()[0] == QUEUE_SCHEMA_VERSION
     assert queue.enqueue(review(token="never-copy"))
     assert not queue.drain() and pending(queue) == 1
     queue.close()
@@ -190,6 +200,46 @@ def test_unknown_queue_schema_refuses_start_without_migration(settings, capsys, 
     error = capsys.readouterr().err
     assert "unsupported owner review queue schema" in error
     assert "operator must delete the private $LIVE_HOME/owner-review/queue.sqlite3" in error
+    assert path.read_bytes() == original
+    assert not (settings.home / "attempts").exists()
+
+
+@pytest.mark.parametrize("original_column, incompatible_column", [
+    ("delivered INTEGER NOT NULL DEFAULT 0", "delivered INTEGER NOT NULL DEFAULT 1"),
+    ("delivered INTEGER NOT NULL DEFAULT 0", "delivered TEXT NOT NULL DEFAULT 0"),
+    ("delivered INTEGER NOT NULL DEFAULT 0", "delivered INTEGER DEFAULT 0"),
+    ("id TEXT PRIMARY KEY", "id TEXT"),
+])
+def test_queue_refuses_incompatible_column_properties(
+    settings, original_column, incompatible_column,
+):
+    queue = Queue(settings)
+    schema = queue.db.execute(
+        "SELECT sql FROM sqlite_master WHERE name='reviews'"
+    ).fetchone()[0]
+    with queue.db:
+        queue.db.execute("DROP TABLE reviews")
+        queue.db.execute(schema.replace(original_column, incompatible_column))
+    queue.close()
+    path = settings.home / "owner-review/queue.sqlite3"
+    original = path.read_bytes()
+    with pytest.raises(QueueSchemaError, match="unsupported owner review queue schema"):
+        Queue(settings)
+    assert path.read_bytes() == original
+    assert not (settings.home / "attempts").exists()
+
+
+@pytest.mark.parametrize("version", [0, QUEUE_SCHEMA_VERSION + 1])
+def test_queue_refuses_wrong_schema_version(settings, version):
+    queue = Queue(settings)
+    assert queue.enqueue(review())
+    with queue.db:
+        queue.db.execute(f"PRAGMA user_version = {version}")
+    queue.close()
+    path = settings.home / "owner-review/queue.sqlite3"
+    original = path.read_bytes()
+    with pytest.raises(QueueSchemaError, match="unsupported owner review queue schema"):
+        Queue(settings)
     assert path.read_bytes() == original
     assert not (settings.home / "attempts").exists()
 
