@@ -246,6 +246,13 @@ class Supervisor:
             if valid_start and valid_out:
                 assert isinstance(out_value, str) and isinstance(run_id, str)
                 assert isinstance(state_value, str)
+                # Reuse the counter validation the regular path applies: a negative or
+                # non-int stalled_segments in the record must not resume (issue #33 review).
+                stalled = record.get("stalled_segments", 0)
+                if type(stalled) is not int or stalled < 0:
+                    raise ValueError(
+                        "invalid stalled segment count; ownership needs review"
+                    )
                 out = Path(out_value)
                 start = Path(state_value)
                 self.journal(

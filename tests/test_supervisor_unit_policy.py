@@ -37,9 +37,19 @@ def test_dropin_bounds_restart_spin():
 def test_dropin_does_not_auto_revive_owner_review_exits():
     """The owner-review exits (3 = verdict owner_review, 4 = blocked/crash-limit) must
     be RestartPreventExitStatus so a manager cannot auto-revive into the same blocked
-    record. We assert they are all listed, not that nothing else is."""
-    prevented = {int(x) for x in _value("Service", "RestartPreventExitStatus").split(",")}
-    assert {3, 4}.issubset(prevented) or {3, 4} <= prevented
+    record. systemd wants whitespace-separated values ('3 4 78'); assert all are
+    covered."""
+    prevented = {int(x) for x in _value("Service", "RestartPreventExitStatus").split()}
+    assert {3, 4, 78}.issubset(prevented)
+
+
+def test_dropin_restart_prevent_exit_is_whitespace_separated():
+    """systemd rejects comma-separated RestartPreventExitStatus ('3,4,78' is ignored with
+    a verify warning), so the supported drop-in must use the whitespace form '3 4 78'."""
+    raw = _value("Service", "RestartPreventExitStatus")
+    assert "," not in raw, "RestartPreventExitStatus must be whitespace-separated for systemd"
+    tokens = raw.split()
+    assert len(tokens) == 3 and all(t.isdigit() for t in tokens)
 
 
 def test_supervisor_exit_codes_match_prevent_list():
@@ -48,6 +58,6 @@ def test_supervisor_exit_codes_match_prevent_list():
     the code contract stay in lockstep."""
     # Re-derive the non-zero exits Supervisor.run() can return for review decisions.
     # 3 == owner_review, 4 == blocked/crash-limit (see supervisor.run).
-    prevented = {int(x) for x in _value("Service", "RestartPreventExitStatus").split(",")}
+    prevented = {int(x) for x in _value("Service", "RestartPreventExitStatus").split()}
     assert Supervisor.exit_owner_review in prevented
     assert Supervisor.exit_blocked in prevented

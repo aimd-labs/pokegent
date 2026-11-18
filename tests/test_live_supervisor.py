@@ -358,6 +358,46 @@ def test_controlled_stop_without_final_restarts_from_last_verified_state(live):
     assert load(home / "runs/live-0001/exit.json")["recovered"] is True
 
 
+def test_interrupt_recovery_rejects_negative_stalled_segments(live):
+    """A controlled-interrupt blocked record with a negative stalled_segments count must
+    NOT resume: reuse the existing counter validation so a corrupt/invalid record cannot
+    launch (review)."""
+    home, start = live
+    initial = (home / "initial.state")
+    (home / "runs").mkdir(exist_ok=True)
+    out = home / "runs" / "live-0093"
+    out.mkdir()
+    (home / "live-run.json").write_text(json.dumps({
+        "run_id": "live-0093", "out": str(out), "state": str(initial),
+        "status": "blocked", "verdict": "interrupted",
+        "requested": True, "forced": False, "rc": -15,
+        "stalled_segments": -1, "state_error": "no final state", "state_path": None,
+    }))
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) == 4
+    assert not (home / "calls.jsonl").exists()
+    assert load(home / "live-run.json")["status"] == "blocked"
+
+
+def test_controlled_interrupt_without_successor_recovers_with_valid_stalled(live):
+    """A controlled-interrupt record with a valid (non-negative) stalled_segments count
+    resumes normally — the counter is preserved, not reset, and recovery still works."""
+    home, start = live
+    initial = (home / "initial.state")
+    (home / "runs").mkdir(exist_ok=True)
+    out = home / "runs" / "live-0092"
+    out.mkdir()
+    (home / "live-run.json").write_text(json.dumps({
+        "run_id": "live-0092", "out": str(out), "state": str(initial),
+        "status": "blocked", "verdict": "interrupted",
+        "requested": True, "forced": False, "rc": -15,
+        "stalled_segments": 1, "state_error": "no final state", "state_path": None,
+    }))
+    child = start([{"summary": {"game_cleared": True}}])
+    assert child.wait(timeout=5) == 0
+    assert load(home / "runs/live-0092/exit.json")["recovered"] is True
+
+
 def test_stop_marker_at_start_does_not_spawn(live):
     home, start = live
     (home / "stop").touch()
