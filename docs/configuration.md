@@ -61,7 +61,7 @@ Saved-state validation checks the ROM header and RAM invariants, independently o
 classification. A healthy save in `scene.unknown` is resumable; unknown does not excuse corrupt RAM
 or a missing avatar outside the established pre-field callback allowlist.
 
-Old `recovery:`, `objectives:` and `runner.busy_nudge_after`
+Old `recovery:` and `runner.busy_nudge_after`
 keys are rejected with an error, never silently ignored.
 
 Environment overrides include `POKEGENT_ROM_PATH`, `POKEGENT_DECIDER`,
@@ -135,3 +135,10 @@ graceful-stop deadline, and 130 forced interrupt.
 Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files outside the checkout.
 `POKEGENT_MAP_GROUPS` optionally overrides the map index. See [local-data.md](local-data.md) for schemas,
 missing-file behavior and the setup limitation until automatic local generation exists.
+
+`objectives.fallback` accepts `"off"` (default; quote it in YAML) or `dex`.
+Use `run.on_objective_done: continue`
+for completion-to-fallback handoff; hold/pause defaults are unchanged. The existing private ROM
+encounter cache and usable party/dex/bag facts are required. Unresolved healing/restocking or no
+supported candidate safely pauses instead of inventing a destination. See
+[successor fallback](objective-file.md#9-opt-in-successor-fallback) for conditions and limits.

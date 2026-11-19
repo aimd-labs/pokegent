@@ -291,3 +291,38 @@ satisfied objective continue without the normal completion wait. CLI objective i
 
 The supported configuration names relevant here are `run.on_objective_done` and
 `run.ignore_objective`; the removed review/stuck keys are listed above and are rejected.
+
+## 9. Opt-in successor fallback
+
+Existing plan queues advance to their next entry at a fresh safe completion boundary. To continue
+with a ROM-backed dex objective after the queue or a standalone objective completes, configure:
+
+```yaml
+run:
+  on_objective_done: continue
+objectives:
+  fallback: dex  # "off" by default; quote "off" in YAML
+```
+
+The run uses its existing objective file (default `<run dir>/objective.json`); in-process callers
+must supply a file/store to `build_runner`. Fallback proposals use the same validator, writer lock,
+compare-and-set, history and revision floor. A newer writer wins. Active agent/operator objectives
+and pending/rejected queues take precedence. Expiry does not prove completion or advance a queue.
+`hold` and `pause` retain their completed-objective behavior; fallback can also fill an initially
+empty store from a fresh usable safe frame. With fallback off, empty files remain goal-less.
+
+Fallback loads encounters only from the existing private ROM cache (supported ROM and local map
+data must already be supplied outside the checkout). It ranks unowned species with land encounters,
+using the fork's encounter-probability/current-map cost. It emits a `train` objective with a
+`dex_owned` RAM probe, not a story milestone or a guarantee that the encounter is reachable.
+No species-name or town table is shipped. Surf/fishing encounters are excluded in this slice.
+
+Known full-HP non-egg party RAM, Pokedex RAM and at least ten capture balls (item IDs 2, 3 or 4)
+are required. Capture eligibility retains the fork's HP-only check; it does not prove full PP or
+absence of status. The stronger public heal completion probe (HP, status and ROM-backed PP) is unchanged.
+The fork's heal/restock prerequisite intent is retained, but automatic destinations are not inferred:
+unresolved heal/restock, unknown facts, no remaining supported candidates, expired/rejected input,
+or rejected fallback proposals emit `runtime.paused` (`fallback_unavailable`) and SAFE_PAUSE (exit 1)
+at the safe boundary. Supply an explicit valid objective and resume. Missing/invalid private
+encounter data is a setup error (exit 4). Data generation, automatic shop/healing routes and complete
+story progression are outside this slice. Synthetic tests establish frame handoff, not a real run.

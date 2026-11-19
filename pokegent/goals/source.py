@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
+from pokegent.goals.dex_fallback import DexFallback, FallbackUnavailable
 from pokegent.goals.models import Objective
 from pokegent.goals.store import ObjectiveStore, Proposal, StoreWarning
 from pokegent.goals.tracker import (
@@ -134,6 +135,7 @@ class ObjectiveSession:
         *,
         tracker: ObjectiveTracker | None = None,
         script: ScriptedObjectiveSource | None = None,
+        fallback: DexFallback | None = None,
         stuck_after: int = 120,
         sink: ProgressSink | None = None,
     ) -> None:
@@ -144,6 +146,8 @@ class ObjectiveSession:
         if sink is not None:
             self.tracker.sink = sink
         self.script = script
+        self.fallback = fallback
+        self.fallback_error: str | None = None
         self._held = _Held()
         self._view: GoalView | None = None
         self._warned_seen = store.warning_count
@@ -224,6 +228,8 @@ class ObjectiveSession:
         elif resolved is not None:
             self._rejection = None
         self._view = self._make_view()
+        if resolved is not None:
+            self.fallback_error = None
         return Refreshed(warnings, tuple(events), changed=bool(events))
 
     def _switch(self, resolved: ResolvedObjective | None) -> list[ProgressEvent]:
@@ -306,7 +312,38 @@ class ObjectiveSession:
                 )
                 if committed and clear_completed:
                     events += self.refresh().events
+                elif not committed and clear_completed and self.fallback is not None:
+                    current = self.store.current()
+                    if current is not None and current.revision == objective.revision:
+                        self.fallback_error = "completion not durable; fallback withheld"
+        if safe_boundary and snapshot.usable and self.fallback is not None:
+            events += self._fallback_after_observe(snapshot)
         return events
+
+    def _fallback_after_observe(self, snapshot: StateSnapshot) -> tuple[ProgressEvent, ...]:
+        revision = self.store.revision()
+        if self.store.current() is not None:
+            return ()
+        script = self.script
+        if script is not None and (script.stopped or
+                len(script.status()["completed_ids"]) != len(script.plan)):
+            self.fallback_error = "objective plan pending or rejected; fallback withheld"
+            return ()
+        if self._rejection or self.store.expired():
+            self.fallback_error = "objective rejected or expired; supply an explicit objective"
+            return ()
+        try:
+            proposal = self.fallback.from_snapshot(snapshot)
+            result = self.store.propose({**proposal, "revision": revision + 1},
+                                        expected_revision=revision)
+            if not result.accepted:
+                self.fallback_error = "fallback proposal rejected; supply an explicit objective"
+            return self.refresh().events
+        except FallbackUnavailable as exc:
+            self.fallback_error = str(exc)
+        except Exception:
+            self.fallback_error = "fallback facts unavailable; supply an explicit objective"
+        return ()
 
     def superseded(self) -> bool:
         """A newer valid revision is in the file than the one this iteration runs under (the

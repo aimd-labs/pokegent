@@ -30,3 +30,8 @@ stream:
 dashboard:
   enabled: false
   port: 19701
+# Opt-in successor fallback needs private ROM encounters and resolved prerequisites.
+# run:
+#   on_objective_done: continue
+objectives:
+  fallback: "off" # dex; see docs/objective-file.md for conditions and safe-pause limits

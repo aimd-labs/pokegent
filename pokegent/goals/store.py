@@ -130,6 +130,7 @@ class ObjectiveStore:
     _lock: threading.RLock = field(default_factory=threading.RLock)
     _seq: int = 0
     _expired_noted: tuple[str, int] | None = None
+    _expired_file: Objective | None = None
     _missing_noted: bool = False
     _lock_depth: int = 0
     _warned: int = 0
@@ -185,6 +186,13 @@ class ObjectiveStore:
         """The active objective with names resolved to ids (None when none/expired)."""
         with self._lock:
             return self._active.resolved if self.current() is not None else None
+
+    def expired(self) -> bool:
+        """An expired retained file is not an empty objective boundary."""
+        with self._lock:
+            self.poll()
+            obj = self._expired_file or self._active.objective
+            return obj is not None and obj.expires_at is not None and obj.expires_at <= self.clock()
 
     def revision(self) -> int:
         with self._lock:
@@ -252,6 +260,15 @@ class ObjectiveStore:
             return
         verdict = validate(data, now=self.clock(), directory=self.directory)
         if not verdict.ok or verdict.objective is None or verdict.resolved is None:
+            candidate = verdict.objective
+            if (candidate is not None and candidate.revision >= self._revision_floor
+                    and any(reason.code == "expired" for reason in verdict.reasons)
+                    and not any(row.get("event") == "completion_cleared"
+                                and row.get("objective_id") == candidate.objective_id
+                                and row.get("revision") == candidate.revision
+                                for row in self.history())):
+                # Cold-start expiry is rejected before activation, but is not an empty file.
+                self._expired_file = candidate
             rev = data.get("revision") if isinstance(data.get("revision"), int) else None
             self._warn(
                 verdict.reasons[0].code if verdict.reasons else "schema_invalid",
@@ -335,6 +352,7 @@ class ObjectiveStore:
         self._active = _Active(verdict.objective, verdict.resolved)
         self._revision_floor = max(self._revision_floor, verdict.objective.revision)
         self._expired_noted = None
+        self._expired_file = None
 
     def _restore_active_file(self, active: Objective) -> None:
         """Undo a direct external overwrite that violated source ownership."""
@@ -490,6 +508,7 @@ class ObjectiveStore:
                 except OSError as exc:
                     # The durable tombstone retires the goal even if file cleanup failed.
                     self._active = _Active()
+                    self._expired_file = None
                     self._signature = None
                     self._missing_noted = True
                     self._warn(
@@ -507,6 +526,7 @@ class ObjectiveStore:
             finally:
                 os.close(dir_fd)
         self._active = _Active()
+        self._expired_file = None
         self._signature = None
         self._missing_noted = True
 
