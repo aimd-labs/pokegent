@@ -462,6 +462,18 @@ class FieldBuilder:
         navigation_plan = (
             self.navigation.plan(snap, resolved) if self.navigation is not None else None
         )
+        # A reach/map-arrival objective whose target lies on ANOTHER map crosses the current
+        # map on foot first.  ``_objective_tiles`` returns () for an off-map target, so in a
+        # city/interior there would be NO walk option at all -- only border edges and building
+        # warps -- and the agent would seam-ping instead of crossing the city toward the goal
+        # (issue #56, live-0030: Cerulean -> Route 5).  Emit intra-map walk-forward tiles from
+        # the plan's walk edges on the current map so the map can actually be crossed.
+        if navigation_plan is not None and not tiles:
+            nav_tiles = self._in_map_forward_walk_tiles(
+                navigation_plan, map_key, resolved
+            )
+            if nav_tiles:
+                tiles = nav_tiles
         objective_target = (
             None if resolved is None else resolved.navigation_target or resolved.target
         )
@@ -1835,6 +1847,46 @@ class FieldBuilder:
         if t.map_key == map_key and t.x is not None and t.y is not None:
             return ((t.x, t.y),)
         return ()
+
+    @staticmethod
+    def _in_map_forward_walk_tiles(
+        navigation_plan, map_key: tuple[int, int], resolved: ResolvedObjective | None
+    ) -> tuple[tuple[int, int], ...]:
+        """Intra-map walk-forward tiles on the CURRENT map toward a plan's goal.
+
+        For a reach/map-arrival objective whose target lies on another map (so ``_objective_tiles``
+        is ()), the plan must CROSS the current map on foot to reach its exit before the next
+        map.  City/interior frames otherwise offer no walk option at all (only border edges and
+        building warps), which is the seam-ping root cause of issue #56.  We collect the
+        destination tiles of the plan's ``walk`` edges that stay on the current map and lead
+        forward, so the builder can emit genuine walk options to cross it.
+        """
+        if navigation_plan is None or resolved is None or not navigation_plan.route:
+            return ()
+        route = navigation_plan.route
+        out: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        for edge in route:
+            src = edge.source
+            if (src.map_group, src.map_number) != map_key:
+                continue  # we only cross THIS map first
+            if edge.kind not in ("walk", "bike", "ledge", "forced"):
+                # The plan leaves the current map via its border connection / warp next; any
+                # pure walk prefix on this map has already been collected.
+                break
+            dst = edge.destination
+            tile = (dst.x, dst.y)
+            if tile not in seen:
+                seen.add(tile)
+                out.append(tile)
+            # The forward path crosses the map boundary on the next non-walk edge; the walk
+            # tiles collected so far let the agent walk toward the exit.
+            if len(out) >= 8:
+                break
+        # Only emit walks when they actually PROGRESS toward the goal map (they all originate on
+        # map_key and the destination crossed out above).  Empty when the plan doesn't walk on
+        # this map.
+        return tuple(out)
 
     def _planning_caps(self, snapshot) -> frozenset[str]:
         override = getattr(self, "planning_caps", None)
