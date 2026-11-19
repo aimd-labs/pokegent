@@ -9,6 +9,7 @@ from typing import Any
 from pokegent.games.gen3.firered.maps.map_names import map_name
 from pokegent.games.gen3.firered.maps.obstacles import option_key
 from pokegent.games.gen3.firered.reader.capabilities import field_capability
+from pokegent.goals.models import probe_leaves
 from pokegent.goals.validate import ResolvedObjective, resolve_map
 from pokegent.navigation.capabilities import from_snapshot
 from pokegent.navigation.graph import NavigationGraph
@@ -1605,7 +1606,7 @@ class NavigationAdapter:
             return None
         probe_maps = {
             resolve_map(probe.map)
-            for probe in resolved.objective.success_probes
+            for probe in probe_leaves(resolved.objective.success_probes)
             if probe.kind == "map_arrival"
         }
         candidates = [
@@ -1696,7 +1697,7 @@ class NavigationAdapter:
         if getattr(objective, "kind", None) == "fight":
             probe_maps = {
                 resolve_map(probe.map)
-                for probe in getattr(objective, "success_probes", ())
+                for probe in probe_leaves(getattr(objective, "success_probes", ()))
                 if probe.kind == "map_arrival"
             }
             probe_warps = [
@@ -1727,7 +1728,8 @@ class NavigationAdapter:
 
         probes = getattr(objective, "success_probes", ())
         if not any(
-            getattr(probe, "kind", None) in {"flag", "trainer_defeated", "var"} for probe in probes
+            getattr(probe, "kind", None) in {"flag", "trainer_defeated", "var", "var_at_least"}
+            for probe in probe_leaves(probes)
         ):
             return None
         scripted = []

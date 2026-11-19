@@ -29,7 +29,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.dex_fallback import DexFallback, FallbackUnavailable
-from pokegent.goals.models import Objective
+from pokegent.goals.models import Objective, probe_leaves
 from pokegent.goals.store import ObjectiveStore, Proposal, StoreWarning
 from pokegent.goals.tracker import (
     MILESTONE_COMPLETED,
@@ -289,7 +289,10 @@ class ObjectiveSession:
         if obj is not None and obj.kind == "hold" and not self.tracker.done:
             resolved = self._held.resolved
             probes = resolved.probes if resolved is not None else ()
-            if probes and all(probe.kind in ("flag", "var") for probe in probes):
+            if probes and all(
+                leaf.kind in ("flag", "var", "var_at_least")
+                for leaf in probe_leaves(probes)
+            ):
                 self._hold_waiting_reason = (
                     "hold objective has only unmet RAM probes; no input can satisfy "
                     + ", ".join(probe.label() for probe in probes)

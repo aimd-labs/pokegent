@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from pokegent.games.gen3.firered.maps.map_schema import MapState
-from pokegent.goals.models import Objective
+from pokegent.goals.models import Objective, probe_leaves
 from pokegent.goals.validate import ResolvedObjective, resolve_map
 from pokegent.navigation.routing import MapGraph
 
@@ -65,14 +65,15 @@ def serves_goal(
     gift_flag = facts.get("gift_flag")
     if isinstance(gift_flag, int):
         set_flags.add(gift_flag)
-    for probe in obj.success_probes:
+    for probe in probe_leaves(obj.success_probes):
         if probe.kind == "flag" and probe.expected and probe.flag in set_flags:
             return True
-        if probe.kind == "var" and any(
+        if probe.kind in ("var", "var_at_least") and any(
             isinstance(row, (tuple, list))
             and len(row) == 2
             and row[0] == probe.var
-            and row[1] == probe.value
+            and isinstance(row[1], int)
+            and (row[1] >= probe.value if probe.kind == "var_at_least" else row[1] == probe.value)
             for row in facts.get("set_vars", ())
         ):
             return True
@@ -115,7 +116,7 @@ def serves_goal(
     if defeated_fight:
         probe_maps = [
             resolve_map(probe.map)
-            for probe in obj.success_probes
+            for probe in probe_leaves(obj.success_probes)
             if probe.kind == "map_arrival"
         ]
         remaining_probe_map = next(
@@ -133,7 +134,7 @@ def serves_goal(
         remaining_probe_map = next(
             (
                 resolve_map(probe.map)
-                for probe in obj.success_probes
+                for probe in probe_leaves(obj.success_probes)
                 if probe.kind == "map_arrival" and resolve_map(probe.map) != here
             ),
             None,

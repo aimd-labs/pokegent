@@ -20,7 +20,12 @@ def wanted_species(objective: Any) -> int | None:
     """Read the dex-owned species from either the future structured objective or its summary."""
     if isinstance(objective, Mapping):
         probes = objective.get("success_probes", ())
-        for probe in probes:
+        leaves = (
+            child
+            for probe in probes if isinstance(probe, Mapping)
+            for child in (probe.get("children", ()) if probe.get("kind") == "any_of" else (probe,))
+        )
+        for probe in leaves:
             if isinstance(probe, Mapping) and probe.get("kind") == "dex_owned":
                 value = probe.get("species")
                 if isinstance(value, int) and value > 0:

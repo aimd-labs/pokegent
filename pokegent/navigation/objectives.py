@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from pokegent.games.gen3.firered.maps import map_names
+from pokegent.goals.models import probe_leaves
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
 
 _SUPPORTED_WILD_METHODS = frozenset({"land", "water"})
@@ -20,7 +21,8 @@ def resolve_collect_navigation(snapshot, resolved: ResolvedObjective | None, wor
         and resolved.target.map_key is None
     )
     dex_probe = next(
-        (probe for probe in resolved.objective.success_probes if probe.kind == "dex_owned"), None
+        (probe for probe in probe_leaves(resolved.objective.success_probes)
+         if probe.kind == "dex_owned"), None
     )
     species = (
         resolved.target.species
