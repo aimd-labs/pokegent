@@ -25,3 +25,8 @@ handoff code from MIT-licensed pokevon_agent, source revision
 `3de37392cbbfdff3876bfed98571aa861f4c1032` (`goals/dex_fallback.py` and
 `goals/source.py`). LICENSE retains the Nous Research notice. Species-name, town and
 story tables, removed tactical fields and private game inputs are excluded.
+
+The bounded `recent_choices` history and runner hooks adapt the MIT-licensed
+pokevon_agent `history.py` and `runner.py`, locally pinned at revision
+`7185ae105ca0317753f53e0f16eb1843028df119`. LICENSE retains the Nous Research notice.
+The port excludes the repetition ledger and recovery/route-assist code.

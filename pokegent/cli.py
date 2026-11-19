@@ -720,7 +720,7 @@ def main(argv=None):
         type=int,
         default=None,
         metavar="N",
-        help="removed: decision history is owned by the agent",
+        help="recent decider choices shown as context (default 3, 0 disables, maximum 8)",
     )
 
     viewer = run_p.add_argument_group(
