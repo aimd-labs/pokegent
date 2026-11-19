@@ -139,8 +139,9 @@ missing-file behavior and the setup limitation until automatic local generation 
 `run.decision_history` accepts an integer from 0 to 8 (default 3); 0 disables it.
 `--decision-history N` overrides that setting. Recent decider choices, executor
 outcomes and short context diffs appear in `state.recent_choices`. Scene-family,
-objective id/revision and new-battle resets prevent stale history; a map transition
-keeps only its last choice. Provider budgets trim newest history items last and
+objective id/revision and new-battle resets prevent stale history. Map transitions
+retain bounded history and its map diffs so both directions of a revisit stay visible.
+Provider budgets trim newest history items last and
 may drop the optional history entirely. This adds context, not loop recovery.
 
 `objectives.fallback` accepts `"off"` (default; quote it in YAML) or `dex`.

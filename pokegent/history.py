@@ -23,8 +23,6 @@ LABEL_CHARS = 60
 MAX_DIFF_KEYS = 3
 #: a changed value of these keys is a counter: reported in brackets only if NOTHING else changed
 COUNTER_KEYS = ("turns_played",)
-#: a changed value of these keys means a new place: older entries are dropped (reset rule 4)
-PLACE_KEYS = ("map",)
 #: context keys that describe the screen, the goal or the history itself, not the situation the
 #: choice acted on; a screen change shows in the options already, a goal change resets the history
 SKIP_KEYS = frozenset(
@@ -206,10 +204,6 @@ class DecisionHistory:
             before = last.context
             last.diff = context_diff(before, frame.context)
             last.context = None
-            if any(not _same(before.get(k, _MISSING), frame.context.get(k, _MISSING))
-                   for k in PLACE_KEYS):
-                while len(self._entries) > 1:
-                    self._entries.popleft()
         if HISTORY_KEY in frame.context:
             return frame
         context = dict(frame.context)
