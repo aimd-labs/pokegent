@@ -359,7 +359,8 @@ Validate changes with `ruff check .`, `python -m compileall pokegent addons`, an
 to the decider's context: its last choices, neutral executor outcomes and a bounded
 mechanical diff against the next decision context. Automatic waits are not choices.
 History clears on scene-family or objective id/revision changes and a decreasing
-battle turn counter. A map change retains only the last choice and its transition.
+battle turn counter. Map changes retain the bounded history and its transition diffs,
+including both directions of a cross-map revisit.
 Builder-owned `recent_choices` wins; provider state budgets may trim or drop history.
 
 The decider gets a copy; execution and choice validation use the paired original

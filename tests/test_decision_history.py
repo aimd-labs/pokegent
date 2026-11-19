@@ -135,7 +135,7 @@ def test_history_resets_even_after_effect_diff_resolved(frame, reset):
     assert history.prepare(other, key) is other
 
 
-def test_map_crossing_keeps_last_choice_and_builder_key_wins(frame):
+def test_map_crossing_keeps_bounded_history_and_builder_key_wins(frame):
     from pokegent.actions._exec.models import ActionResult, ActionStatus
     from pokegent.history import DecisionHistory
     history = DecisionHistory()
@@ -146,7 +146,12 @@ def test_map_crossing_keeps_last_choice_and_builder_key_wins(frame):
     history.record(first, 'tap:b', result)
     moved = context(frame, map='TestB')
     lines = history.prepare(moved).context['recent_choices']
-    assert len(lines) == 1 and 'map: TestA -> TestB' in lines[0]
+    assert len(lines) == 2 and 'map: TestA -> TestB' in lines[-1]
+    history.record(moved, 'tap:b', result)
+    returned = history.prepare(first).context['recent_choices']
+    assert len(returned) == 3
+    assert 'map: TestA -> TestB' in returned[-2]
+    assert 'map: TestB -> TestA' in returned[-1]
     builder = context(frame, map='TestB', recent_choices=['builder-owned'])
     assert history.prepare(builder) is builder
 
@@ -335,3 +340,69 @@ def test_run_offline_cli_override_reaches_runner_config(tmp_path, monkeypatch):
     assert report.exit_code != 0
     assert observed[0].runner_config().decision_history == 8
     assert observed[-1].runner_config().decision_history == 0
+
+
+@pytest.mark.parametrize('keep', [0, 3, 8])
+def test_actual_provider_keeps_both_cross_map_directions(harness, monkeypatch, keep):
+    from dataclasses import replace
+
+    from addons.system_one.mock import MockProvider
+    from addons.system_one.provider import SyncDecider
+    from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
+    from pokegent.history import DecisionHistory
+
+    h = harness(amount=99)
+    h.runner.config = replace(h.runner.config, max_steps=12, decision_history=keep)
+    h.runner.history = DecisionHistory(keep)
+    read, build, perceive, execute = (h.source.read_snapshot, h.Builder.build,
+                                    h.perceiver._perceive, h.executor.execute)
+    built, executed = [], []
+
+    def read_map():
+        snapshot = read()
+        values = {key: getattr(snapshot, key) for key in type(snapshot).model_fields
+                  if key not in {'schema_version', 'state_hash'}}
+        values['player'] = snapshot.player.model_copy(update={'map_num': h.state.money % 2})
+        return StateSnapshot.create(**values)
+
+    def build_map(self, ctx):
+        draft = build(self, ctx)
+        name = 'TestA' if ctx.snapshot.player.map_num == 0 else 'TestB'
+        return replace(draft, context={**draft.context, 'map': name})
+
+    def perceive_spy(*args, **kwargs):
+        result = perceive(*args, **kwargs)
+        built.append(result.frame)
+        return result
+
+    def execute_spy(frame, option_id):
+        assert 'recent_choices' not in frame.context
+        assert any(frame is original for original in built)
+        executed.append(frame)
+        return execute(frame, option_id)
+
+    monkeypatch.setattr(h.source, 'read_snapshot', read_map)
+    monkeypatch.setattr(h.Builder, 'build', build_map)
+    monkeypatch.setattr(h.perceiver, '_perceive', perceive_spy)
+    monkeypatch.setattr(h.executor, 'execute', execute_spy)
+    provider = MockProvider(strategy=lambda state, question: 'tap:b')
+    decider = SyncDecider(provider)
+    h.runner.decider = decider
+    try:
+        assert h.runner.run().status is RunStatus.MAX_STEPS
+        assert len(provider.calls) == len(executed) == 12
+        assert [call['state']['map'] for call in provider.calls[:3]] == ['TestA', 'TestB', 'TestA']
+        for index, (call, plain) in enumerate(zip(provider.calls, executed)):
+            payload = to_system_one_payload(plain)
+            assert {k: v for k, v in call['state'].items() if k != 'recent_choices'} == (
+                payload['state'])
+            assert call['question']['criteria'] == payload['criteria']
+            assert len(call['state'].get('recent_choices', [])) == min(index, keep)
+        if keep:
+            lines = provider.calls[2]['state']['recent_choices']
+            assert 'map: TestA -> TestB' in lines[0]
+            assert 'map: TestB -> TestA' in lines[1]
+            assert len(provider.calls[-1]['state']['recent_choices']) == keep
+        assert h.state.actions == 12 and all(r.verified_outcome is True for r in h.results)
+    finally:
+        decider.close()
