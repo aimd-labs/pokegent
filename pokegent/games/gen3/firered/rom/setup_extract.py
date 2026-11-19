@@ -204,7 +204,8 @@ def _gate_groups(points: set[tuple[int, int]]) -> list[list[list[int]]]:
             group.add((x, y))
             pending.extend(((x-1, y), (x+1, y), (x, y-1), (x, y+1)))
         groups.append([list(p) for p in sorted(group, key=lambda p: (p[1], p[0]))])
-    return groups
+    # The switch builder verifies [0][0]; preserve left-to-right gate order.
+    return sorted(groups, key=lambda g: (min(p[0] for p in g), min(p[1] for p in g)))
 
 
 def mansion(facts: Facts) -> dict:

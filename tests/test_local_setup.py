@@ -375,3 +375,25 @@ def test_finite_prompt_mapping_and_safety_precedence(monkeypatch):
                                   ).kind.value == 'destructive'
     assert not surf_capability(NS(usable=True, player=NS(badges=()), party=())).available
     assert not surf_capability(NS(usable=True, player=NS(badges=(5,)), party=())).available
+
+
+@pytest.mark.parametrize('switch_set', [False, True])
+def test_gate_order_preserves_actual_builder_verification_tile(monkeypatch, switch_set):
+    from types import SimpleNamespace as NS
+
+    from pokegent.actions.special import mansion, switch_puzzle
+    from pokegent.games.gen3.firered.rom.setup_extract import _gate_groups
+
+    # First-by-y differs from first-by-x: the consumer deliberately picks [0][0].
+    groups = _gate_groups({(1, 9), (2, 9), (7, 1), (7, 2)})
+    gates = tuple(tuple(map(tuple, group)) for group in groups)
+    statue = mansion.MansionStatue('demo', 'Demo', (0, 0), (3, 3), (3, 4), 'N', gates, gates)
+    monkeypatch.setattr(mansion, 'statues_on_map', lambda state: (statue,))
+    monkeypatch.setattr(mansion, 'switch_state', lambda snapshot: switch_set)
+    monkeypatch.setattr(mansion, 'SECRET_KEY_TILE', (1, 1))
+    monkeypatch.setattr(switch_puzzle.N, 'Navigator', lambda state: NS(search=lambda: ()))
+    monkeypatch.setattr(switch_puzzle.T, 'plan_target', lambda *args: NS(length=0))
+    state = NS(player=NS(avatar_x=3, avatar_y=4), identity=NS(group=0, number=0, name='Demo'))
+    draft = switch_puzzle.MansionBuilder().build(NS(snapshot=NS(map=state)))
+    args = draft.options[0].executor_args
+    assert (args['verify_x'], args['verify_y']) == (1, 9)
