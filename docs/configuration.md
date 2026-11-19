@@ -136,6 +136,14 @@ Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files o
 `POKEGENT_MAP_GROUPS` optionally overrides the map index. See [local-data.md](local-data.md) for schemas,
 missing-file behavior and the setup limitation until automatic local generation exists.
 
+`run.decision_history` accepts an integer from 0 to 8 (default 3); 0 disables it.
+`--decision-history N` overrides that setting. Recent decider choices, executor
+outcomes and short context diffs appear in `state.recent_choices`. Scene-family,
+objective id/revision and new-battle resets prevent stale history. Map transitions
+retain bounded history and its map diffs so both directions of a revisit stay visible.
+Provider budgets trim newest history items last and
+may drop the optional history entirely. This adds context, not loop recovery.
+
 `objectives.fallback` accepts `"off"` (default; quote it in YAML) or `dex`.
 Use `run.on_objective_done: continue`
 for completion-to-fallback handoff; hold/pause defaults are unchanged. The existing private ROM

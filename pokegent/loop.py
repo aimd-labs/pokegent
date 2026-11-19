@@ -53,6 +53,7 @@ from pokegent.errors import ErrorCode
 from pokegent.events import EventSink, EventType
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.source import ObjectiveSession, is_objective_rejection
+from pokegent.history import DEFAULT_KEEP, MAX_KEEP, DecisionHistory
 from pokegent.options.models import (
     Decider,
     DeciderTimeout,
@@ -266,6 +267,8 @@ class RunnerConfig:
     busy_stuck_limit: int = 20
     decider_retries: int = 1
     invalid_choice_limit: int = 3
+    #: Bounded recent choices for the decider only; zero disables.
+    decision_history: int = DEFAULT_KEEP
     # Keep enough same-frame failures to suppress sibling option ids (PC party
     # actions can expose six targets) until the frame context changes.
     recent_failed_keep: int = 64
@@ -299,6 +302,10 @@ class RunnerConfig:
     system1_max_outage_s: float = 0.0
 
     def __post_init__(self) -> None:
+        if (isinstance(self.decision_history, bool)
+                or not isinstance(self.decision_history, int)
+                or not 0 <= self.decision_history <= MAX_KEEP):
+            raise ValueError(f"decision_history must be an integer from 0 to {MAX_KEEP}")
         if self.system1_outage not in ("wait", "pause"):
             raise ValueError("system1_outage must be wait|pause")
         if self.system1_max_outage_s < 0:
@@ -481,6 +488,7 @@ class Runner:
         self._entered: str | None = None
         self._frame_no: int | None = None
         self._last_snapshot = None
+        self.history = DecisionHistory(self.config.decision_history)
         self._recent_failed: deque[dict[str, Any]] = deque(
             maxlen=max(1, self.config.recent_failed_keep)
         )
@@ -1317,6 +1325,7 @@ class Runner:
         frame = perception.frame
         assert frame is not None
         self._last_frame = frame
+        self.history.observe(frame, self._goal_key(frame))
         update_briefing = getattr(self.decider, "update_briefing", None)
         if callable(update_briefing):
             update_briefing(
@@ -1432,7 +1441,7 @@ class Runner:
                 ErrorCode.E_PAYLOAD_LEAK,
                 {"payload_leak": leak},
             )
-        shown = frame
+        shown = self._history_frame(frame)
         self._emit(
             EventType.DECISION_SYSTEMONE_REQUESTED,
             scene_id=frame.scene_id,
@@ -1457,8 +1466,11 @@ class Runner:
                 if callable(take_frame):
                     adopted = take_frame()
                     if adopted is not None:
+                        # External/hybrid return the shown copy unless the goal rebuilt it.
+                        if adopted is not shown:
+                            frame = adopted
+                            self.history.observe(frame, self._goal_key(frame))
                         shown = adopted
-                        frame = adopted
                 break
             except DeciderTimeout as exc:
                 last_error = exc
@@ -1765,6 +1777,19 @@ class Runner:
         view = self._goal_view(frame)
         return frame.goal_id, (view.revision if view is not None else None)
 
+    def _history_frame(self, frame: DecisionFrame) -> DecisionFrame:
+        shown = self.history.prepare(frame, self._goal_key(frame))
+        if shown is not frame:
+            try:
+                to_system_one_payload(shown)
+            except PayloadLeakError as exc:
+                self.history.reset()
+                self._emit(EventType.RUNTIME_DEGRADED, scene_id=frame.scene_id,
+                           request_id=frame.decision_id, outcome=ErrorCode.E_PAYLOAD_LEAK.value,
+                           details={"component": "decision_history", **exc.as_dict()})
+                return frame
+        return shown
+
     def _act(
         self,
         frame: DecisionFrame,
@@ -1827,6 +1852,8 @@ class Runner:
             )
         self._record_dialog_block(frame, option_id, result, source=source)
         self._record_result(frame, option_id, result)
+        if source == "decider":
+            self.history.record(frame, option_id, result, self._goal_key(frame))
         notify = getattr(self.decider, "record_action_result", None)
         clear_autoplay_pending = getattr(self.decider, "clear_autoplay_pending", None)
         try:
@@ -2325,6 +2352,7 @@ class Runner:
                 snapshot=self._last_snapshot,
             ).frame
             if rebuilt is not None:
+                self.history.observe(rebuilt, self._goal_key(rebuilt))
                 self._pending_objective_key = objective_key
             return rebuilt
 

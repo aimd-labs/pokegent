@@ -59,6 +59,7 @@ from pokegent.goals import (
     ScriptedObjectiveSource,
 )
 from pokegent.goals.validate import MapDirectory
+from pokegent.history import DEFAULT_KEEP, MAX_KEEP
 from pokegent.loop import (
     ON_OBJECTIVE_DONE,
     EscalationAction,
@@ -168,6 +169,7 @@ class AppConfig:
     #: a finished objective at the next free-roaming decision: ``hold`` (default, stay alive and
     #: poll the file), ``pause`` (stop with ``WAITING_OBJECTIVE``, exit 3) or
     on_objective_done: str = "hold"
+    decision_history: int = DEFAULT_KEEP
     #: headless/maintenance opt-out: a satisfied objective success probe does not stop the run
     #: (``run.ignore_objective``, CLI ``--ignore-objective``; default off)
     ignore_objective: bool = False
@@ -217,6 +219,10 @@ class AppConfig:
             or int(self.external.get("walk_step_limit", 8)) < 1
         ):
             raise AppError("external.walk_step_limit must be >= 1")
+        if (isinstance(self.decision_history, bool)
+                or not isinstance(self.decision_history, int)
+                or not 0 <= self.decision_history <= MAX_KEEP):
+            raise AppError(f"decision_history must be an integer from 0 to {MAX_KEEP}")
         if self.on_objective_done not in ON_OBJECTIVE_DONE:
             raise AppError(f"on_objective_done must be one of {ON_OBJECTIVE_DONE}")
         if not isinstance(self.ignore_objective, bool):
@@ -262,6 +268,7 @@ class AppConfig:
             "run_id",
             "goal_id",
             "on_objective_done",  # a top-level setting: run.on_objective_done
+            "decision_history",
         }
         unknown = sorted(set(self.runner) - runner_fields)
         if unknown:
@@ -274,6 +281,7 @@ class AppConfig:
             max_steps=self.max_steps,
             deadline_s=self.deadline_s,
             on_objective_done=self.on_objective_done,
+            decision_history=self.decision_history,
             ignore_objective=self.ignore_objective,
             autoplay=self.autoplay or "off",
             **{k: v for k, v in self.runner.items() if k not in ("max_steps", "deadline_s")},
@@ -292,6 +300,7 @@ _SECTIONS = {
         "restart_file",
         "goal_id",
         "on_objective_done",
+        "decision_history",
         "ignore_objective",
         "checkpoint_every",
         "checkpoint_keep",
@@ -373,8 +382,6 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
         )
         if removed:
             raise AppError(f"removed config key(s): {removed}")
-    if isinstance(raw.get("run"), Mapping) and "decision_history" in raw["run"]:
-        raise AppError("run.decision_history was removed: decision history is owned by the agent")
     unknown = sorted(set(raw) - set(_SECTIONS))
     if unknown:
         raise AppError(f"unknown config sections {unknown}; known: {sorted(_SECTIONS)}")
@@ -1742,7 +1749,7 @@ def run_offline(
     if ignore_objective:
         overrides["ignore_objective"] = True
     if decision_history is not None:
-        raise AppError("--decision-history was removed: decision history is owned by the agent")
+        overrides["decision_history"] = decision_history
     if viewer:
         overrides["viewer"] = replace(
             cfg.viewer, **{k: v for k, v in viewer.items() if v is not None}

@@ -353,9 +353,22 @@ Validate changes with `ruff check .`, `python -m compileall pokegent addons`, an
 `python tests/games/gen3/test_imports.py`.
 
 
-## 13. v1.4: decider decision history (removed in Phase 3)
+## 13. v1.4: bounded decider decision history
 
-Removed. The runner no longer keeps `recent_choices` or any history across frames; every decision frame carries only facts from the current frame (design rule: no counters, no cached state). What happened is in the event log, which the agent can read. `run.decision_history` is rejected as a removed key.
+`run.decision_history` (default 3, integer 0..8; 0 disables) adds `recent_choices`
+to the decider's context: its last choices, neutral executor outcomes and a bounded
+mechanical diff against the next decision context. Automatic waits are not choices.
+History clears on scene-family or objective id/revision changes and a decreasing
+battle turn counter. Map changes retain the bounded history and its transition diffs,
+including both directions of a cross-map revisit.
+Builder-owned `recent_choices` wins; provider state budgets may trim or drop history.
+
+The decider gets a copy; execution and choice validation use the paired original
+frame, including a new original when an external pending goal refresh rebuilds it.
+Options, fingerprints and fresh-RAM revalidation are unchanged. The original payload
+guard runs first. A leak introduced only by optional history clears that history and
+emits `runtime.degraded`; an original payload leak still blocks the decision.
+This is bounded context, with no repetition ledger, ranking or recovery behavior.
 
 ## 14. v1.5: tactical instructions (removed in Phase 3)
 
