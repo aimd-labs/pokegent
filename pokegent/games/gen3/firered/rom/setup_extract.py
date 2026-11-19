@@ -262,10 +262,11 @@ def surf(facts: Facts) -> dict:
                         r'\s*&& MetatileAtCoordsIsWaterTile', player)[0])
     dismount = int(one(r'MapGridGetElevationAt\(x, y\) == (\d+)\s*\n'
                        r'\s*&& GetObjectEventIdByPosition\(x, y, \d+\)', player)[0])
+    badge_number = int(re.search(r'\d+', badge)[0])
     return {
         'capability': {
             'move': {'name': 'Surf', 'move_id': facts.number('MOVE_SURF')},
-            'badge': {'number': int(re.search(r'\d+', badge)[0]), 'name': 'Soul',
+            'badge': {'number': badge_number, 'name': f'Badge {badge_number}',
                       'flag': facts.number(badge)},
             'prompt': {'text': message(facts.source, 'data/text/surf.inc', 'Text_WantToSurf')},
         },
@@ -273,12 +274,11 @@ def surf(facts: Facts) -> dict:
             'player_elevation': elevation,
             'front_tile': 'Water terrain with an elevation mismatch',
             'result': 'Move onto the water tile in front and begin surfing',
-            'water_behaviors': {'start_ok': ['MB_OCEAN_WATER', 'MB_POND_WATER'],
-                                'too_fast': ['MB_FAST_WATER']},
+            'water_behaviors': {},
         },
         'dismount_rule': {
-            'land_elevation': dismount, 'water_elevation': 1,
-            'rule': 'Step onto land at elevation 3 without a blocking object or collision',
+            'land_elevation': dismount,
+            'rule': f'Step onto land at elevation {dismount} without a blocking object or collision',
         },
     }
 

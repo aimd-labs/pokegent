@@ -18,6 +18,42 @@ from pokegent.games.gen3.firered.rom.rom_data import ProfileSet, load_profiles
 from pokegent.games.gen3.firered.rom.setup_facts import Facts, message
 
 
+@pytest.mark.parametrize('badge_number,dismount', [(2, 7), (8, 12)])
+@pytest.mark.parametrize('section', ['badge', 'water_behaviors', 'dismount_rule'])
+def test_surf_diagnostics_follow_extracted_facts(badge_number, dismount, section):
+    from pokegent.games.gen3.firered.rom.setup_extract import surf
+
+    badge = f'FLAG_BADGE{badge_number:02}_GET'
+    files = {
+        'data/maps/map_groups.json': b'{"group_order":["Demo"],"Demo":["Room"]}',
+        'src/field_control_avatar.c': (
+            f'if (FlagGet({badge}) == TRUE && PartyHasMonWithSurf()'
+            ' == TRUE && IsPlayerFacingSurfableFishableWater() == TRUE)').encode(),
+        'src/field_player_avatar.c': (
+            'PlayerGetElevation() == 9\n && MetatileAtCoordsIsWaterTile'
+            f'\nMapGridGetElevationAt(x, y) == {dismount}\n'
+            ' && GetObjectEventIdByPosition(x, y, 0)').encode(),
+        'data/text/surf.inc': b'Text_WantToSurf::\n .string "Invented wave prompt$"\n',
+        'include/constants/flags.h': f'#define {badge} 42\n'.encode(),
+        'include/constants/moves.h': b'#define MOVE_SURF 17\n',
+        **{f'include/constants/{name}.h': b''
+           for name in ('opponents', 'menu', 'metatile_behaviors')},
+    }
+    result = surf(Facts(source.Source(files, 'invented')))
+    assert result['capability']['move']['move_id'] == 17
+    assert result['start_rule']['player_elevation'] == 9
+    if section == 'badge':
+        assert result['capability']['badge'] == {
+            'number': badge_number, 'name': f'Badge {badge_number}', 'flag': 42}
+    elif section == 'water_behaviors':
+        assert result['start_rule']['water_behaviors'] == {}
+    else:
+        assert result['dismount_rule'] == {
+            'land_elevation': dismount,
+            'rule': f'Step onto land at elevation {dismount} without a blocking object or collision',
+        }
+
+
 def test_cache_rejects_changed_named_index(tmp_path, monkeypatch):
     index = tmp_path / 'index.json'
     index.write_text('{"group_order":["Demo"],"groups":{"Demo":["Room"]}}')

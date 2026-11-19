@@ -128,7 +128,9 @@ blanket mixed-data guard. No sidecars are generated. This slice does not provide
 compatibility, Fly or special-action tables, or a complete emulator run. Issue #1 remains open;
 synthetic checks do not demonstrate real-game capability.
 
-The first six filenames retain the earlier runtime's document schemas. Extra provenance fields
+The first six filenames retain the earlier runtime's document schemas, except that the diagnostic
+Surf `water_elevation` may be omitted or null when unknown; legacy numeric values remain valid.
+Extra provenance fields
 such as `rom_profile`, `verified_by`, `schema`, `rom` and `provenance` are accepted. All required
 fields, ranges and enum values are in [local-data-schemas.json](local-data-schemas.json).
 Coordinates and map keys are two-element integer arrays; map IDs are bytes. Booleans must be
@@ -139,10 +141,17 @@ actual JSON/YAML booleans, not strings. Keys listed below are required unless ma
 | `pret_map_groups.json` | `group_order: [group_name, ...]`, `groups: {group_name: [map_label, ...]}`. Order and keys must agree; group and map labels are unique. Array positions are the ROM's group/number IDs. Used by map reads, named objectives, cache building and Fly validation. |
 | `cinnabar_quiz.yaml` | `questions: [{number, prompt, answer_yes, door_flag}, ...]`. Unique positive `number`, nonempty `prompt`, boolean `answer_yes`, integer or hexadecimal-string `door_flag`. Supplies quiz facts and dialog answer/door metadata. |
 | `elevators.yaml` | `elevators: {name: {scene, map, menu, panels, exit_mat, exit_push, floors, cancel, ...}}`. `scene` is `dialog.elevator` for `multichoice`, `menu.elevator` for `list`. `panels` is a list of coordinate pairs. `exit_push` is `up/down/left/right`. Each floor is `{code, label, map, place, arrival?}`. Optional `menu_id`; list menus require `total` equal to floor count and positive `shown <= total`. Optional `requires: lift_key`. Up to 12 floors. Supplies the existing elevator detectors, builders, macros and verifiers. |
-| `field_surf.yaml` | `capability: {move: {name, move_id}, badge: {number, name, flag}, prompt: {text}}`, `start_rule: {player_elevation, front_tile, result, water_behaviors}`, `dismount_rule: {land_elevation, water_elevation, rule}`. Retains the reference facts used by Surf diagnostics; normal Surf capability and movement continue to read RAM/ROM as before. |
+| `field_surf.yaml` | `capability: {move: {name, move_id}, badge: {number, name, flag}, prompt: {text}}`, `start_rule: {player_elevation, front_tile, result, water_behaviors}`, `dismount_rule: {land_elevation, water_elevation?, rule}`. Surf diagnostics only; normal Surf capability and movement continue to read RAM/ROM as before. |
 | `puzzles.yaml` | `mansion: {switch_flag, maps, secret_key, statues}`. `maps` maps floor names to map pairs; `secret_key: {map, tile, hidden_item_flag}`. Each statue is `{id, floor, map, statue, stand, facing, opens, closes}` with unique ID, matching floor/map, `facing: N/S/E/W`, and nonempty `opens`/`closes` lists of nonempty lists of tile pairs. Supplies mansion registration, switch facts and RAM verification. |
 | `prompt_rules.yaml` | `rules: [{kind, patterns, default_yes?, field_move?, irreversible?, wrong_answer_cost?, metadata?}, ...]`. `patterns` are nonempty literal text fragments, matched after case/accent/whitespace normalization. `kind` uses the `PromptKind` enum in the JSON schema. Rules supplement generic action recognition; destructive and unreadable-state protections still win. Quiz questions can also supply rules without this file. |
 | `fly_destinations.json` | `destinations: [{mapsec, name, map_key, landing, visited_flag, cell}, ...]`. This new file mirrors the old `FlyDestination` structure: `map_key`, `landing` and `cell` are pairs; IDs/flags are nonnegative integers. Map section, name and map key must each be unique; `name` must match the corresponding local map-index label (case/underscores ignored). Restores destination lookup and existing visited-flag/routing logic. |
+
+Generated Surf diagnostics use an ordinal `Badge <number>` label, authored `front_tile`/`result`
+descriptions and `rule` prose interpolating the extracted land elevation. `water_behaviors` is
+empty and unknown `water_elevation` is omitted: the pinned source proves neither a behavior-ID
+whitelist nor a fixed water elevation. Move ID, badge flag/number, player/land elevations and
+prompt text are extracted from source; the move display label is authored. These diagnostic
+fields do not control action admission.
 
 To convert the old six-column Fly rows `(mapsec, name, constant, landing, flag, cell)`, resolve
 `constant` against your verified map index, write its group/number as `map_key`, and rename `flag`
