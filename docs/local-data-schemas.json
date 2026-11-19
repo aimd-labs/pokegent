@@ -378,9 +378,17 @@
             "type": "integer"
           },
           "water_elevation": {
-            "minimum": 0,
-            "title": "Water Elevation",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Water Elevation"
           },
           "rule": {
             "minLength": 1,
@@ -390,7 +398,6 @@
         },
         "required": [
           "land_elevation",
-          "water_elevation",
           "rule"
         ],
         "title": "SurfDismount",

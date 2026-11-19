@@ -17,6 +17,11 @@ quiz answers, elevator destinations, mansion layouts and sprites are excluded. R
 struct layouts, constants, decoder mappings and curated identifiers describe interoperability facts;
 pret/pokefirered is credited as the technical reference. These facts do not include game datasets.
 
+The explicit private local-data setup command adapts the ordered-map and static tileset layout
+recipes from the earlier AIMD Labs worldgen/regiongen tooling, retaining AIMD Labs and Nous Research
+MIT attribution. It reads a user's verified pinned pret source at runtime, without executing it.
+No downloaded source, game text, output dataset or historical source tree is redistributed here.
+
 Python dependencies are installed separately through pyproject.toml and retain their own licenses.
 No third-party Python package, vendored skill or raster artwork is bundled in this source tree.
 

@@ -69,6 +69,39 @@ def test_valid_local_file_uses_original_schema(local_files, filename):
     assert read_data(filename) == expected[filename]
 
 
+@pytest.mark.parametrize('water', ['omitted', None, 0, 7])
+def test_surf_unknown_and_legacy_water_elevation(local_files, water):
+    directory, documents = local_files
+    document = copy.deepcopy(documents['field_surf.yaml'])
+    dismount = document['dismount_rule']
+    if water == 'omitted':
+        del dismount['water_elevation']
+    else:
+        dismount['water_elevation'] = water
+    (directory / 'field_surf.yaml').write_text(yaml.safe_dump(document))
+    assert read_data('field_surf.yaml') == document
+    from pokegent.local_data import Surf
+    assert Surf.model_validate(document).dismount_rule.water_elevation == (
+        None if water == 'omitted' else water)
+
+
+@pytest.mark.parametrize('water', [-1, '1', True, 1.5, {}, []])
+def test_surf_invalid_water_elevation_still_refused(local_files, water):
+    directory, documents = local_files
+    document = copy.deepcopy(documents['field_surf.yaml'])
+    document['dismount_rule']['water_elevation'] = water
+    (directory / 'field_surf.yaml').write_text(yaml.safe_dump(document))
+    with pytest.raises(LocalDataError, match='schema validation failed'):
+        read_data('field_surf.yaml')
+
+
+def test_documented_surf_schema_matches_model():
+    from pokegent.local_data import Surf
+    documented = json.loads((Path(__file__).resolve().parents[1]
+                             / 'docs/local-data-schemas.json').read_text())
+    assert documented['field_surf.yaml'] == Surf.model_json_schema()
+
+
 @pytest.mark.parametrize("filename", [
     "pret_map_groups.json", "cinnabar_quiz.yaml", "elevators.yaml", "puzzles.yaml",
     "field_surf.yaml", "prompt_rules.yaml", "fly_destinations.json",

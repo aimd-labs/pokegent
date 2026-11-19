@@ -851,6 +851,14 @@ def main(argv=None):
     rom_data_sub = rom_data_p.add_subparsers(dest="rom_data_action", required=True)
     rom_data_build = rom_data_sub.add_parser("build", help="Generate a hash-keyed ROM data cache")
     rom_data_build.add_argument("--rom", default=None, help="ROM path (default $FIRERED_ROM_PATH)")
+    rom_data_build.add_argument('--if-missing', action='store_true',
+                                help='reuse a valid cache; repair missing or invalid data')
+    local_setup = rom_data_sub.add_parser('setup', help='Generate all seven private local files')
+    local_setup.add_argument('--rom', type=Path, required=True)
+    local_setup.add_argument('--out-dir', type=Path, required=True,
+                             help='absolute external path; existing manual data is preserved')
+    local_setup.add_argument('--decomp', type=Path,
+                             help='offline clean pinned checkout or gzip tarball')
     map_index = rom_data_sub.add_parser("map-index", help="Generate a numeric structural index")
     map_index.add_argument("--numeric-labels", action="store_true", required=True,
                            help="explicitly accept numeric labels without named compatibility")
@@ -961,6 +969,25 @@ def main(argv=None):
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(2)
     elif args.command == "rom-data":
+        if args.rom_data_action == 'setup':
+            from pokegent.games.gen3.firered.rom.local_setup import setup
+            from pokegent.games.gen3.firered.rom.rom_data import ProfileError, UnsupportedRomError
+            from pokegent.games.gen3.firered.rom.setup_source import SetupError
+            from pokegent.local_data import LocalDataError
+
+            try:
+                setup(args.rom, args.out_dir, decomp=args.decomp)
+            except SetupError as exc:
+                print(f'error: {exc}', file=sys.stderr)
+                sys.exit(2)
+            except (OSError, ProfileError, UnsupportedRomError, LocalDataError,
+                    ValueError, TypeError, KeyError):
+                print('error: local setup failed; check supported ROM, pinned source, and '
+                      'external output. Existing files are preserved; see docs/local-data.md.',
+                      file=sys.stderr)
+                sys.exit(2)
+            print('Private local data and ROM cache are ready. Restart runtime processes.')
+            return
         if args.rom_data_action == "map-index":
             from pokegent.games.gen3.firered.rom.map_index import MapIndexError, build_map_index
             from pokegent.games.gen3.firered.rom.rom_data import ProfileError
@@ -973,10 +1000,11 @@ def main(argv=None):
                 sys.exit(2)
             print("Numeric map index written.")
             return
-        from pokegent.games.gen3.firered.rom.rom_cache import RomDataError, build
+        from pokegent.games.gen3.firered.rom.rom_cache import RomDataError, build, ensure
 
         try:
-            target = build(args.rom or os.environ.get("FIRERED_ROM_PATH"))
+            operation = ensure if args.if_missing else build
+            target = operation(args.rom or os.environ.get("FIRERED_ROM_PATH"))
         except (RomDataError, TypeError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(2)
