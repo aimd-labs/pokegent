@@ -177,6 +177,7 @@ class AppConfig:
     #: (``run.ignore_objective``, CLI ``--ignore-objective``; default off)
     ignore_objective: bool = False
     dex_fallback: bool = False
+    story_fallback: bool = False
     #: savestate checkpoints: every ``checkpoint_every`` iterations (0 = off) a state is written to
     #: ``<out>/checkpoints/`` and the newest ``checkpoint_keep`` stay; ``save_final_state`` writes
     #: ``<out>/final.state`` when the run ends, whatever the reason (the next run's ``--state``)
@@ -232,6 +233,8 @@ class AppConfig:
                 or not isinstance(self.objective_stuck_after, int)
                 or self.objective_stuck_after < 1):
             raise AppError("objective_stuck_after must be an integer >= 1")
+        if self.story_fallback and (self.dex_fallback or self.on_objective_done != "continue"):
+            raise AppError("story fallback requires continue and cannot combine with dex")
         if self.on_objective_done not in ON_OBJECTIVE_DONE:
             raise AppError(f"on_objective_done must be one of {ON_OBJECTIVE_DONE}")
         if not isinstance(self.ignore_objective, bool):
@@ -400,9 +403,10 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
     objectives = raw.get("objectives", {})
     if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
         raise AppError("objectives must be a mapping with optional fallback")
-    if objectives.get("fallback", "off") not in ("off", "dex"):
-        raise AppError("objectives.fallback must be off|dex")
+    if objectives.get("fallback", "off") not in ("off", "dex", "story"):
+        raise AppError("objectives.fallback must be off|dex|story")
     kw["dex_fallback"] = objectives.get("fallback", "off") == "dex"
+    kw["story_fallback"] = objectives.get("fallback", "off") == "story"
     if raw.get("autoplay") is not None:
         kw["autoplay"] = raw["autoplay"]
     external = raw.get("external") or {}
@@ -669,6 +673,7 @@ def build_runner(
         objective_plan,
         directory=objective_directory,
         dex_fallback=config.dex_fallback,
+        story_fallback=config.story_fallback,
         stuck_after=config.objective_stuck_after,
     )
     bind_planning = getattr(decider, "bind_planning", None)
@@ -831,12 +836,15 @@ def make_objective_session(
     *,
     directory: MapDirectory | None = None,
     dex_fallback: bool = False,
+    story_fallback: bool = False,
     stuck_after: int = 120,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
+    if dex_fallback and story_fallback:
+        raise AppError("story fallback cannot combine with dex")
     if objectives is None:
-        if dex_fallback:
-            raise AppError("dex fallback needs the objective file it writes through")
+        if dex_fallback or story_fallback:
+            raise AppError("fallback needs the objective file it writes through")
         if plan is not None:
             raise AppError("an objective plan needs the objective file it writes through")
         return None
@@ -867,6 +875,14 @@ def make_objective_session(
             fallback = DexFallback(load_wild_table())
         except (OSError, ValueError, RuntimeError, TypeError):
             raise AppError("dex fallback requires valid private ROM encounter data",
+                           EXIT_ENVIRONMENT) from None
+    if story_fallback:
+        from pokegent.goals.story import load_progression
+
+        try:
+            fallback = load_progression(directory=store.directory)
+        except ValueError:
+            raise AppError("story fallback requires valid private progression data",
                            EXIT_ENVIRONMENT) from None
     if session is None:
         return ObjectiveSession(store, script=script, fallback=fallback, stuck_after=stuck_after)
