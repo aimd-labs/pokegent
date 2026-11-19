@@ -30,3 +30,8 @@ The bounded `recent_choices` history and runner hooks adapt the MIT-licensed
 pokevon_agent `history.py` and `runner.py`, locally pinned at revision
 `7185ae105ca0317753f53e0f16eb1843028df119`. LICENSE retains the Nous Research notice.
 The port excludes the repetition ledger and recovery/route-assist code.
+
+The bounded stuck-progress bookkeeping and explicit stuck-review hooks adapt
+pokevon_agent `goals/tracker.py`, `goals/source.py` and `runner.py` at that same
+`7185ae105ca0317753f53e0f16eb1843028df119` source pin. Abort conditions, route assist
+and broader tactical/review event fields are excluded.

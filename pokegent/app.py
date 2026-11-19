@@ -63,6 +63,7 @@ from pokegent.history import DEFAULT_KEEP, MAX_KEEP
 from pokegent.loop import (
     ON_OBJECTIVE_DONE,
     EscalationAction,
+    EscalationKind,
     EscalationRequest,
     EscalationResponse,
     Runner,
@@ -169,6 +170,8 @@ class AppConfig:
     #: a finished objective at the next free-roaming decision: ``hold`` (default, stay alive and
     #: poll the file), ``pause`` (stop with ``WAITING_OBJECTIVE``, exit 3) or
     on_objective_done: str = "hold"
+    on_objective_review: str = "continue"
+    objective_stuck_after: int = 120
     decision_history: int = DEFAULT_KEEP
     #: headless/maintenance opt-out: a satisfied objective success probe does not stop the run
     #: (``run.ignore_objective``, CLI ``--ignore-objective``; default off)
@@ -223,6 +226,12 @@ class AppConfig:
                 or not isinstance(self.decision_history, int)
                 or not 0 <= self.decision_history <= MAX_KEEP):
             raise AppError(f"decision_history must be an integer from 0 to {MAX_KEEP}")
+        if self.on_objective_review not in ("continue", "pause", "stop"):
+            raise AppError("on_objective_review must be continue|pause|stop")
+        if (isinstance(self.objective_stuck_after, bool)
+                or not isinstance(self.objective_stuck_after, int)
+                or self.objective_stuck_after < 1):
+            raise AppError("objective_stuck_after must be an integer >= 1")
         if self.on_objective_done not in ON_OBJECTIVE_DONE:
             raise AppError(f"on_objective_done must be one of {ON_OBJECTIVE_DONE}")
         if not isinstance(self.ignore_objective, bool):
@@ -300,6 +309,8 @@ _SECTIONS = {
         "restart_file",
         "goal_id",
         "on_objective_done",
+        "on_objective_review",
+        "objective_stuck_after",
         "decision_history",
         "ignore_objective",
         "checkpoint_every",
@@ -368,8 +379,6 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
                 "instructions",
                 "route_assist",
                 "route_assist_repeat",
-                "on_objective_review",
-                "objective_stuck_after",
             }
         )
         if removed:
@@ -551,8 +560,10 @@ class RecordingSink:
         self,
         action: str = "pause",
         keep: int = 200,
+        review_action: str = "continue",
     ) -> None:
         self._action = EscalationAction(action)
+        self._review_action = EscalationAction(review_action)
         self._keep = keep
         self.requests: list[EscalationRequest] = []
         self.total = 0
@@ -561,7 +572,9 @@ class RecordingSink:
         self.total += 1
         if len(self.requests) < self._keep:
             self.requests.append(request)
-        return EscalationResponse(self._action, f"recording sink: {self._action.value}")
+        action = (self._review_action if request.kind is EscalationKind.OBJECTIVE_REVIEW
+                  else self._action)
+        return EscalationResponse(action, f"recording sink: {action.value}")
 
     def as_dicts(self) -> list[dict[str, Any]]:
         out = []
@@ -656,6 +669,7 @@ def build_runner(
         objective_plan,
         directory=objective_directory,
         dex_fallback=config.dex_fallback,
+        stuck_after=config.objective_stuck_after,
     )
     bind_planning = getattr(decider, "bind_planning", None)
     if callable(bind_planning) and session is not None:
@@ -791,7 +805,7 @@ def build_runner(
             macro_finished=getattr(decider, "macro_finished", None),
         )
     if sink is None:
-        sink = RecordingSink()
+        sink = RecordingSink(review_action=config.on_objective_review)
     runner = Runner(
         decider=decider or FirstLegalDecider(),
         executor=executor,
@@ -817,6 +831,7 @@ def make_objective_session(
     *,
     directory: MapDirectory | None = None,
     dex_fallback: bool = False,
+    stuck_after: int = 120,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
     if objectives is None:
@@ -854,7 +869,7 @@ def make_objective_session(
             raise AppError("dex fallback requires valid private ROM encounter data",
                            EXIT_ENVIRONMENT) from None
     if session is None:
-        return ObjectiveSession(store, script=script, fallback=fallback)
+        return ObjectiveSession(store, script=script, fallback=fallback, stuck_after=stuck_after)
     if fallback is not None:
         session.fallback = fallback
     if script is not None:
@@ -1159,7 +1174,7 @@ def summarize(
         "events": {"count": len(envelopes)},
     }
     if app.objectives is not None:
-        doc["review_pending"] = False
+        doc["review_pending"] = summary.review_pending
         doc["objective"] = summary.objective or app.objectives.snapshot()
         doc["objective_events"] = {
             name: sum(1 for e in envelopes if e.type == etype and e.source == "objective")

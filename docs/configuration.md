@@ -136,6 +136,16 @@ Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files o
 `POKEGENT_MAP_GROUPS` optionally overrides the map index. See [local-data.md](local-data.md) for schemas,
 missing-file behavior and the setup limitation until automatic local generation exists.
 
+`run.objective_stuck_after` accepts an integer >=1 (default120).
+`run.on_objective_review` configures the application's `RecordingSink`: `continue`
+(default), `pause` or `stop`. The library runner's default `PauseOnEscalation` uses `PAUSE`.
+Only objectives explicitly setting `next_review_on: ["stuck"]` request review.
+Other review events and `abort_if` remain rejected. Tracker `progress.stuck` telemetry
+may fire without opt-in; an opted-in objective requests review once per episode,
+and progress re-arms it.
+Existing hard loop/recovery and legality limits still stop execution independently.
+See [objective stuck review](objective-file.md#opt-in-stuck-review) for progress/reset rules.
+
 `run.decision_history` accepts an integer from 0 to 8 (default 3); 0 disables it.
 `--decision-history N` overrides that setting. Recent decider choices, executor
 outcomes and short context diffs appear in `state.recent_choices`. Scene-family,
