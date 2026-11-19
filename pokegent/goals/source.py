@@ -31,6 +31,7 @@ from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.dex_fallback import DexFallback, FallbackUnavailable
 from pokegent.goals.models import Objective, probe_leaves
 from pokegent.goals.store import ObjectiveStore, Proposal, StoreWarning
+from pokegent.goals.story import StoryComplete, StoryFallback
 from pokegent.goals.tracker import (
     MILESTONE_COMPLETED,
     ObjectiveTracker,
@@ -136,7 +137,7 @@ class ObjectiveSession:
         *,
         tracker: ObjectiveTracker | None = None,
         script: ScriptedObjectiveSource | None = None,
-        fallback: DexFallback | None = None,
+        fallback: DexFallback | StoryFallback | None = None,
         stuck_after: int = 120,
         sink: ProgressSink | None = None,
     ) -> None:
@@ -149,6 +150,7 @@ class ObjectiveSession:
         self.script = script
         self.fallback = fallback
         self.fallback_error: str | None = None
+        self._story_complete_revision: int | None = None
         self._review_pending: tuple[str, int] | None = None
         self._reviews_requested = 0
         self._held = _Held()
@@ -232,6 +234,7 @@ class ObjectiveSession:
             self._rejection = None
         self._view = self._make_view()
         if resolved is not None:
+            self._story_complete_revision = None
             self.fallback_error = None
         return Refreshed(warnings, tuple(events), changed=bool(events))
 
@@ -276,6 +279,7 @@ class ObjectiveSession:
         clear_completed: bool = False,
     ) -> tuple[ProgressEvent, ...]:
         """Evaluate the objective's success probes on a fresh snapshot."""
+        self._story_complete_revision = None
         try:
             events = self.tracker.update(snapshot)
         except Exception:  # a tracker bug must not stop the game; the file stays the truth
@@ -348,11 +352,31 @@ class ObjectiveSession:
             if not result.accepted:
                 self.fallback_error = "fallback proposal rejected; supply an explicit objective"
             return self.refresh().events
+        except StoryComplete:
+            self.fallback_error = None
+            self._story_complete_revision = revision
         except FallbackUnavailable as exc:
             self.fallback_error = str(exc)
         except Exception:
             self.fallback_error = "fallback facts unavailable; supply an explicit objective"
         return ()
+
+    def story_complete_if_current(self) -> bool:
+        """Recheck the observed empty-store revision after callbacks, before terminal pause."""
+        revision = self._story_complete_revision
+        if revision is None:
+            return False
+        refreshed = self.refresh()
+        if any(warning.code == "session_error" for warning in refreshed.warnings):
+            self._story_complete_revision = None
+            self.fallback_error = "story authority unavailable; supply an explicit objective"
+            return False
+        script = self.script
+        return (self._story_complete_revision == revision
+                and self.store.current() is None and self.store.revision() == revision
+                and not self._rejection and not self.store.expired()
+                and (script is None or (not script.stopped and
+                     len(script.status()["completed_ids"]) == len(script.plan))))
 
     @property
     def review_pending(self) -> bool:

@@ -509,3 +509,16 @@ active foreign objectives and expiry cannot authorize fallback takeover. Missing
 unresolved heal/restock prerequisites and no supported candidates diagnose and SAFE_PAUSE; missing
 private encounter data is a setup error. This restores no story dataset or tactical/review fields.
 See [the complete opt-in contract](objective-file.md#9-opt-in-successor-fallback).
+
+### Authored story fallback (bounded synthetic slice)
+
+`objectives.fallback: story` requires explicit `run.on_objective_done: continue`
+in the file and after overrides. Its separate fixed external artifact holds authored
+order/required policy and validated objective templates, with declared provenance;
+it changes none of the exact-seven setup schemas. Current-snapshot unknown proofs
+cannot complete a node. Session retains queue/manual/expiry/durable-history/CAS
+authority; the existing fallback seam selects a prerequisite before its downstream
+milestone. Required completion produces `story_complete` SAFE_PAUSE at the existing
+safe boundary, rechecking the empty revision and successor after callbacks. No
+terminal hold, silent Dex switch, new input or navigation policy is introduced.
+See [the schema and limits](objective-file.md#10-opt-in-authored-story-source-synthetic-engine-slice).

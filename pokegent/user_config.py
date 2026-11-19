@@ -137,8 +137,8 @@ def load_user_config(
     objectives = data.get("objectives", {})
     if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
         raise ValueError("objectives must be a mapping with optional fallback")
-    if objectives.get("fallback", "off") not in ("off", "dex"):
-        raise ValueError("objectives.fallback must be off|dex")
+    if objectives.get("fallback", "off") not in ("off", "dex", "story"):
+        raise ValueError("objectives.fallback must be off|dex|story")
     if (
         "instructions" in data
         or "run" in data
