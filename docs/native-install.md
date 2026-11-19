@@ -54,7 +54,8 @@ python -m pip check
 
 Keep the native export scoped to this shell; do not add extracted system library
 directories to a global profile. Preserve failed/partial prefixes and choose a new
-directory for another attempt. The helper refuses existing native prefixes.
+directory for another attempt. The helper refuses existing native prefixes,
+including normalized aliases, and requires the prefix's parent directory to exist.
 
 Before using a ROM, check imports in a fresh process (no emulator frames run):
 

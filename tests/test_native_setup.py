@@ -77,6 +77,37 @@ class NativeSetupTests(unittest.TestCase):
         self.assertFalse((self.root / "extracted").exists())
         self.assertEqual(result.stdout, "")
 
+    def test_normalized_existing_aliases_preserve_bytes_and_mtimes(self):
+        for component in ("missing", "file"):
+            with self.subTest(component=component):
+                prefix = self.root / component
+                (prefix / "debs").mkdir(parents=True)
+                sentinel = prefix / "sentinel"
+                sentinel.write_bytes(b"keep sentinel")
+                deb = prefix / "debs/libmgba0.10t64_0.10.2+dfsg-1.1build3_amd64.deb"
+                deb.write_bytes(b"keep existing archive")
+                if component == "file":
+                    (prefix / component).write_bytes(b"regular file, not directory")
+                for path in (sentinel, deb, prefix):
+                    os.utime(path, ns=(1_600_000_000_000_000_000,) * 2)
+                calls = self.root / f"calls-{component}"
+                self.stub("curl", f'''
+while [[ $1 != --output ]]; do shift; done
+printf overwritten > "$2"
+echo download >> '{calls}'
+exit 88
+''')
+                before = [(path.read_bytes(), path.stat().st_mtime_ns)
+                          for path in (sentinel, deb)]
+                directory_mtime = prefix.stat().st_mtime_ns
+                result = self.run_setup(prefix / component / "..")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(
+                    ([(path.read_bytes(), path.stat().st_mtime_ns)
+                      for path in (sentinel, deb)], prefix.stat().st_mtime_ns, calls.exists()),
+                    (before, directory_mtime, False),
+                )
+
     def test_success_exports_only_four_libraries(self):
         self.stub("curl", f"echo \"${{@: -1}}\" >> '{self.root}/calls'")
         self.stub("sha256sum", "cat >/dev/null")

@@ -46,7 +46,9 @@ if [[ $runtime_root == "$checkout_root" || $runtime_root == "$checkout_root/"* ]
     exit 2
 fi
 umask 077
-mkdir -p "$runtime_root/debs" "$runtime_root/root" "$runtime_root/lib"
+# Claim the normalized leaf before creating any contents in it.
+mkdir -- "$runtime_root"
+mkdir -- "$runtime_root/debs" "$runtime_root/root" "$runtime_root/lib"
 debs_dir="$runtime_root/debs"
 extract_root="$runtime_root/root"
 lib_dir="$runtime_root/lib"
