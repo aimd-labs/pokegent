@@ -197,3 +197,18 @@ def test_guide_offline_probe_command(guide_config, monkeypatch, capsys):
         cli()
     assert exc.value.code == 0
     assert "wrong key is refused" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("allow_remote", [False, True])
+def test_hosted_model_run_requires_explicit_remote_opt_in(allow_remote):
+    from pokegent.app import AppError, check_system1_endpoint
+
+    url = "https://provider.example/v1"
+    if allow_remote:
+        assert check_system1_endpoint(url, allow_remote=True) == [
+            "remote System One endpoint 'provider.example': real model calls are made",
+        ]
+    else:
+        with pytest.raises(AppError, match="pass --allow-remote"):
+            check_system1_endpoint(url, allow_remote=False)
+    assert check_system1_endpoint("http://127.0.0.1:19760", allow_remote=False) == []

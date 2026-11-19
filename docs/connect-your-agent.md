@@ -105,9 +105,34 @@ pokegent provider check --config /absolute/private/agent-model.yaml --no-stub
 
 Without `--live`, this validates configuration and runs in-process mock decisions,
 including invalid-choice refusal, with five-second decision budgets and no network.
-It does not test the configured model. After separate authorization to call your
-endpoint, the existing `provider check --config ... --live --no-stub` probe can check
-one logical decision (transient attempts may retry); health and decision have separate
-bounds. Then use `pokegent run --config /absolute/private/agent-model.yaml` with your
-private ROM/state/output arguments. No real provider or emulator acceptance is claimed
-by the offline checks.
+It does not test the configured model. To deliberately make a real model call, use:
+
+```sh
+pokegent provider check --config /absolute/private/agent-model.yaml --live --no-stub
+```
+
+The probe checks one logical decision (transient attempts may retry); health and
+decision have separate bounds. `--live` opts into those calls. The probe does not
+require the run command's `--allow-remote` flag.
+
+For the loopback model endpoint above, start a run with your private inputs:
+
+```sh
+pokegent run --config /absolute/private/agent-model.yaml \
+  --rom "$FIRERED_ROM_PATH" --state /absolute/private/start.state \
+  --max-steps 5 --out /absolute/private/model-demo
+```
+
+For a hosted compatible model, set `system1.base_url` to its HTTPS endpoint (for
+example, `https://provider.example/v1`) and its supported `request_model`.
+Non-loopback model endpoints are refused by `run` unless you explicitly opt in:
+
+```sh
+pokegent run --config /absolute/private/agent-model.yaml --allow-remote \
+  --rom "$FIRERED_ROM_PATH" --state /absolute/private/start.state \
+  --max-steps 5 --out /absolute/private/remote-model-demo
+```
+
+`--allow-remote` permits calls to the configured remote model; the agent bridge
+still binds to loopback. No real provider or emulator acceptance is claimed by
+the offline checks.
