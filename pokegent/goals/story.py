@@ -63,6 +63,8 @@ def load_progression(*, path: Path | None = None, directory=None) -> StoryFallba
         path = path.resolve()
         if path.is_relative_to(local_data._CHECKOUT):
             raise ValueError("checkout data")
+        if not path.is_file():
+            raise ValueError("not a regular file")
         with path.open("rb") as handle:
             raw = handle.read(65537)
         if len(raw) > 65536:

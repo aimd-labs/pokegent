@@ -276,3 +276,32 @@ def test_invalid_nested_objective_preserves_existing_contract(tmp_path, bad):
     data["nodes"][0]["objective"] = obj
     with pytest.raises(FallbackUnavailable, match="^invalid progression artifact$"):
         load(tmp_path, data)
+
+
+def test_fifo_rejected_promptly_without_path_leak(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    path = tmp_path / "private-marker.json"
+    os.mkfifo(path)
+    script = '''
+import sys
+from pathlib import Path
+from pokegent.goals.dex_fallback import FallbackUnavailable
+from pokegent.goals.story import load_progression
+try:
+    load_progression(path=Path(sys.argv[1]))
+except FallbackUnavailable as error:
+    assert str(error) == "invalid progression artifact"
+    print(str(error))
+else:
+    raise AssertionError("FIFO accepted")
+'''
+    result = subprocess.run([sys.executable, "-c", script, str(path)],
+                            cwd=Path(__file__).resolve().parents[1], capture_output=True,
+                            text=True, timeout=3)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "invalid progression artifact"
+    assert result.stderr == ""
