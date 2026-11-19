@@ -36,6 +36,7 @@ from pokegent.goals.tracker import (
     ObjectiveTracker,
     ProgressEvent,
     ProgressSink,
+    ReviewRequest,
 )
 from pokegent.goals.validate import Reason, ResolvedObjective, validate
 
@@ -142,12 +143,14 @@ class ObjectiveSession:
         self.store = store
         # The tracker is driven through ``set_objective`` (not handed the store): the goal changes
         # at ``refresh()``, before the next perception, and not at some later ``update``.
-        self.tracker = tracker if tracker is not None else ObjectiveTracker()
+        self.tracker = tracker if tracker is not None else ObjectiveTracker(stuck_after=stuck_after)
         if sink is not None:
             self.tracker.sink = sink
         self.script = script
         self.fallback = fallback
         self.fallback_error: str | None = None
+        self._review_pending: tuple[str, int] | None = None
+        self._reviews_requested = 0
         self._held = _Held()
         self._view: GoalView | None = None
         self._warned_seen = store.warning_count
@@ -235,11 +238,14 @@ class ObjectiveSession:
     def _switch(self, resolved: ResolvedObjective | None) -> list[ProgressEvent]:
         held = self._held
         new_rev = resolved.objective.revision if resolved else 0
-        same = (held.resolved is None) == (resolved is None) and held.revision == new_rev
+        same = ((held.resolved is None) == (resolved is None) and held.revision == new_rev
+                and (resolved is None or held.resolved.objective.objective_id
+                     == resolved.objective.objective_id))
         if same:
             return []
         events = self.tracker.set_objective(resolved)
         self._held = _Held(resolved, new_rev)
+        self._review_pending = None
         self._hold_waiting_reason = None
         if new_rev:
             self.revisions_seen.append(new_rev)
@@ -345,6 +351,21 @@ class ObjectiveSession:
             self.fallback_error = "fallback facts unavailable; supply an explicit objective"
         return ()
 
+    @property
+    def review_pending(self) -> bool:
+        obj = self.objective
+        return obj is not None and self._review_pending == (obj.objective_id, obj.revision)
+
+    def take_reviews(self) -> list[ReviewRequest]:
+        requests = list(self.tracker.reviews)
+        self.tracker.reviews.clear()
+        self._reviews_requested = min((1 << 31) - 1, self._reviews_requested + len(requests))
+        obj = self.objective
+        if obj is not None and any((r.objective_id, r.revision) == (obj.objective_id, obj.revision)
+                                   for r in requests):
+            self._review_pending = (obj.objective_id, obj.revision)
+        return requests
+
     def superseded(self) -> bool:
         """A newer valid revision is in the file than the one this iteration runs under (the
         script just advanced, or agent wrote one): the runner re-perceives instead of acting."""
@@ -377,6 +398,8 @@ class ObjectiveSession:
                     ),
                 }
             ),
+            "review_pending": self.review_pending,
+            "reviews_requested": self._reviews_requested,
             "completed": self.tracker.completed,
             "done": self.done,
             "revisions_seen": list(self.revisions_seen),

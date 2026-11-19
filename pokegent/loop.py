@@ -130,6 +130,7 @@ class EscalationKind(str, Enum):
     ESCALATE_SCENE = "escalate_scene"  # catalog row whose only answer is escalation
     NO_BUILDER = "no_builder"
     NO_LEGAL_OPTION = "no_legal_option"
+    OBJECTIVE_REVIEW = "objective_review"
     NO_PROGRESS = "no_progress"
     BUSY_STUCK = "busy_stuck"
     DECIDER_FAILED = "decider_failed"
@@ -378,6 +379,7 @@ class ProgressCounters:
     #: one-frame settles the perceiver spent on transient invalid reads (observation, no input)
     transient_invalid_settled: int = 0
     #: objective bookkeeping: store warnings and iterations spent holding for a new objective
+    objective_reviews: int = 0
     objective_warnings: int = 0
     objective_idle: int = 0
     observation_errors: int = 0
@@ -630,6 +632,7 @@ class Runner:
             self.counters.as_dict(),
             self.coverage.to_dict(),
             self._previous.scene_id if self._previous else None,
+            review_pending=session.review_pending if session is not None else False,
             objective=session.snapshot() if session is not None else None,
             game_cleared=self.game_cleared,
             stop_reason=reason,
@@ -2199,6 +2202,12 @@ class Runner:
         *,
         terminal: bool = False,
     ) -> RunStatus | None:
+        if self.objectives is not None and kind in (EscalationKind.NO_PROGRESS,
+                                                    EscalationKind.BUSY_STUCK):
+            self.objectives.tracker.note_stuck({"source": kind.value, "scene": scene_id})
+            review_status = self._dispatch_reviews()
+            if review_status is not None:
+                return review_status
         self.counters.escalations += 1
         self.coverage.escalated(scene_id or "scene.unknown")
         self._emit(
@@ -2356,6 +2365,28 @@ class Runner:
                 self._pending_objective_key = objective_key
             return rebuilt
 
+    def _dispatch_reviews(self) -> RunStatus | None:
+        session = self.objectives
+        assert session is not None
+        status = None
+        for review in session.take_reviews():
+            self.counters.objective_reviews = min(
+                (1 << 31) - 1, self.counters.objective_reviews + 1)
+            details = {"objective_id": review.objective_id, "revision": review.revision,
+                       "trigger": "stuck", "review_pending": session.review_pending,
+                       "trigger_details": dict(review.details)}
+            self._emit(EventType.ESCALATION_REQUESTED, outcome="objective_review",
+                       details={"kind": "objective_review", "error_code": None, **details})
+            request = EscalationRequest(EscalationKind.OBJECTIVE_REVIEW, self._entered,
+                                        self.counters.iterations, None, details)
+            response = self._ask_sink(request)
+            current = session.store.current()
+            # A retired request cannot pause/stop a concurrent successor.
+            if current is not None and (current.objective_id, current.revision) == (
+                    review.objective_id, review.revision):
+                status = status or self._apply_response(EscalationKind.OBJECTIVE_REVIEW, response)
+        return status
+
     def _objective_observe(self, perception: Perception) -> RunStatus | None:
         session = self.objectives
         assert session is not None
@@ -2367,6 +2398,9 @@ class Runner:
                 safe_boundary=self._objective_safe_boundary(perception),
                 clear_completed=self.config.on_objective_done == "continue",
             )  # completion is recorded only at the safe boundary
+        review_status = self._dispatch_reviews()
+        if review_status is not None:
+            return review_status
         if session.fallback_error is not None and self._objective_safe_boundary(perception):
             self._emit(EventType.RUNTIME_PAUSED, source="objective", outcome="fallback_unavailable",
                        details={"reason": session.fallback_error})

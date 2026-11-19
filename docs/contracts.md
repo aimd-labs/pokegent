@@ -286,7 +286,7 @@ on. agent also needs a way to be told at the events it named, without the game e
 3. **`ObjectiveSession`** (store + tracker + optional script behind ONE consistent view per iteration). The runner
    calls `refresh()` at the start of an iteration (`os.stat` unless the file changed; never raises; a corrupt, too
    large, schema-invalid or stale file keeps the last valid objective), then `observe(snapshot)` after the perception
-   (probes, `abort_if`, stuck). The goal a frame was built under is the goal when the executor re-validates it, even if
+   (fresh success probes and bounded stuck detection). The goal a frame was built under is the goal when the executor re-validates it, even if
    agent writes a new file in between; a newer revision is applied by the next perception (`superseded()` makes the
    runner re-perceive instead of acting under the old one). `FamilyConfig.objectives` / `.graph` pass the session's
    objective source and a route graph to a family's `register(objectives=, graph=)` (`register_optional` supplies them by
@@ -301,9 +301,13 @@ on. agent also needs a way to be told at the events it named, without the game e
      `revision`, `reasons`, `kept` = the objective that stays active): `unreadable_file`, `file_too_large`,
      `schema_invalid`, `unknown_map`, `stale_revision`, `file_missing`, `expired`, `session_error`.
    * `escalation.requested` with `details.kind == "objective_review"` (`EscalationKind.OBJECTIVE_REVIEW`, no
-     `error_code`): `objective_id`, `revision`, `trigger` (a `next_review_on` event, or `abort:<condition>`), `abort`,
-     `review_pending`, `trigger_details`, `recent_events` (the last `review_events` = 8 events as short factual lines),
-     `situation` (scene, map, badges, party HP). The same request goes to the `EscalationSink`.
+     `error_code`): `objective_id`, `revision`, `trigger: stuck`,
+     `review_pending`, `trigger_details`. Requires explicit `next_review_on: ["stuck"]`;
+     the default is empty. The same request goes to the `EscalationSink`, whose configured
+     review response is continue/pause/stop. It cannot authorize completion, replacement
+     or a fallback, and a stale request cannot stop a concurrent successor. Queue capacity64
+     and counters capped at2^31-1 bound review bookkeeping. Existing hard safety/recovery
+     limits stay authoritative even when the review response is continue.
    * `runtime.paused` with `outcome` `waiting_objective` (pause policy) or `holding` (hold policy, followed by
      `runtime.resumed` when a newer revision arrives).
 5. **Review triggers.** A review is requested when an event in the active objective's `next_review_on` happens, or an

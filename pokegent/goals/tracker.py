@@ -12,8 +12,9 @@ Every probe is evaluated against the current usable frame; an unreadable frame i
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
@@ -23,6 +24,9 @@ from pokegent.goals.validate import ResolvedObjective, ResolvedProbe
 
 GOAL_CHANGED = "progress.goal_changed"
 MILESTONE_COMPLETED = "progress.milestone_completed"
+STUCK = "progress.stuck"
+CELL = 4
+MAX_CELLS = 4096
 
 
 class ProgressSink(Protocol):
@@ -32,6 +36,13 @@ class ProgressSink(Protocol):
 @dataclass(frozen=True)
 class ProgressEvent:
     type: str
+    details: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ReviewRequest:
+    objective_id: str
+    revision: int
     details: Mapping[str, Any]
 
 
@@ -139,9 +150,21 @@ class ObjectiveTracker:
     store: ObjectiveStore | None = None
     sink: ProgressSink | None = None
     tables: Any = None
+    stuck_after: int = 120
+    reviews: deque[ReviewRequest] = field(default_factory=lambda: deque(maxlen=64))
+    _idle: int = 0
+    _stuck_reported: bool = False
+    _cells: set[tuple[int, int, int, int]] = field(default_factory=set)
+    _flags_seen: int = -1
+    _satisfied_count: int = 0
     _revision: int = 0
     _resolved: ResolvedObjective | None = None
     _completed: bool = False
+
+    def __post_init__(self) -> None:
+        if (isinstance(self.stuck_after, bool) or not isinstance(self.stuck_after, int)
+                or self.stuck_after < 1):
+            raise ValueError("objective_stuck_after must be an integer >= 1")
 
     # -- the objective ----------------------------------------------------------------------------
 
@@ -165,11 +188,15 @@ class ObjectiveTracker:
     def _switch(self, resolved: ResolvedObjective | None) -> list[ProgressEvent]:
         old = self._resolved
         new_rev = resolved.objective.revision if resolved else 0
-        if new_rev == self._revision and (old is None) == (resolved is None):
+        if (new_rev == self._revision and (old is None) == (resolved is None)
+                and (old is None or old.objective.objective_id == resolved.objective.objective_id)):
             return []
         self._resolved = resolved
         self._revision = new_rev
         self._completed = False
+        self._idle, self._flags_seen, self._satisfied_count = 0, -1, 0
+        self._stuck_reported = False
+        self._cells.clear()
         details = {
             "from_objective": old.objective.objective_id if old else None,
             "from_revision": old.objective.revision if old else None,
@@ -212,7 +239,45 @@ class ObjectiveTracker:
                     self._details(resolved, satisfied, len(probes), partial=False),
                 )
             )
+        if not self._completed and resolved.objective.kind != "hold":
+            progress = self._note_progress(snapshot) or satisfied > self._satisfied_count
+            self._satisfied_count = max(self._satisfied_count, satisfied)
+            if progress:
+                self._idle, self._stuck_reported = 0, False
+            else:
+                self._idle += 1
+                if self._idle >= self.stuck_after and not self._stuck_reported:
+                    details = {"objective_id": resolved.objective.objective_id,
+                               "revision": resolved.objective.revision, "idle_updates": self._idle}
+                    events.append(self._event(STUCK, details))
+                    self.note_stuck({"idle_updates": self._idle})
+        else:
+            self._idle = 0
         return tuple(events)
+
+    def _note_progress(self, snapshot: StateSnapshot) -> bool:
+        progress = False
+        player = snapshot.player
+        if player is not None:
+            cell = (player.map_group, player.map_num, player.x // CELL, player.y // CELL)
+            if cell not in self._cells:
+                if len(self._cells) >= MAX_CELLS:
+                    self._cells.clear()
+                self._cells.add(cell)
+                progress = True
+        flags = len(snapshot.flags.set_ids) if snapshot.flags else 0
+        if flags != self._flags_seen:
+            progress = progress or self._flags_seen >= 0
+            self._flags_seen = flags
+        return progress
+
+    def note_stuck(self, details: Mapping[str, Any]) -> None:
+        obj = self.objective
+        if obj is None or obj.kind == "hold" or self._completed or self._stuck_reported:
+            return
+        self._stuck_reported = True
+        if "stuck" in obj.next_review_on:
+            self.reviews.append(ReviewRequest(obj.objective_id, obj.revision, dict(details)))
 
     @staticmethod
     def _details(
