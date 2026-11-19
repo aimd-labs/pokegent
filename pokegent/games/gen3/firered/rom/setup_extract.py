@@ -278,7 +278,8 @@ def surf(facts: Facts) -> dict:
         },
         'dismount_rule': {
             'land_elevation': dismount,
-            'rule': f'Step onto land at elevation {dismount} without a blocking object or collision',
+            'rule': (f'Step onto land at elevation {dismount}'
+                     ' without a blocking object or collision'),
         },
     }
 

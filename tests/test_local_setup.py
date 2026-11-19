@@ -50,7 +50,8 @@ def test_surf_diagnostics_follow_extracted_facts(badge_number, dismount, section
     else:
         assert result['dismount_rule'] == {
             'land_elevation': dismount,
-            'rule': f'Step onto land at elevation {dismount} without a blocking object or collision',
+            'rule': (f'Step onto land at elevation {dismount}'
+                     ' without a blocking object or collision'),
         }
 
 
