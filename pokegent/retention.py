@@ -10,6 +10,18 @@ run directories under a parent while ALWAYS preserving:
 * every sibling path still referenced by the recovery / current-state wiring (a
   ``current.state``-style pointer, a checkpoint, a save path the runtime may resume).
 
+The module is **fail-closed by design** (hardened from independent safety review):
+
+* it never follows a symlink — a symlinked run directory is never listed as a candidate
+  (it might point outside the ``runs`` tree, and deleting "through" it could remove
+  external ``final.state``/``summary``/``events`` files);
+* ``_rmtree_shallow`` refuses to delete a directory that contains any subdirectory or
+  symlink (e.g. a nested checkpoint block); it raises *before* unlinking anything, so a
+  partially-pruned run can never happen;
+* the CLI always feeds the live ``--state`` save and every ``current.state`` pointer
+  target as ``references``, so ``--retain-runs N`` can never delete a state the runtime
+  might resume from.
+
 Deletion is opt-in (default keeps everything), never touches a directory without a
 ``summary.json`` completion marker, never deletes inside an active directory, and is pure
 (no I/O beyond listing/paths) so it is trivially unit-testable.
@@ -18,6 +30,7 @@ Deletion is opt-in (default keeps everything), never touches a directory without
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: The completion marker that proves a run directory finished (and is safe to consider
@@ -29,15 +42,36 @@ DEFAULT_KEEP = 5
 
 
 class RunRetentionError(ValueError):
-    """Raised for an invalid retention configuration."""
+    """Raised for an invalid retention configuration or an unsafe prune refused fail-closed."""
+
+
+@dataclass
+class PruneResult:
+    """Outcome of a prune pass, with explicit diagnostics instead of a silent empty list.
+
+    ``deleted`` are the run dirs that were actually removed.  ``failures`` pairs each
+    run dir that was a prune candidate but could not be removed *safely* with a reason
+    (nested content, symlink, unexpected I/O) — the caller can surface these rather than
+    mistaking a non-delete for a success.
+    """
+
+    deleted: list[Path] = field(default_factory=list)
+    failures: list[tuple[Path, str]] = field(default_factory=list)
 
 
 def completed_run_dirs(parent: Path) -> list[Path]:
-    """Completed run directories (those carrying a ``summary.json`` completion marker)."""
+    """Completed run directories (with a ``summary.json`` marker), **excluding symlinks**.
+
+    A child that is a symlink (even one resolving to a directory carrying a marker) is
+    deliberately skipped: a symlinked run dir may point outside the ``runs`` tree and
+    pruning it could delete external ``final.state``/``summary``/``events`` files.
+    """
     if not parent.is_dir():
         return []
     out: list[Path] = []
     for child in parent.iterdir():
+        if child.is_symlink():
+            continue  # never prune through a symlink (fail-closed)
         if not child.is_dir():
             continue
         if (child / COMPLETION_MARKER).is_file():
@@ -46,14 +80,26 @@ def completed_run_dirs(parent: Path) -> list[Path]:
     return out
 
 
-def _is_referenced(path: Path, references: str | Path | None) -> bool:
+def _is_referenced(path: Path, references: object) -> bool:
+    """True if ``path`` is, or is a parent of, any reference (live save / current pointer)."""
+    for ref in _iter_references(references):
+        try:
+            return path.resolve() in ref.resolve().parents or path.resolve() == ref.resolve()
+        except OSError:
+            if str(path) in str(ref):
+                return True
+    return False
+
+
+def _iter_references(references: object):
+    """Normalize a single path, a str, or a sequence of them into resolved Path refs."""
     if references is None:
-        return False
-    ref = Path(str(references))
-    try:
-        return path.resolve() in {ref.resolve(), *ref.resolve().parents}
-    except OSError:
-        return str(path) in str(ref)
+        return
+    items = references if isinstance(references, (list, tuple, set)) else [references]
+    for item in items:
+        if item is None:
+            continue
+        yield Path(str(item))
 
 
 def prune_completed_runs(
@@ -61,22 +107,27 @@ def prune_completed_runs(
     *,
     keep: int = DEFAULT_KEEP,
     active: Path | None = None,
-    references: str | Path | None = None,
-) -> list[Path]:
-    """Prune older COMPLETED run directories under ``parent``.
+    references: object = None,
+) -> PruneResult:
+    """Prune older COMPLETED run directories under ``parent`` (fail-closed).
 
     ``keep`` (default 5) is how many most-recent completed run dirs to retain.  The
-    ``active`` directory and anything referenced by ``references`` (a current/recovery
-    state pointer) are always preserved, even without a completion marker.  Returns the
-    deleted paths.  Raises :class:`RunRetentionError` when ``keep`` is invalid.
+    ``active`` directory and anything referenced by ``references`` (a live ``--state``
+    save and/or a ``current.state``-style pointer) are always preserved, with or without
+    a completion marker.
+
+    Returns a :class:`PruneResult` listing what was deleted and (importantly) what could
+    **not** be deleted — e.g. a run dir containing a nested checkpoint block or a
+    symlink — so the caller gets diagnostics instead of a silent partial prune.  Raises
+    :class:`RunRetentionError` when ``keep`` is invalid.
     """
     if keep < 0:
         raise RunRetentionError("keep must be >= 0")
+    result = PruneResult()
     if parent is None:
-        return []
+        return result
     completed = completed_run_dirs(parent)
     doomed = completed[keep:]  # everything beyond the newest ``keep``
-    deleted: list[Path] = []
     for path in doomed:
         if active is not None and path.resolve() == Path(active).resolve():
             continue
@@ -84,17 +135,28 @@ def prune_completed_runs(
             continue
         try:
             _rmtree_shallow(path)
-        except OSError:
+        except (RunRetentionError, OSError) as exc:
+            result.failures.append((path, str(exc)))
             continue
-        deleted.append(path)
-    return deleted
+        result.deleted.append(path)
+    return result
 
 
 def _rmtree_shallow(path: Path) -> None:
-    """Remove a run directory's own files (never descend into nested dirs that may be live)."""
-    for child in list(path.iterdir()):
-        if child.is_file():
-            child.unlink(missing_ok=True)
+    """Remove a run dir's own files, **fail-closed on untrusted content**.
+
+    Never descends into (or unlinks through) nested directories, which may hold live
+    checkpoint blocks.  If any child is a directory or symlink the whole deletion is
+    refused BEFORE anything is unlinked, so a partially-pruned run can never occur.
+    """
+    children = list(path.iterdir())
+    for child in children:
+        if child.is_dir() or child.is_symlink():
+            raise RunRetentionError(
+                f"{path.name}: refuses delete (nested dir or symlink present: {child.name})"
+            )
+    for child in children:
+        child.unlink(missing_ok=True)  # plain files only, guaranteed above
     path.rmdir()
 
 

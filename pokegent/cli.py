@@ -572,12 +572,38 @@ def cmd_run(args):
         from pokegent.retention import prune_completed_runs
 
         out_path = Path(out)
+        refs: list[object] = [out_path]
+        if state is not None:
+            refs.append(state)
+        # A live/recovery `current.state` pointer is a TEXT file holding the path the
+        # runtime may resume from; protect its target too (fail-closed on --retain-runs N).
+        live_home_dir = (
+            args.live_home
+            if getattr(args, "live_home", None)
+            else os.environ.get("LIVE_HOME")
+        )
+        if live_home_dir:
+            cur = (Path(live_home_dir).expanduser() / "current.state")
+            if cur.is_file():
+                try:
+                    target = cur.read_text(encoding="utf-8").strip()
+                    if target:
+                        refs.append(target)
+                except OSError:
+                    pass
         try:
-            prune_completed_runs(
+            result = prune_completed_runs(
                 out_path.resolve().parent,
                 keep=args.retain_runs,
                 active=out_path,
+                references=refs,
             )
+            if result.failures:
+                print(
+                    "retention: skipped for safety:"
+                    + ", ".join(f"{p.name} ({why})" for p, why in result.failures),
+                    file=sys.stderr,
+                )
         except Exception as exc:  # best effort
             print(f"retention: {exc}", file=sys.stderr)
     sys.exit(report.exit_code)
