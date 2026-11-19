@@ -1,6 +1,6 @@
 # Pokegent
 
-**Status: alpha. Full emulator runs need externally supplied local game data; automatic generation from your own ROM is planned.**
+**Status: alpha. Full emulator runs need local data generated from your own supported ROM and a native mGBA installation.**
 
 Pokegent is an LLM agent that plays Pokémon FireRed through mGBA. It reads current RAM,
 presents typed legal actions, executes one action at a time, and checks the result against RAM.
@@ -28,11 +28,15 @@ python -m pytest -q
 python tools/check_rom_data.py
 ```
 
-These checks need no ROM or emulator. Full emulator runs and ROM cache building are not ready
-from this checkout alone: a verified local map index is required, and its automatic generator
-is planned. Set `POKEGENT_LOCAL_DATA_DIR` to a verified local data directory to enable
-Fly routing and elevator, quiz and mansion actions. Those features stay disabled if their files
-are absent. See [local data requirements](docs/local-data.md) for exact filenames and schemas.
+These checks need no ROM or emulator. Generate the local data and private ROM cache with
+[`pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR"`](docs/local-data.md#explicit-local-setup-generator-candidate).
+Follow the [native prerequisites](docs/native-install.md) before emulator use. Complete clean-start
+emulator/agent acceptance (B5) remains under validation; setup success alone does not prove it.
+Set `POKEGENT_LOCAL_DATA_DIR` before startup. Optional features stay disabled if their files are
+absent; see [local data requirements](docs/local-data.md) for filenames and schemas.
+The native setup helper's six supported-platform tests skip on Ubuntu 26.04, currently used by
+`ubuntu-latest`; they are not claimed as executed in GitHub CI. B5 still needs portable synthetic
+coverage and supported-platform acceptance.
 
 For later emulator setup, install `.[mgba,dashboard]` and configure `FIRERED_ROM_PATH` with an
 absolute path outside the checkout. `POKEGENT_LOCAL_DATA_DIR` supplies the local game-data files;
@@ -40,7 +44,8 @@ absolute path outside the checkout. `POKEGENT_LOCAL_DATA_DIR` supplies the local
 Keep generated data outside the repository. Unknown ROM revisions fail closed.
 
 The local dashboard listens on `http://127.0.0.1:19701`.
-See [configuration](docs/configuration.md), the [objective format](docs/objective-file.md),
+See [connect your own agent or model](docs/connect-your-agent.md),
+[configuration](docs/configuration.md), the [objective format](docs/objective-file.md),
 and [contracts](docs/contracts.md). Copy `pokegent.example.yaml` to ignored `pokegent.yaml`
 for local configuration. Keep credentials in environment variables.
 

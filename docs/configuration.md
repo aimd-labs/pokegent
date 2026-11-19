@@ -134,7 +134,9 @@ graceful-stop deadline, and 130 forced interrupt.
 
 Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files outside the checkout.
 `POKEGENT_MAP_GROUPS` optionally overrides the map index. See [local-data.md](local-data.md) for schemas,
-missing-file behavior and the setup limitation until automatic local generation exists.
+missing-file behavior and the explicit `rom-data setup` command. See
+[connect your own agent or model](connect-your-agent.md) for an exact-frame bridge example
+and compatible chat configuration.
 
 `run.objective_stuck_after` accepts an integer >=1 (default120).
 `run.on_objective_review` configures the application's `RecordingSink`: `continue`

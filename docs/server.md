@@ -10,24 +10,15 @@ Start a run (use a fresh output directory):
 source /path/to/your/venv/bin/activate
 pokegent run --state path/to/start.state --rom "$FIRERED_ROM_PATH" \
   --decider agent \
---max-steps 5 --out runs/agent-demo
+  --max-steps 5 --out runs/agent-demo
 ```
 
-In another shell, inspect the current decision:
-
-```bash
-pokegent step --port 19760
-```
-
-The response contains a `frame_id`, the scene, objective and public state
-facts, instructions/question, and each option's readable criterion. Pick one
-by its option id; POST `/choose` returns `202 Accepted` after handing the
-choice to the runner. The next frame's `feedback` reports the
-applied/failed/interrupted outcome and verification reason:
-
-```bash
-pokegent step --port 19760 choose <option_id>
-```
+Use the [connect-your-agent guide](connect-your-agent.md#agent-mode-inspect-choose-verify)
+and its executable example to inspect a frame and submit its exact `frame_id` with an offered
+`option_id`. The default bridge port is 19760. `pokegent step --port 19760` can inspect a frame,
+but the CLI `choose` command currently fetches the latest frame again (#61), so it does not
+preserve the binding to the frame you inspected. HTTP 202 acknowledges a queued choice;
+execution results arrive in subsequent feedback.
 
 When the runner advances a dialog on the agent's behalf during any action, that action's feedback
 item also has `dialog_text`, a list containing each decoded page captured at the executor's
@@ -38,7 +29,8 @@ written to `events.jsonl`.
 An agent can use the same loop with `GET /frame`, `POST /choose` with
 `{"frame_id":"...", "option_id":"..."}`, and `GET /status`. A stale frame
 returns HTTP 409. The runner waits indefinitely for the agent's choice; it never chooses an
-option on its own. `/status` reports `waiting_for_choice` while it waits. Use `/interrupt`,
+option on its own. `/status` reports `waiting_for_choice` while it waits.
+Use `POST /interrupt` to request interruption of an active macro or interruptible wait.
 
 `GET /frame` long-polls for the next frame for up to 30 seconds by default. Clients must set their
 HTTP timeout above that value, or pass `?wait=<seconds>` to use a shorter wait (0 through 30).
