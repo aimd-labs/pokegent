@@ -3,7 +3,7 @@ import json
 import pytest
 
 from pokegent.games.gen3.firered.maps import map_names
-from pokegent.goals.models import MapArrival, Objective, Target
+from pokegent.goals.models import AnyOfProbe, MapArrival, Objective, Target
 from pokegent.goals.validate import ResolvedObjective, ResolvedProbe, ResolvedTarget, _name_index
 from pokegent.navigation.adapter import NavigationAdapter
 from pokegent.navigation.models import (
@@ -29,13 +29,14 @@ def synthetic_map_index(tmp_path, monkeypatch):
     map_names._load.cache_clear()
 
 
-def _objective() -> Objective:
+def _objective(grouped=False) -> Objective:
     return Objective(
         objective_id="fight_demo",
         revision=1,
         kind="fight",
         target=Target(map="DemoArena", npc=1),
-        success_probes=(MapArrival(map="DemoExit"),),
+        success_probes=(AnyOfProbe(children=(MapArrival(map="DemoExit"),))
+                        if grouped else MapArrival(map="DemoExit"),),
     )
 
 
@@ -53,8 +54,9 @@ def test_defeated_fight_target_is_not_a_route_step() -> None:
     assert serves_goal(facts, objective) is False
 
 
-def test_warp_to_unmet_map_arrival_probe_is_the_route_step() -> None:
-    objective = _objective()
+@pytest.mark.parametrize("grouped", [False, True])
+def test_warp_to_unmet_map_arrival_probe_is_the_route_step(grouped) -> None:
+    objective = _objective(grouped)
     facts = {
         "target": {
             "kind": "warp",
@@ -67,8 +69,9 @@ def test_warp_to_unmet_map_arrival_probe_is_the_route_step() -> None:
     assert serves_goal(facts, objective) is True
 
 
-def test_adapter_routes_defeated_fight_to_probe_warp() -> None:
-    objective = _objective()
+@pytest.mark.parametrize("grouped", [False, True])
+def test_adapter_routes_defeated_fight_to_probe_warp(grouped) -> None:
+    objective = _objective(grouped)
     resolved = ResolvedObjective(
         objective=objective,
         target=ResolvedTarget(group=0, number=0, npc=1),
@@ -98,3 +101,4 @@ def test_adapter_routes_defeated_fight_to_probe_warp() -> None:
     )
 
     assert NavigationAdapter._current_map_step([npc, warp], plan, resolved) is warp
+    assert NavigationAdapter._defeated_fight_probe_step([npc, warp], resolved) is warp

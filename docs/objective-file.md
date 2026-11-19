@@ -116,6 +116,8 @@ prove success, and success is never taken from model text.
 | `map_arrival` | `map` | current frame is in that map |
 | `flag` | `flag` 1..0x8FF, optional `expected` | saved event flag equals `expected` |
 | `var` | `var` 0x4000..0x40FF, `value` | event variable equals value |
+| `var_at_least` | same fields and bounds as `var` | readable event variable is at least value |
+| `any_of` | `children`: 1..8 leaf probes | at least one child is true; nested groups are rejected |
 | `badge` | `badge` 1..8 | corresponding badge flag is set |
 | `trainer_defeated` | `trainer_id` | trainer flag `0x500 + trainer_id` is set |
 | `party_healthy` | optional `min_fraction` | every party member has positive HP and the requested fraction (HP only) |
@@ -128,6 +130,14 @@ prove success, and success is never taken from model text.
 | `money_at_least` | `amount` 0..999999 | player money reaches amount |
 | `dex_owned` | `species` 1..151 | species is marked caught |
 | `dex_count` | `min` 0..151 | caught count reaches min |
+
+The outer `success_probes` list remains a conjunction. For a consumable item with persistent
+proof, use `{"kind":"any_of","children":[{"kind":"item","item":17},
+{"kind":"flag","flag":7}]}`. Unknown or unusable RAM never proves a leaf. A readable sparse
+variable table supplies implicit zero; an absent table is unknown. Script effects may mark an
+interaction as serving either new probe, but only fresh usable RAM can prove completion.
+RAM-only hold groups wait exactly like existing flag/var holds; groups containing other leaves
+remain actionable. Existing probe and objective JSON gains no fields or defaults.
 
 For example, this delegates training a specific live party member without adding a strategy:
 

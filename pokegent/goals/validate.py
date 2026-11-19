@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from pokegent.games.gen3.firered.maps import map_names
 from pokegent.games.gen3.firered.rom import constants as C
 from pokegent.goals.models import (
+    AnyOfProbe,
     BadgeProbe,
     DexCountProbe,
     DexOwnedProbe,
@@ -136,9 +137,12 @@ class ResolvedProbe:
     min_count: int | None = None
     x: int | None = None
     y: int | None = None
+    children: tuple[ResolvedProbe, ...] = ()
     derived: bool = False  # added from the target, not written by agent
 
     def label(self) -> str:
+        if self.kind == "any_of":
+            return "any of (" + "; ".join(child.label() for child in self.children) + ")"
         if self.kind == "at_tile":
             return f"standing on ({self.x}, {self.y}) of map {self.map_key}"
         if self.kind == "map_arrival":
@@ -146,7 +150,8 @@ class ResolvedProbe:
         if self.flag is not None:
             return f"flag 0x{self.flag:X} {'set' if self.expected else 'clear'}"
         if self.var is not None:
-            return f"var 0x{self.var:X} == {self.value}"
+            op = ">=" if self.kind == "var_at_least" else "=="
+            return f"var 0x{self.var:X} {op} {self.value}"
         if self.kind == "party_healthy":
             return f"party at {self.min_fraction:.0%} health"
         if self.kind == "party_healed":
@@ -406,7 +411,19 @@ def _check_probes(
     probes: list[ResolvedProbe] = []
     for index, probe in enumerate(objective.success_probes):
         where = f"success_probes[{index}]"
-        if isinstance(probe, MapArrival):
+        if isinstance(probe, AnyOfProbe):
+            child_reasons: list[Reason] = []
+            children = _check_probes(
+                objective.model_copy(update={"success_probes": probe.children}),
+                target, directory, child_reasons,
+            )
+            out.extend(
+                Reason(reason.code, f"{where}.children" + reason.field[len("success_probes"):],
+                       reason.detail)
+                for reason in child_reasons
+            )
+            probes.append(ResolvedProbe("any_of", children=children))
+        elif isinstance(probe, MapArrival):
             key = resolve_map(probe.map)
             if key is None:
                 out.append(Reason("unknown_map", where, f"no map named {probe.map!r}"))
@@ -415,7 +432,7 @@ def _check_probes(
         elif isinstance(probe, FlagProbe):
             probes.append(ResolvedProbe("flag", flag=probe.flag, expected=probe.expected))
         elif isinstance(probe, VarProbe):
-            probes.append(ResolvedProbe("var", var=probe.var, value=probe.value))
+            probes.append(ResolvedProbe(probe.kind, var=probe.var, value=probe.value))
         elif isinstance(probe, BadgeProbe):
             probes.append(ResolvedProbe("flag", flag=C.FLAG_BADGE01_GET + probe.badge - 1))
         elif isinstance(probe, TrainerDefeated):

@@ -81,6 +81,12 @@ def evaluate_probe(probe: ResolvedProbe, snapshot: StateSnapshot, *, tables: Any
     """One probe against one snapshot (False when the snapshot cannot say)."""
     if not snapshot.usable:
         return False
+    if probe.kind == "any_of":
+        return any(evaluate_probe(child, snapshot, tables=tables) for child in probe.children)
+    if probe.kind == "var_at_least":
+        if snapshot.vars is None or probe.var is None or probe.value is None:
+            return False
+        return snapshot.vars.get(probe.var) >= probe.value
     if probe.kind == "flag":
         assert probe.flag is not None and snapshot.flags is not None
         return snapshot.flags.is_set(probe.flag) == probe.expected

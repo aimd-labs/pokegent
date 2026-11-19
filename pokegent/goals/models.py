@@ -58,6 +58,8 @@ PROBE_KINDS = (
     "map_arrival",
     "flag",
     "var",
+    "var_at_least",
+    "any_of",
     "badge",
     "trainer_defeated",
     "party_healthy",
@@ -119,6 +121,10 @@ class VarProbe(_Frozen):
     kind: Literal["var"] = "var"
     var: int = Field(ge=0x4000, le=0x40FF)
     value: int = Field(ge=0, le=0xFFFF)
+
+
+class VarAtLeastProbe(VarProbe):
+    kind: Literal["var_at_least"] = "var_at_least"
 
 
 class BadgeProbe(_Frozen):
@@ -205,10 +211,11 @@ class DexCountProbe(_Frozen):
     min: int = Field(ge=0, le=151)
 
 
-Probe = Annotated[
+LeafProbe = Annotated[
     MapArrival
     | FlagProbe
     | VarProbe
+    | VarAtLeastProbe
     | BadgeProbe
     | TrainerDefeated
     | PartyHealthy
@@ -223,6 +230,23 @@ Probe = Annotated[
     | DexCountProbe,
     Field(discriminator="kind"),
 ]
+
+
+class AnyOfProbe(_Frozen):
+    kind: Literal["any_of"] = "any_of"
+    children: tuple[LeafProbe, ...] = Field(min_length=1, max_length=8)
+
+
+Probe = Annotated[LeafProbe | AnyOfProbe, Field(discriminator="kind")]
+
+
+def probe_leaves(probes):
+    """Authored or resolved leaves for guidance; never replace tracker conjunctions."""
+    for probe in probes:
+        if probe.kind == "any_of":
+            yield from probe.children
+        else:
+            yield probe
 
 
 class Objective(_Frozen):
