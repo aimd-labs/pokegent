@@ -137,9 +137,12 @@ Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files o
 missing-file behavior and the setup limitation until automatic local generation exists.
 
 `run.objective_stuck_after` accepts an integer >=1 (default120).
-`run.on_objective_review` accepts `continue` (default), `pause` or `stop`.
+`run.on_objective_review` configures the application's `RecordingSink`: `continue`
+(default), `pause` or `stop`. The library runner's default `PauseOnEscalation` uses `PAUSE`.
 Only objectives explicitly setting `next_review_on: ["stuck"]` request review.
-Usable idle observations emit one advisory request per episode; progress re-arms it.
+Other review events and `abort_if` remain rejected. Tracker `progress.stuck` telemetry
+may fire without opt-in; an opted-in objective requests review once per episode,
+and progress re-arms it.
 Existing hard loop/recovery and legality limits still stop execution independently.
 See [objective stuck review](objective-file.md#opt-in-stuck-review) for progress/reset rules.
 
