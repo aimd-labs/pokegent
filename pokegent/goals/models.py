@@ -17,7 +17,14 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 SCHEMA_VERSION = "objective/1"
 FORBID_CLASSES = frozenset({"pc", "storage", "fly", "shop", "tm", "sell"})
@@ -225,6 +232,7 @@ class Objective(_Frozen):
     kind: Kind
     target: Target = Field(default_factory=Target)
     success_probes: tuple[Probe, ...] = ()
+    next_review_on: tuple[Literal["stuck"], ...] = Field(default=(), max_length=1)
     rationale: str = Field(default="", max_length=600)
     forbid: tuple[str, ...] = Field(default_factory=tuple, max_length=6)
     set_by: str = Field(default="agent", min_length=1, max_length=40)
@@ -235,13 +243,20 @@ class Objective(_Frozen):
     @classmethod
     def _reject_removed_phase3_fields(cls, value: object) -> object:
         if isinstance(value, Mapping):
-            removed = sorted(set(value) & {"instructions", "abort_if", "next_review_on"})
+            removed = sorted(set(value) & {"instructions", "abort_if"})
             if removed:
                 raise ValueError(
                     f"{', '.join(removed)} was removed in Phase 3; write objective decisions as "
                     "objectives/success_probes instead"
                 )
         return value
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_review(self, handler):
+        data = handler(self)
+        if not self.next_review_on:
+            data.pop("next_review_on", None)  # Preserve pre-field history equality on restart.
+        return data
 
     @field_validator("objective_id")
     @classmethod

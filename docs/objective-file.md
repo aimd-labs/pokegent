@@ -60,9 +60,27 @@ string. `pc` and `storage` are distinct executor classes.
 
 ### Removed in Phase 3
 
-`instructions`, `abort_if`, `next_review_on`, `run.on_objective_review`,
-`run.objective_stuck_after`, and `runner.review_events` were removed. Supplying any of these fields or
-configuration keys is rejected loudly.
+`instructions`, `abort_if` and `runner.review_events` remain removed and are rejected.
+
+### Opt-in stuck review
+
+`next_review_on: ["stuck"]` explicitly requests bounded advisory review of an unmet
+objective. The default is empty; other events and duplicate entries are rejected.
+`run.objective_stuck_after` is an integer >=1 (default120) of usable updates without
+new progress. Progress means a newly visited 4x4 map cell, changed flag count or an
+increase in satisfied probes. Cell memory is capped at4096 and clears at that cap;
+visits can count as new again after the cap. Hold/completed/absent goals are exempt.
+Progress re-arms one request per episode; goal id/revision changes reset tracking.
+
+`run.on_objective_review` accepts `continue` (default), `pause` or `stop`. Continue
+keeps the last valid objective; it does not clear, complete, replace or advance it.
+Review never overrides hard no-progress, hybrid recovery, operator ownership or
+fresh-RAM legality. A newer accepted objective clears pending review; queued facts
+retain their originating id/revision, and a stale response cannot stop a successor.
+The bounded queue holds64 requests; request counters saturate at2^31-1. Empty
+subscriptions are omitted from serialization to preserve older history equality;
+explicit stuck subscriptions persist across restart. No abort/recovery policy,
+route assist or story successor is supplied by this feature.
 
 ## 3. Kinds and targets
 
