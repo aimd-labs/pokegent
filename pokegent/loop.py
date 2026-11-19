@@ -2339,6 +2339,10 @@ class Runner:
                 safe_boundary=self._objective_safe_boundary(perception),
                 clear_completed=self.config.on_objective_done == "continue",
             )  # completion is recorded only at the safe boundary
+        if session.fallback_error is not None and self._objective_safe_boundary(perception):
+            self._emit(EventType.RUNTIME_PAUSED, source="objective", outcome="fallback_unavailable",
+                       details={"reason": session.fallback_error})
+            return RunStatus.SAFE_PAUSE
         return None
 
     @staticmethod

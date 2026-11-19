@@ -483,3 +483,13 @@ keeps the ordinary `no_route` / `unreachable` facts. This changes no executor, n
 requirement: the edge is still unmet, the step is simply visible as the next decision. The option
 keeps its own facts, so a fossil option stays `irreversible` with `risk: high`; handing an
 irreversible pick to the agent is the hybrid irreversible gate, not part of this contract.
+
+### Opt-in objective successor fallback
+
+With `objectives.fallback: dex` and `run.on_objective_done: continue`, the next decision after
+fresh safe completion uses the next configured queue entry or an eligible private-ROM-backed dex
+goal. Completion history and revision-floor/CAS rules above still apply. Pending/rejected queues,
+active foreign objectives and expiry cannot authorize fallback takeover. Missing/unknown facts,
+unresolved heal/restock prerequisites and no supported candidates diagnose and SAFE_PAUSE; missing
+private encounter data is a setup error. This restores no story dataset or tactical/review fields.
+See [the complete opt-in contract](objective-file.md#9-opt-in-successor-fallback).

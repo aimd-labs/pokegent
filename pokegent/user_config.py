@@ -134,10 +134,11 @@ def load_user_config(
             "recovery config was removed: the runner now reports no progress and stops for "
             "supervisor review"
         )
-    if "objectives" in data:
-        raise ValueError(
-            "objectives.fallback was removed: an empty objective file remains goal-less"
-        )
+    objectives = data.get("objectives", {})
+    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
+        raise ValueError("objectives must be a mapping with optional fallback")
+    if objectives.get("fallback", "off") not in ("off", "dex"):
+        raise ValueError("objectives.fallback must be off|dex")
     if (
         "instructions" in data
         or "run" in data
@@ -212,6 +213,8 @@ def load_user_config(
 
 def to_legacy_config(config: Mapping[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
+    if "objectives" in config:
+        out["objectives"] = config["objectives"]
     if config.get("system1"):
         section = dict(config["system1"])
         section.update(enabled=True, primary="http")  # noqa: E702

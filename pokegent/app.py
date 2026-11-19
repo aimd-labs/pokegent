@@ -171,6 +171,7 @@ class AppConfig:
     #: headless/maintenance opt-out: a satisfied objective success probe does not stop the run
     #: (``run.ignore_objective``, CLI ``--ignore-objective``; default off)
     ignore_objective: bool = False
+    dex_fallback: bool = False
     #: savestate checkpoints: every ``checkpoint_every`` iterations (0 = off) a state is written to
     #: ``<out>/checkpoints/`` and the newest ``checkpoint_keep`` stay; ``save_final_state`` writes
     #: ``<out>/final.state`` when the run ends, whatever the reason (the next run's ``--state``)
@@ -280,6 +281,7 @@ class AppConfig:
 
 
 _SECTIONS = {
+    "objectives": {"fallback"},
     "schema_version": None,
     "autoplay": None,
     "external": {"walk_step_limit"},
@@ -342,8 +344,6 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
             "recovery config was removed: the runner now reports no progress and stops for "
             "supervisor review"
         )
-    if "objectives" in raw:
-        raise AppError("objectives.fallback was removed: an empty objective file remains goal-less")
     if "progression" in raw:
         raise AppError(
             "progression config was removed: the hand-authored story graph and derived "
@@ -381,6 +381,12 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
     if raw.get("schema_version", 1) != 1:
         raise AppError(f"unsupported schema_version {raw.get('schema_version')!r}")
     kw: dict[str, Any] = {"run_id": run_id}
+    objectives = raw.get("objectives", {})
+    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
+        raise AppError("objectives must be a mapping with optional fallback")
+    if objectives.get("fallback", "off") not in ("off", "dex"):
+        raise AppError("objectives.fallback must be off|dex")
+    kw["dex_fallback"] = objectives.get("fallback", "off") == "dex"
     if raw.get("autoplay") is not None:
         kw["autoplay"] = raw["autoplay"]
     external = raw.get("external") or {}
@@ -466,8 +472,6 @@ def load_config_file(path: str | os.PathLike[str] | None) -> dict[str, Any]:
             "recovery config was removed: the runner now reports no progress and stops for "
             "supervisor review"
         )
-    if "objectives" in data:
-        raise AppError("objectives.fallback was removed: an empty objective file remains goal-less")
     legacy_field = data.get("field")
     is_legacy_field = isinstance(legacy_field, dict) and set(legacy_field) <= {"menus", "teach_tm"}
     if (
@@ -516,6 +520,7 @@ def load_config_file(path: str | os.PathLike[str] | None) -> dict[str, Any]:
 
 _USER_CONFIG_KEYS = frozenset(
     {
+        "objectives",
         "rom_path",
         "decider",
         "system1",
@@ -643,6 +648,7 @@ def build_runner(
         objectives,
         objective_plan,
         directory=objective_directory,
+        dex_fallback=config.dex_fallback,
     )
     bind_planning = getattr(decider, "bind_planning", None)
     if callable(bind_planning) and session is not None:
@@ -803,9 +809,12 @@ def make_objective_session(
     plan: str | os.PathLike[str] | Sequence[Mapping[str, Any]] | None = None,
     *,
     directory: MapDirectory | None = None,
+    dex_fallback: bool = False,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
     if objectives is None:
+        if dex_fallback:
+            raise AppError("dex fallback needs the objective file it writes through")
         if plan is not None:
             raise AppError("an objective plan needs the objective file it writes through")
         return None
@@ -827,8 +836,20 @@ def make_objective_session(
             script = ScriptedObjectiveSource(store, plan)
         except PlanError as exc:
             raise AppError(f"objective plan: {exc}") from None
+    fallback = None
+    if dex_fallback:
+        from pokegent.games.gen3.firered.rom.wild import load_wild_table
+        from pokegent.goals.dex_fallback import DexFallback
+
+        try:
+            fallback = DexFallback(load_wild_table())
+        except (OSError, ValueError, RuntimeError, TypeError):
+            raise AppError("dex fallback requires valid private ROM encounter data",
+                           EXIT_ENVIRONMENT) from None
     if session is None:
-        return ObjectiveSession(store, script=script)
+        return ObjectiveSession(store, script=script, fallback=fallback)
+    if fallback is not None:
+        session.fallback = fallback
     if script is not None:
         session.script = script
     return session

@@ -186,6 +186,13 @@ class ObjectiveStore:
         with self._lock:
             return self._active.resolved if self.current() is not None else None
 
+    def expired(self) -> bool:
+        """An expired retained file is not an empty objective boundary."""
+        with self._lock:
+            self.poll()
+            obj = self._active.objective
+            return obj is not None and obj.expires_at is not None and obj.expires_at <= self.clock()
+
     def revision(self) -> int:
         with self._lock:
             self.poll()

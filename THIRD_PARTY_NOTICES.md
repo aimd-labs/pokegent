@@ -19,3 +19,9 @@ pret/pokefirered is credited as the technical reference. These facts do not incl
 
 Python dependencies are installed separately through pyproject.toml and retain their own licenses.
 No third-party Python package, vendored skill or raster artwork is bundled in this source tree.
+
+The opt-in objective fallback adapts generic `DexFallback` selection and objective-session
+handoff code from MIT-licensed pokevon_agent, source revision
+`3de37392cbbfdff3876bfed98571aa861f4c1032` (`goals/dex_fallback.py` and
+`goals/source.py`). LICENSE retains the Nous Research notice. Species-name, town and
+story tables, removed tactical fields and private game inputs are excluded.
