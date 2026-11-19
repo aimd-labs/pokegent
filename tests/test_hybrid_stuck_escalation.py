@@ -34,7 +34,8 @@ def harness(monkeypatch):
     def build(*, hybrid=True, enabled=True, progress_at=(), semantic_at=(), alternate=False,
               scene="field.free", continue_sink=False, invalid_at=None, bad_choice=False,
               action_error=None, interrupt_agent=False, no_progress_limit=2,
-              no_progress_value=None):
+              no_progress_value=None, non_positional_at=(), map_ping_progressed=False,
+              max_steps=30):
         events = MemoryEventLog("synthetic")
         calls, executions, requests = [], [], []
         state = SimpleNamespace(x=0, money=0)
@@ -107,20 +108,34 @@ def harness(monkeypatch):
             if action_error is not None:
                 return ActionResult(status="rejected", error_code=action_error, option_id=option)
             progress = n in progress_at
-            if progress:
+            non_pos = n in non_positional_at or progress
+            if progress or non_pos:
                 state.money += 1
-            if n in semantic_at:
+            positional = n in semantic_at
+            if positional:
                 state.x = 1 - state.x
-            return ActionResult(status="applied", option_id=option,
-                                progressed=True if progress else no_progress_value,
-                                verified_outcome=True)
+            # Real executor semantics: EVERY map/position change is ``progressed=True``
+            # (a warp ping notes map change; _progress_state_changed returns True on any map
+            # change).  ``non_positional_progress`` is True only for genuinely useful
+            # party/bag/flags/money change.  ``map_ping_progressed=True`` models the two-map
+            # warp cycle so the regression proves the loop evidence survives the positional
+            # ping that the real executor reports as progress.
+            is_progressed = bool(progress) or (map_ping_progressed and positional)
+            return ActionResult(
+                status="applied", option_id=option,
+                progressed=(is_progressed if (is_progressed or no_progress_value is None)
+                            else no_progress_value),
+                non_positional_progress=bool(non_pos),
+                verified_outcome=True,
+            )
 
         executor = SimpleNamespace(perceiver=True, last_emulator_frame=None, execute=execute)
         sink = SimpleNamespace(escalate=lambda r: EscalationResponse(EscalationAction.CONTINUE))
         runner = Runner(decider=decider, executor=executor, events=events,
                         perceiver=SimpleNamespace(perceive=perceive),
                         escalation=sink if continue_sink else None,
-                        config=RunnerConfig(max_steps=30, no_progress_limit=no_progress_limit))
+                        config=RunnerConfig(max_steps=max_steps,
+                                             no_progress_limit=no_progress_limit))
         return runner, calls, executions, requests, events
     return build
 
@@ -264,3 +279,108 @@ def test_agent_wait_interruption_still_exits_without_another_action(harness):
     assert runner.run().status is RunStatus.INTERRUPTED
     assert len(actions) == 2
     assert len(requests) == 1
+
+
+def test_option_loop_opens_recovery_and_agent_action_executes(harness):
+    """Issue #35 connected recovery: a due option_loop must let the agent run recovery,
+    not SAFE_PAUSE with zero agent requests/actions (review gap 3)."""
+    runner, calls, exes, requests, _ = harness(no_progress_limit=1)
+    # Prime the monitor with a full closed loop (2 options, state ping, full interval).
+    m = runner._progress
+    m.loop_window = 6
+    m.loop_min_cycles = 3
+    m._capacity = 18
+    it = 0
+    for i in range(18):
+        sig = "SA" if i % 2 == 0 else "SB"  # semantic ping: position changes every step
+        m.observe(sig, now=float(it), iteration=it)
+        m.note_decision(verified=True,
+                        option_id="warp:a:1" if i % 2 == 0 else "warp:b:1")
+        it += 1
+    assert m.loop_reason() is not None  # due BEFORE the run starts
+    summary = runner.run()
+    # The loop-guard fires once -> _report_no_progress -> _escalate opens a hybrid
+    # recovery window.  With _hybrid_no_progress_active now set, the guard is silenced
+    # and the agent may actually run through the pedestrian recovery path.
+    assert summary.verdict == "no_progress"
+    # The bridge agent must have been consulted and produced executed actions during
+    # the recovery window (real recovery contract preserved), not 0 requests/actions.
+    assert len(requests) >= 1
+    assert len(exes) >= 1
+
+
+def test_option_loop_rearm_on_durable_progress_in_runner(harness):
+    """Issue #35 (P2 finding 2) connected: executor-proven durable progress MUST retire
+    the loop evidence via the runner (NOT a manual clear), so a later recovery action
+    runs and the detector re-arms instead of reopening another recovery window."""
+    # progress on execution #5 must be reached: bump the budget so the recovery window
+    # and subsequent decisions can carry the run past action 5.
+    runner, calls, exes, requests, _ = harness(progress_at=(5,), no_progress_limit=5)
+    m = runner._progress
+    m.loop_window = 6
+    m.loop_min_cycles = 3
+    m._capacity = 18
+    it = 0
+    for i in range(18):
+        sig = "SA" if i % 2 == 0 else "SB"
+        m.observe(sig, now=float(it), iteration=it)
+        m.note_decision(verified=True,
+                        option_id="warp:a:1" if i % 2 == 0 else "warp:b:1")
+        it += 1
+    assert m.loop_reason() is not None  # due at start: only the real durable progress can retire it
+    summary = runner.run()
+    assert summary.status is RunStatus.SAFE_PAUSE
+    # The run reached the durable-progress execution (action 5) — NOT stopped early at 2.
+    assert len(exes) >= 5, f"run stopped before durable progress: {len(exes)} actions"
+    # The runner's own durable-progress path (result.progressed -> reset_window clear_loop)
+    # retired the loop evidence: the detector is re-armed, no leftover-aggregate suspicion.
+    assert m.loop_reason() is None
+    # Only a bounded number of agent recovery windows opened (no immediate reopen from
+    # stale loop history after durable progress).
+    assert len(requests) >= 1
+
+
+def test_warp_map_cycle_survives_real_executor_progress(harness):
+    """Issue #35 (R3 regression) connected: the two-map warp ping is NOT retired as
+    progress by the real runner+executor path.
+
+    The real executor reports ``progressed=True`` on EVERY map change (there is no
+    party/bag/flags/money change in a warp ping, only position).  Before this fix the
+    loop.py progress path called ``reset_window(clear_loop=True)`` on every such action,
+    wiping the loop evidence so the closed-loop detector never saw 192 decisions (R3
+    repro: run continued, history=0).  After the fix the runner retires loop evidence
+    ONLY on genuinely non-positional progress, so this exact cycle MUST surface as a
+    no_progress loop verdict — NOT run to max_steps with zero detections.
+
+    Unlike the seeded rearm tests this drives the FULL runner: perceive -> execute ->
+    note_decision -> loop_reason through the real harness, not a manual prime loop.
+    """
+    runner, calls, exes, requests, events = harness(
+        # EVERY action toggles a position component (warp ping between two locations)...
+        semantic_at=tuple(range(0, 200)),
+        # ...AND the real executor marks every map change as progressed=True.
+        map_ping_progressed=True,
+        # No party/bag/flags/money/storage change anywhere -> non_positional_progress False,
+        # so loop evidence must NOT be retired on any of these actions.
+        progress_at=(),
+        hybrid=True,
+        enabled=True,
+        no_progress_limit=3,
+        max_steps=60,
+    )
+    m = runner._progress
+    m.loop_window = 8
+    m.loop_distinct_limit = 2
+    m.loop_min_cycles = 3
+    m._capacity = 24  # full interval 8*3=24 verified decisions
+    runner.run()
+    # THE regression: on the two-map warp cycle (every action reports progressed=True from
+    # the real executor, because a map change is "progress") the loop detector MUST fire.
+    # Before the fix the progress path cleared loop evidence on every such action, so the
+    # closed-loop was never detected (R3 repro: runs continued, history=0).  Now it fires.
+    stuck = [e for e in events.of_type(EventType.PROGRESS_STUCK)]
+    assert any("option_loop" in str(e.details.get("reason", "")) for e in stuck), (
+        f"warp map-cycle was not flagged by the loop detector: {stuck}"
+    )
+    # The run was driven by the real executor path (executed actions, not a seeded pool).
+    assert len(exes) >= m._capacity

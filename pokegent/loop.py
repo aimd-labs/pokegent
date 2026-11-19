@@ -251,6 +251,13 @@ class RunnerConfig:
     #: Same (scene, option, fingerprint) attempted this many times inside the window => escalate.
     no_progress_limit: int = 8
     no_progress_window: int = 64
+    #: option_loop detector (issue #35): distinct option ids allowed across the full
+    #: ``loop_window * loop_min_cycles`` verified-decision interval, and min signature
+    #: revisits (returns to a previously-visited state) required to call it a closed loop.
+    loop_window: int = 64
+    loop_distinct_limit: int = 2
+    loop_signature_limit: int = 4
+    loop_min_cycles: int = 3
     invalid_retries: int = 2
     unknown_retries: int = 2
     settle_frames: int = 2
@@ -300,6 +307,10 @@ class RunnerConfig:
             "max_steps",
             "no_progress_limit",
             "no_progress_window",
+            "loop_window",
+            "loop_distinct_limit",
+            "loop_signature_limit",
+            "loop_min_cycles",
             "settle_frames",
             "busy_wait_frames",
             "busy_stuck_limit",
@@ -488,7 +499,14 @@ class Runner:
         self._busy_streak = 0
         self._invalid_choice_streak = 0
         self._rejected_choice_attempts: dict[tuple[str, str, ErrorCode], int] = {}
-        self._progress = ProgressMonitor(self.config.no_progress_limit, now=self.clock())
+        self._progress = ProgressMonitor(
+            self.config.no_progress_limit,
+            now=self.clock(),
+            loop_window=self.config.loop_window,
+            loop_distinct_limit=self.config.loop_distinct_limit,
+            loop_signature_limit=self.config.loop_signature_limit,
+            loop_min_cycles=self.config.loop_min_cycles,
+        )
         self._last_perception: Perception | None = None
         self._last_frame: DecisionFrame | None = None
         self._pending_objective_key: tuple[str, int] | None = None
@@ -730,6 +748,19 @@ class Runner:
             and self._hybrid_recovery_decisions >= self.config.no_progress_limit
         ):
             return self._report_no_progress("agent recovery window exhausted", perception.frame)
+        # Loop detection is INDEPENDENT of progressed: a warp ping changes position on every
+        # step (progressed=True) yet is a closed client loop.  Surface it as a stall even though
+        # the semantic signature resets the window each step (issue #35).  It must NOT fire while
+        # a hybrid recovery window is active — an active recovery owns the bound, and re-firing
+        # here would SAFE_PAUSE before the agent could execute a single recovery action.
+        if (
+            not self._hybrid_no_progress_active
+            and not (self.objectives is not None and self.objectives.done)
+            and self._progress_tracks_scene(perception.scene.scene_id)
+        ):
+            loop_due = self._progress.loop_reason()
+            if loop_due is not None:
+                return self._report_no_progress(loop_due, perception.frame)
         if (
             not progressed
             and not (self.objectives is not None and self.objectives.done)
@@ -849,7 +880,7 @@ class Runner:
     def _progress_tracks_scene(scene_id: str | None) -> bool:
         return scene_id == "field.free" or scene_id in _FIELD_MENU_SCENES
 
-    def _finish_no_progress_recovery(self) -> None:
+    def _finish_no_progress_recovery(self, *, clear_loop: bool = False) -> None:
         if not self._hybrid_no_progress_active:
             return
         self._hybrid_no_progress_active = False
@@ -857,6 +888,13 @@ class Runner:
         self._attempts.clear()
         self._postcondition_attempts.clear()
         self._rejected_choice_attempts.clear()
+        # A completed recovery (durable progress observed) retires the closed-loop
+        # suspicion so the detector re-arms instead of reopening immediately
+        # (issue #35 review gap 2).  Loop evidence is retired only when that progress
+        # was genuinely non-positional: a two-map warp ping is ``progressed`` on every
+        # action yet is exactly the loop, so it must not clear the evidence.
+        self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                    clear_loop=clear_loop)
         notify = getattr(self.decider, "notify_progress", None)
         if callable(notify):
             notify()
@@ -1094,7 +1132,8 @@ class Runner:
             if not self._hybrid_no_progress_active:
                 self._hybrid_no_progress_active = True
                 self._hybrid_recovery_decisions = 0
-                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                            clear_loop=True)
             return self._handle_ready(perception)
         return self._escalate(
             EscalationKind.UNKNOWN_SCENE,
@@ -1784,6 +1823,7 @@ class Runner:
                     or result.progressed is True
                     or self._interrupted_by_battle(result)
                 ),
+                option_id=option_id,
             )
         self._record_dialog_block(frame, option_id, result, source=source)
         self._record_result(frame, option_id, result)
@@ -1829,7 +1869,7 @@ class Runner:
         )
 
         if result.progressed is True:
-            self._finish_no_progress_recovery()
+            self._finish_no_progress_recovery(clear_loop=result.non_positional_progress is True)
         if self._hybrid_no_progress_active and source == "decider":
             self._hybrid_recovery_decisions += 1
 
@@ -1905,7 +1945,16 @@ class Runner:
 
         if result.progressed is True:
             self._attempts.clear()
-            self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+            # Executor-proven durable progress retires loop evidence: a real step forward
+            # means the closed-loop suspicion is stale and must re-arm (issue #35 review).
+            # Retire ONLY on genuinely non-positional progress: a two-map warp ping changes
+            # position (progressed=True) on every action yet is exactly the loop, so clearing
+            # every action would blind the detector (#35 review R3 regression).
+            self._progress.reset_window(
+                now=self.clock(),
+                iteration=self.counters.iterations,
+                clear_loop=result.non_positional_progress is True,
+            )
 
         text_wait_changed_state = (
             option is not None
@@ -2146,7 +2195,8 @@ class Runner:
                 self._attempts.clear()
                 self._postcondition_attempts.clear()
                 self._rejected_choice_attempts.clear()
-                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                            clear_loop=True)
                 self._stop_reason_override = None
                 self._verdict = "other"
                 return None
