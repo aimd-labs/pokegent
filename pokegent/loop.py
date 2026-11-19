@@ -880,7 +880,7 @@ class Runner:
     def _progress_tracks_scene(scene_id: str | None) -> bool:
         return scene_id == "field.free" or scene_id in _FIELD_MENU_SCENES
 
-    def _finish_no_progress_recovery(self) -> None:
+    def _finish_no_progress_recovery(self, *, clear_loop: bool = False) -> None:
         if not self._hybrid_no_progress_active:
             return
         self._hybrid_no_progress_active = False
@@ -890,9 +890,11 @@ class Runner:
         self._rejected_choice_attempts.clear()
         # A completed recovery (durable progress observed) retires the closed-loop
         # suspicion so the detector re-arms instead of reopening immediately
-        # (issue #35 review gap 2).
+        # (issue #35 review gap 2).  Loop evidence is retired only when that progress
+        # was genuinely non-positional: a two-map warp ping is ``progressed`` on every
+        # action yet is exactly the loop, so it must not clear the evidence.
         self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
-                                    clear_loop=True)
+                                    clear_loop=clear_loop)
         notify = getattr(self.decider, "notify_progress", None)
         if callable(notify):
             notify()
@@ -1867,7 +1869,7 @@ class Runner:
         )
 
         if result.progressed is True:
-            self._finish_no_progress_recovery()
+            self._finish_no_progress_recovery(clear_loop=result.non_positional_progress is True)
         if self._hybrid_no_progress_active and source == "decider":
             self._hybrid_recovery_decisions += 1
 
@@ -1945,8 +1947,14 @@ class Runner:
             self._attempts.clear()
             # Executor-proven durable progress retires loop evidence: a real step forward
             # means the closed-loop suspicion is stale and must re-arm (issue #35 review).
-            self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
-                                        clear_loop=True)
+            # Retire ONLY on genuinely non-positional progress: a two-map warp ping changes
+            # position (progressed=True) on every action yet is exactly the loop, so clearing
+            # every action would blind the detector (#35 review R3 regression).
+            self._progress.reset_window(
+                now=self.clock(),
+                iteration=self.counters.iterations,
+                clear_loop=result.non_positional_progress is True,
+            )
 
         text_wait_changed_state = (
             option is not None

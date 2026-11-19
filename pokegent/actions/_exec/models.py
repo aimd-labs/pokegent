@@ -63,6 +63,11 @@ class ActionResult(BaseModel):
     #: Whether game-progress state changed; distinct from a handoff postcondition such as
     #: ``field.interaction_started`` (which may succeed on a dialog-only action).
     progressed: bool | None = None
+    #: Whether genuinely useful (non-positional) game progress changed (party/bag/flags/money/
+    #: storage/battle) as opposed to a mere map/position change.  Loop detection retires its
+    #: evidence only on this, never on ``progressed`` (a two-map warp ping is ``progressed`` on
+    #: every action but is exactly the loop) (issue #35).
+    non_positional_progress: bool | None = None
     #: Stable identity of the dialog which interrupted a field/menu macro.  This is executor
     #: evidence used to distinguish one repeatedly blocking script from unrelated interruptions.
     dialog_fingerprint: str | None = None
