@@ -564,6 +564,22 @@ def cmd_run(args):
     except AppError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(getattr(exc, "exit_code", EXIT_USAGE))
+    # Opt-in retention (issue #59): after a completed run, prune the OLDER completed
+    # sibling run dirs under --out's parent, keeping the newest N, the active run dir and
+    # any current/recovery state path.  Guarded and never deletes without a completion
+    # marker; best-effort (a prune failure must not flip the run's exit code).
+    if args.retain_runs is not None and report.exit_code >= 0:
+        from pokegent.retention import prune_completed_runs
+
+        out_path = Path(out)
+        try:
+            prune_completed_runs(
+                out_path.resolve().parent,
+                keep=args.retain_runs,
+                active=out_path,
+            )
+        except Exception as exc:  # best effort
+            print(f"retention: {exc}", file=sys.stderr)
     sys.exit(report.exit_code)
 
 
@@ -678,6 +694,13 @@ def main(argv=None):
         "--out", default=None, help="output directory (default from config or runs/<run-id>/)"
     )
     run_p.add_argument("--run-id", default=None, help="run id (default <state>-<utc time>)")
+    run_p.add_argument(
+        "--retain-runs",
+        type=int, default=None, metavar="N",
+        help=("opt-in retention: after the run, prune OTHER completed sibling run dirs under "
+              "--out's parent keeping the N most recent, the active run, and any referenced "
+              "/current-state paths (issue #59)"),
+    )
     run_p.add_argument("--config", default=None, help="user YAML (default ./pokegent.yaml)")
     run_p.add_argument("--rom", default=None, help="ROM path (default $FIRERED_ROM_PATH)")
     run_p.add_argument(
