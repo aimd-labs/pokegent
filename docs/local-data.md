@@ -2,8 +2,77 @@
 
 The live stream runs this public code with private local game data kept outside the repository.
 No ROM, extracted dataset, sprites or run recordings are bundled. Bring your own legally obtained
-supported ROM. Automatic local generation from your own ROM is planned; without supplied data, this checkout
-supports setup and synthetic checks but not a complete emulator run.
+supported ROM. Complete first-start onboarding remains planned; the explicit generator below
+supplies local data, while native emulator/agent acceptance is a separate gate.
+
+## Explicit local setup (generator candidate)
+
+`rom-data setup` now generates the seven files and builds the private ROM cache. Complete
+first-start emulator onboarding remains under validation; generation/cache success alone does
+not establish a successful emulator run. Use Python 3.11 and your own supported FireRed USA Rev 0
+ROM, outside this checkout. Native mGBA installation and the agent bridge are separate prerequisites.
+
+```sh
+export FIRERED_ROM_PATH=/absolute/private/own-game.gba
+export POKEGENT_LOCAL_DATA_DIR=/absolute/private/pokegent/local-data
+export POKEGENT_ROM_DATA_CACHE=/absolute/private/pokegent/cache
+unset POKEGENT_MAP_GROUPS
+pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR"
+```
+
+Choose an absent absolute output path. Setup never modifies a mismatching existing directory,
+including an empty/manual one: choose a new path instead. It writes the complete seven-file set
+and a small `setup-manifest.json` in a private staging directory, then publishes the directory
+atomically. A competing populated destination makes the rename fail; this does not claim portable
+`RENAME_NOREPLACE` semantics against a racing empty directory. Directories are created 0700 and
+local files 0600. User-controlled parent paths are assumed, as for the numeric index tool.
+
+After local publication, a fresh Python process builds or validates the cache with the selected
+local directory and without a map-index override. A cache failure leaves complete local data intact
+and returns failure. Rerun the same setup to repair the cache. Identical existing files, manifest,
+generator version, source identity and ROM identity skip source fetching and local generation,
+preserving local file mtimes. Changed/corrupted local output is preserved and refused. Runtime
+tables are loaded once per process: restart Python/runtime processes after setup.
+
+Online setup downloads only the fixed pret/pokefirered gzip tarball at
+`037335f4c725d7c9aecdac87066f2002b4bd7e14`, checks its complete content identity, and caches
+the verified archive under `$POKEGENT_ROM_DATA_CACHE/sources/`. It never executes or extracts
+decompilation code. The transfer has a 60-second total deadline, a 10-second per-operation timeout,
+and a 64 MiB compressed cap. Source reads are limited to 20,000 members and 128 MiB expanded,
+with at most 2 MiB per retained extractor input. Links, duplicate/noncanonical names and unexpected
+archive roots are rejected. Rejected source values are not printed.
+
+For zero network access, supply a clean exact-pin checkout or gzip archive:
+
+```sh
+pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR" \
+  --decomp /absolute/private/pokefirered
+```
+
+A dirty or built checkout fails its tree digest; Git's reported HEAD alone is insufficient.
+Use a separate clean source tree rather than deleting unrelated files. No hook, build command,
+preprocessor or included Python is run. ZIP archives and moving branches are not accepted.
+
+The canonical tree digest is SHA-256 of `pokegent-decomp-tree-v1` followed by NUL, an unsigned
+64-bit big-endian regular-file count, then records sorted by the UTF-8 bytes of relative POSIX
+paths. Each record is an unsigned 32-bit big-endian path-byte length, those exact bytes, and the
+raw 32-byte SHA-256 content digest. Strip only the archive's fixed `pokefirered-<commit>/` root;
+exclude root `.git` metadata for both readers. Include all other regular bytes, including files
+unused by the extractors. Directories, mode bits, timestamps and gzip encoding do not enter the
+digest; no Unicode normalization is applied. The pinned tree has 9,857 regular files and digest
+`df2f96d640e48ccf62db35d14519f4efd798773f0e9352965b168a845bea526e`.
+
+The cache manifest is format 3: it includes the exact selected map-index content digest as well
+as ROM/generator/artifact identity. A changed named index or old cache manifest triggers rebuild.
+`pokegent rom-data build --if-missing --rom PATH` exposes this validation/repair path; ordinary
+`rom-data build` continues to rebuild explicitly.
+
+Generated documents use source-correct quiz text, source map labels for elevator descriptions,
+and source-labelled prompt policies. They do not reproduce historical measured annotations or
+the unused Silph section of an older puzzles document. The seven-file format and required mansion,
+Fly, elevator, quiz and Surf facts are preserved. Generic built-in prompt recognition and destructive
+and unreadable-state precedence remain in force. Source messages for unsupported field features
+do not register new actions or grant capability. See the source attribution in `source-lock.md`.
 
 ## Configure before startup
 
