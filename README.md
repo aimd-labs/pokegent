@@ -10,7 +10,8 @@ The optional System One provider supports `agent`, `hybrid` (default), and `syst
 
 - Python 3.11 and a Python environment manager such as uv.
 - mGBA Python bindings and the native `libmgba` library for emulator runs. mGBA is external;
-  it is not bundled in this repository. `tools/setup_mgba_env.sh` can prepare a local extraction of native packages.
+  it is not bundled in this repository. See the [bounded native setup](docs/native-install.md)
+  for the tested Ubuntu 24.04 amd64 / Python 3.11 path.
 - Bring your own legally obtained supported FireRed ROM, kept outside the checkout.
   No ROM, save, extracted game tables, map index, sprites, or gameplay recordings are included.
 
