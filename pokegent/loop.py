@@ -2401,6 +2401,13 @@ class Runner:
         review_status = self._dispatch_reviews()
         if review_status is not None:
             return review_status
+        if self._objective_safe_boundary(perception):
+            with self._objective_lock:
+                if session.story_complete_if_current():
+                    self._emit(EventType.RUNTIME_PAUSED, source="objective",
+                               outcome="story_complete",
+                               details={"reason": "story_complete"})
+                    return RunStatus.SAFE_PAUSE
         if session.fallback_error is not None and self._objective_safe_boundary(perception):
             self._emit(EventType.RUNTIME_PAUSED, source="objective", outcome="fallback_unavailable",
                        details={"reason": session.fallback_error})

@@ -802,3 +802,169 @@ def test_new_manual_objective_after_expiry_can_complete_into_fallback(dex_runner
     assert h.store.current().objective_id == "dex_1" and h.store.revision() == 4
     assert h.store.last_warning().code == "expired"  # old warning is no longer authority
     assert not h.session.fallback_error
+
+
+@pytest.fixture
+def story_runner(harness, tmp_path, monkeypatch):
+    from test_story_source import artifact
+
+    from pokegent.goals.story import load_progression
+
+    data = artifact()
+    # Two invented map goals; the public validator still owns map/probe resolution.
+    import importlib
+    validator = importlib.import_module("pokegent.goals.validate")
+    monkeypatch.setattr(validator, "resolve_map", lambda name: (0, 0) if name == "MapA" else (0, 1))
+    monkeypatch.setattr(validator.map_names, "map_name",
+                        lambda *key: "MapA" if key == (0, 0) else "MapB")
+    for node, name in zip(data["nodes"], ("MapA", "MapB")):
+        node["objective"].update(kind="reach", target={"map": name})
+    path = tmp_path / "progression.json"
+    path.write_text(json.dumps(data))
+
+    def build(**kwargs):
+        h = harness(**kwargs)
+        h.session.fallback = load_progression(path=path)
+        original = h.source.read_snapshot
+        h.snapshots, h.fallback_snapshots = [], []
+
+        def read():
+            current = original()
+            current = current.model_copy(update={"flags": FlagSet(set_ids=tuple(
+                flag for flag in (1, 2) if h.state.money >= flag + 1))})
+            h.snapshots.append(current)
+            return current
+
+        h.source.read_snapshot = read
+        select = h.session.fallback.from_snapshot
+
+        def select_recorded(current):
+            h.fallback_snapshots.append(current)
+            return select(current)
+
+        h.session.fallback.from_snapshot = select_recorded
+        return h
+    return build
+
+
+def test_story_actual_runner_prerequisite_successor_and_terminal(story_runner):
+    h = story_runner()
+    assert h.runner.run().status is RunStatus.SAFE_PAUSE
+    assert [obj.objective_id for obj, _ in h.seen] == ["first", "story_p", "story_q"]
+    assert [obj.revision for obj, _ in h.seen] == [1, 2, 3]
+    assert all(frame.goal_id == obj.objective_id for obj, frame in h.seen)
+    assert h.store.revision() == 3 and h.store.current() is None
+    assert h.session.fallback_error is None
+    assert h.events.of_type(EventType.RUNTIME_PAUSED)[-1].outcome == "story_complete"
+    assert all(any(current is read for read in h.snapshots) for current in h.fallback_snapshots)
+    assert all(frame.options == h.seen[0][1].options for _, frame in h.seen)
+    assert all(result.verified_outcome is True for result in h.results)
+
+
+@pytest.mark.parametrize("unsafe", ["busy", "battle", "menu", "invalid"])
+def test_story_terminal_requires_current_safe_frame(story_runner, unsafe):
+    h = story_runner()
+    h.session.refresh()
+    h.state.money = 3
+    h.state.busy, h.state.battle = unsafe == "busy", unsafe == "battle"
+    h.state.scene = "menu.pause" if unsafe == "menu" else "field.free"
+    h.state.valid = unsafe != "invalid"
+    assert h.runner._objective_observe(h.runner._perceive()) is None
+    assert h.store.current().objective_id == "first"
+    h.state.busy = h.state.battle = False
+    h.state.scene, h.state.valid = "field.free", True
+    assert h.runner._objective_observe(h.runner._perceive()) is RunStatus.SAFE_PAUSE
+    assert h.session.fallback_error is None
+
+
+def test_story_terminal_rechecks_external_manual_goal_after_callbacks(story_runner, monkeypatch):
+    h = story_runner()
+    h.session.refresh()
+    h.state.money = 3
+
+    def reviews():
+        assert h.store.propose(objective(3, objective_id="manual", amount=99)).accepted
+        return None
+
+    monkeypatch.setattr(h.runner, "_dispatch_reviews", reviews)
+    assert h.runner._objective_observe(h.runner._perceive()) is None
+    assert h.session.objective.objective_id == "manual"
+    assert not h.session.story_complete_if_current()
+
+
+def test_story_cas_loser_keeps_newer_manual_goal(story_runner, monkeypatch):
+    h = story_runner()
+    select = h.session.fallback.from_snapshot
+
+    def concurrent(current):
+        proposal = select(current)
+        assert h.store.propose(objective(3, objective_id="manual", amount=99)).accepted
+        return proposal
+
+    monkeypatch.setattr(h.session.fallback, "from_snapshot", concurrent)
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert [obj.objective_id for obj, _ in h.seen] == ["first"] + ["manual"] * 4
+    assert h.session.fallback_error is None
+
+
+@pytest.mark.parametrize("queued", [False, True])
+def test_story_does_not_replace_manual_or_pending_queue(story_runner, queued):
+    kwargs = dict(plan=[objective(2, objective_id="queued", set_by="script", amount=99)]) if (
+        queued) else dict(set_by="operator", amount=99)
+    h = story_runner(**kwargs)
+    h.state.money = 3
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert all(obj.objective_id == ("queued" if queued else "first") for obj, _ in h.seen)
+    assert h.fallback_snapshots == []
+
+
+def test_story_complete_empty_options_uses_explicit_terminal_not_hold(story_runner):
+    from pokegent.pipeline import PerceptionKind
+    h = story_runner()
+    h.session.refresh()
+    h.state.money = 3
+    perception = replace(h.runner._perceive(), kind=PerceptionKind.NO_OPTIONS, frame=None)
+    assert h.runner._objective_observe(perception) is RunStatus.SAFE_PAUSE
+    assert h.session.hold_waiting_reason is None
+    assert h.session.fallback_error is None
+
+
+def test_story_terminal_candidate_is_invalidated_by_next_unusable_observation(story_runner):
+    h = story_runner()
+    h.session.refresh()
+    h.state.money = 3
+    current = h.source.read_snapshot()
+    h.session.observe(current, safe_boundary=True, clear_completed=True)
+    h.state.valid = False
+    h.session.observe(h.source.read_snapshot(), safe_boundary=False, clear_completed=True)
+    assert not h.session.story_complete_if_current()
+
+
+@pytest.mark.parametrize("change", ["rejected", "expired", "revision", "queue"])
+def test_story_terminal_rechecks_changed_authority(story_runner, change):
+    from datetime import datetime, timedelta, timezone
+    h = story_runner()
+    h.session.refresh()
+    h.state.money = 3
+    h.session.observe(h.source.read_snapshot(), safe_boundary=True, clear_completed=True)
+    if change == "rejected":
+        h.store.path.write_text('{"malformed":')
+    elif change == "expired":
+        expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+        assert h.store.propose({**objective(3), "expires_at": expiry.isoformat()}).accepted
+        h.store.clock = lambda: expiry + timedelta(seconds=1)
+    elif change == "revision":
+        assert h.store.propose(objective(3, amount=99)).accepted
+        assert h.store.clear(expected_revision=3)["cleared"]
+    else:
+        h.session.script = SimpleNamespace(stopped=True)
+    assert not h.session.story_complete_if_current()
+
+
+def test_story_fallback_waits_after_completion_history_failure(story_runner, monkeypatch):
+    h = story_runner()
+    assert h.runner._iteration() is None
+    monkeypatch.setattr(h.store, "_log", lambda *args: False)
+    assert h.runner._iteration() is RunStatus.SAFE_PAUSE
+    assert h.store.current().objective_id == "first"
+    assert "completion not durable" in h.session.fallback_error

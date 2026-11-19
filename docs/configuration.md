@@ -160,3 +160,12 @@ for completion-to-fallback handoff; hold/pause defaults are unchanged. The exist
 encounter cache and usable party/dex/bag facts are required. Unresolved healing/restocking or no
 supported candidate safely pauses instead of inventing a destination. See
 [successor fallback](objective-file.md#9-opt-in-successor-fallback) for conditions and limits.
+
+`objectives.fallback: story` opts into the bounded authored progression source.
+The file must explicitly contain `run.on_objective_done: continue`; CLI `continue`
+does not repair a missing/hold/pause setting, and later hold/pause overrides fail.
+Supply external `POKEGENT_LOCAL_DATA_DIR/progression.json`; missing or invalid data
+is a redacted setup error. This file is separate from the seven setup schemas.
+All-required completion SAFE_PAUSEs with `story_complete` after a successor/revision
+recheck. See [story source](objective-file.md#10-opt-in-authored-story-source-synthetic-engine-slice)
+for the fixed schema, authored policy, synthetic-only scope and remaining gates.

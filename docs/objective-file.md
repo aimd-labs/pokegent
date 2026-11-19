@@ -354,3 +354,64 @@ or rejected fallback proposals emit `runtime.paused` (`fallback_unavailable`) an
 at the safe boundary. Supply an explicit valid objective and resume. Missing/invalid private
 encounter data is a setup error (exit 4). Data generation, automatic shop/healing routes and complete
 story progression are outside this slice. Synthetic tests establish frame handoff, not a real run.
+
+## 10. Opt-in authored story source (synthetic engine slice)
+
+```yaml
+run:
+  on_objective_done: continue
+objectives:
+  fallback: story
+```
+
+The configuration file itself must say `continue`. AppConfig rejects missing/default
+`hold` or `pause` before CLI overrides apply, so CLI `continue` cannot rescue that file.
+A later CLI `hold`/`pause` override is also rejected. Off and Dex retain their existing
+behavior. Story needs the same objective store; it never replaces an active manual or
+operator goal, bypasses a pending/rejected queue, or treats an expired file as empty.
+
+Supply `progression.json` in `POKEGENT_LOCAL_DATA_DIR`, outside the checkout (including
+symlink targets). The independent fixed loader accepts at most 64 KiB and does not
+add an eighth local-data/setup schema. All records must validate before use:
+
+- `schema_version`: 1.
+- `provenance`: `rom_sha256`, `source_sha256`, `map_index_sha256` (lowercase 64-digit
+  hex), `source_pin` and `generator` (1..128 characters).
+- `policy`: `order` (every node id exactly once) and nonempty `required` (unique
+  subset). This is explicit authored intent, not an order extracted from ROM.
+  Readiness currently means prerequisites only; other policy fields are rejected.
+- `policy_sha256`: SHA256 of UTF-8 JSON of `policy`, with sorted keys and compact
+  separators (`json.dumps(policy, sort_keys=True, separators=(",", ":"))`).
+- `nodes`: 1..64 records with `id`, `requires` (unique node ids) and `objective` using
+  the existing Objective JSON parser/validator. Node ids are 1..128 characters;
+  references and policy lists have at most 64 entries. Duplicate node/objective ids,
+  missing references, cycles and unknown artifact fields are rejected.
+
+Every objective must have success probes and no expiry or review subscriptions.
+This artifact version supports `flag`, `var`, `var_at_least`, `item`, and leaf
+`any_of` over those kinds. Other probe kinds remain available in ordinary objectives
+but are rejected in this artifact. Outer success probes retain AND semantics.
+Template revisions are placeholders: Session assigns the next CAS revision and
+`set_by: fallback:story`. Existing target validation still applies.
+
+One current usable snapshot evaluates all proofs. Unknown flags/vars never prove
+completion or authorize skipping a prerequisite. A readable sparse VarTable means
+zero for absent entries; a usable snapshot's empty bag means no items. OR can remain
+true after an item is consumed when a persistent flag proves completion. A proven
+node discharges its earlier prerequisites without requiring consumed items again.
+The first incomplete required milestone is selected in authored order, descending
+its incomplete prerequisites in that same order to the first actionable leaf.
+
+At the existing safe boundary, completion clears through the existing durable
+history/CAS path before selecting a successor. All required nodes proven complete
+produce explicit `runtime.paused` outcome/reason `story_complete`, SAFE_PAUSE (exit 1).
+No empty hold or implicit Dex fallback is created. After review callbacks, Session
+rechecks the empty store revision, manual successor, expiry/rejection and queue before
+Runner applies that result. An external write after this final check is subject to
+the same process-boundary race as existing stop decisions.
+
+This slice has invented-data behavioral tests only. Digests declare provenance and
+bind the authored policy; they do not authenticate a real ROM or establish complete
+story coverage. Real generation, setup/cache identity binding, scoped temporary
+facts, same-snapshot owner/provider facts and private phase/transition acceptance
+remain separate gates. No game graph or policy is packaged with the engine.
