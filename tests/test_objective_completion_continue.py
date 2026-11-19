@@ -738,8 +738,9 @@ def test_uncompleted_operator_is_not_replaced_by_fallback(dex_runner):
     assert h.store.revision() == 1
 
 
+@pytest.mark.parametrize("cold", [False, True])
 @pytest.mark.parametrize("set_by", ["agent", "operator"])
-def test_expired_objective_does_not_authorize_fallback(dex_runner, set_by):
+def test_expired_objective_does_not_authorize_fallback(dex_runner, set_by, cold):
     from datetime import datetime, timedelta, timezone
     h = dex_runner(set_by=set_by, amount=99)
     expiry = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -747,7 +748,12 @@ def test_expired_objective_does_not_authorize_fallback(dex_runner, set_by):
     data["expires_at"] = expiry.isoformat()
     assert h.store.propose(data).accepted
     h.store.clock = lambda: expiry + timedelta(seconds=1)
+    if cold:
+        h.store = ObjectiveStore(h.store.path, clock=h.store.clock)
+        h.session.store = h.store
+    retained = h.store.path.read_bytes()
     assert h.runner.run().status is RunStatus.SAFE_PAUSE
+    assert h.store.path.read_bytes() == retained
     assert not h.seen and "expired" in h.session.fallback_error
     assert not any(row["event"] == "completed" for row in h.store.history())
 
@@ -779,12 +785,16 @@ def test_initial_corrupt_objective_diagnoses_instead_of_filling(dex_runner):
     assert "rejected" in h.session.fallback_error
 
 
-def test_new_manual_objective_after_expiry_can_complete_into_fallback(dex_runner):
+@pytest.mark.parametrize("cold", [False, True])
+def test_new_manual_objective_after_expiry_can_complete_into_fallback(dex_runner, cold):
     from datetime import datetime, timedelta, timezone
     h = dex_runner(amount=99)
     expiry = datetime.now(timezone.utc) + timedelta(hours=1)
     assert h.store.propose({**objective(2, amount=99), "expires_at": expiry.isoformat()}).accepted
     h.store.clock = lambda: expiry + timedelta(seconds=1)
+    if cold:
+        h.store = ObjectiveStore(h.store.path, clock=h.store.clock)
+        h.session.store = h.store
     h.session.refresh()
     assert h.store.last_warning().code == "expired"
     assert h.store.propose(objective(3, objective_id="manual", set_by="operator")).accepted

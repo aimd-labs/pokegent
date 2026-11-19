@@ -301,7 +301,7 @@ with a ROM-backed dex objective after the queue or a standalone objective comple
 run:
   on_objective_done: continue
 objectives:
-  fallback: dex  # off by default
+  fallback: dex  # "off" by default; quote "off" in YAML
 ```
 
 The run uses its existing objective file (default `<run dir>/objective.json`); in-process callers

@@ -136,7 +136,8 @@ Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files o
 `POKEGENT_MAP_GROUPS` optionally overrides the map index. See [local-data.md](local-data.md) for schemas,
 missing-file behavior and the setup limitation until automatic local generation exists.
 
-`objectives.fallback` accepts `off` (default) or `dex`. Use `run.on_objective_done: continue`
+`objectives.fallback` accepts `"off"` (default; quote it in YAML) or `dex`.
+Use `run.on_objective_done: continue`
 for completion-to-fallback handoff; hold/pause defaults are unchanged. The existing private ROM
 encounter cache and usable party/dex/bag facts are required. Unresolved healing/restocking or no
 supported candidate safely pauses instead of inventing a destination. See

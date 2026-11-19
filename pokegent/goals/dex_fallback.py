@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pokegent.games.gen3.firered.rom.wild import Encounter, by_species
+from pokegent.goals.validate import normalize_map_name
 
 
 class FallbackUnavailable(ValueError):
@@ -45,7 +46,9 @@ class DexFallback:
             if not supported:
                 continue
             row = min(supported, key=lambda item: (-item.probability, item.map, item.method))
-            cost = (0 if row.map == current_map else 10) + 1 / row.probability
+            local = (current_map is not None
+                     and normalize_map_name(row.map) == normalize_map_name(current_map))
+            cost = (0 if local else 10) + 1 / row.probability
             choices.append((cost, species, row))
         if not choices:
             raise FallbackUnavailable("no unowned species with a supported land encounter")

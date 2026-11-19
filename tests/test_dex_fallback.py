@@ -111,3 +111,99 @@ def test_fork_capture_precondition_is_hp_only_not_heal_completion():
     fallback = DexFallback((Encounter("TestA", "land", 1, .5, 2, 3),))
     assert fallback.from_snapshot(snapshot)["objective_id"] == "dex_1"
     assert not evaluate_probe(ResolvedProbe("party_healed"), snapshot)
+
+
+def test_cold_expired_file_blocks_fallback_until_explicit_clear_or_valid_goal(tmp_path):
+    from pokegent.games.gen3.firered.reader.schemas import (
+        FlagSet,
+        Health,
+        Player,
+        StateSnapshot,
+        VarTable,
+    )
+    expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    path = tmp_path / "objective.json"
+    original = ObjectiveStore(path)
+    assert original.propose(dict(objective_id="expired", revision=1, kind="hold",
+                                  expires_at=expiry.isoformat())).accepted
+    store = ObjectiveStore(path, clock=lambda: expiry + timedelta(seconds=1))
+    fallback = SimpleNamespace(from_snapshot=lambda _: dict(objective_id="fallback", kind="hold"))
+    session = ObjectiveSession(store, fallback=fallback)
+    snapshot = StateSnapshot.create(rom_profile="synthetic", snapshot_seq=1, emulator_frame=1,
+                                    health=Health(valid=True), flags=FlagSet(), vars=VarTable(),
+                                    player=Player(name="Test", gender="male", tid=0, sid=0,
+                                                  map_group=0, map_num=0, map_layout_id=0,
+                                                  x=0, y=0, money=0, coins=0))
+    session.refresh()
+    assert store.expired()
+    session.observe(snapshot, safe_boundary=True, clear_completed=True)
+    assert store.current() is None and path.exists()
+    assert "expired" in session.fallback_error
+    path.unlink()
+    store.poll()
+    assert store.expired()  # disappearance is not explicit clear
+    assert store.clear(expected_revision=store.revision())["cleared"]
+    assert not store.expired()
+    session.observe(snapshot, safe_boundary=True, clear_completed=True)
+    assert store.current().objective_id == "fallback"
+
+
+def test_cold_expiry_is_reset_by_valid_manual_goal_and_completion(tmp_path):
+    expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    path = tmp_path / "objective.json"
+    original = ObjectiveStore(path)
+    assert original.propose(dict(objective_id="expired", revision=1, kind="hold",
+                                  expires_at=expiry.isoformat())).accepted
+    store = ObjectiveStore(path, clock=lambda: expiry + timedelta(seconds=1))
+    assert store.current() is None and store.expired()
+    assert store.propose(dict(objective_id="manual", revision=2, kind="hold",
+                              set_by="operator")).accepted
+    assert not store.expired()
+    assert store.commit_completion(objective_id="manual", expected_revision=2,
+                                    clear_completed=True)
+    session = ObjectiveSession(store, fallback=SimpleNamespace(
+        from_snapshot=lambda _: dict(objective_id="fallback", kind="hold")))
+    session.refresh()
+    session._fallback_after_observe(SimpleNamespace())
+    assert store.current().objective_id == "fallback" and store.revision() == 3
+
+
+def test_current_map_bonus_matches_runtime_camelcase_to_rom_macro_name():
+    # Authored encounter rows using the two real naming conventions, no dataset.
+    raw_map = "CERULEAN_CITY"
+    fallback = DexFallback((Encounter("OTHER_MAP", "land", 1, .5, 2, 3),
+                            Encounter(raw_map, "land", 2, .25, 2, 3)))
+    assert fallback.source(set())["objective_id"] == "dex_1"
+    result = fallback.source(set(), current_map="CeruleanCity")
+    assert result["objective_id"] == "dex_2"
+    assert result["target"]["map"] == raw_map
+    snapshot = SimpleNamespace(
+        usable=True, pokedex=SimpleNamespace(owned=()),
+        party=(SimpleNamespace(is_egg=False, hp=10, max_hp=10),),
+        map=SimpleNamespace(identity=SimpleNamespace(name="CeruleanCity")),
+        bag=(SimpleNamespace(items=(SimpleNamespace(item_id=4, quantity=10),)),),
+    )
+    assert fallback.from_snapshot(snapshot)["target"]["map"] == raw_map
+
+
+@pytest.mark.parametrize("retired", ["stale", "completion_cleared"])
+def test_retired_expired_file_does_not_restore_expiry_identity(tmp_path, retired):
+    from pokegent.goals.store import atomic_write_json
+
+    expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    path = tmp_path / "objective.json"
+    store = ObjectiveStore(path)
+    expired = dict(objective_id="retired", revision=1, kind="hold",
+                   expires_at=expiry.isoformat())
+    assert store.propose(expired).accepted
+    if retired == "stale":
+        assert store.propose(dict(objective_id="newer", revision=2, kind="hold")).accepted
+        assert store.clear(expected_revision=2)["cleared"]
+    else:
+        assert store.commit_completion(objective_id="retired", expected_revision=1,
+                                       clear_completed=True)
+    atomic_write_json(path, expired)
+    restarted = ObjectiveStore(path, clock=lambda: expiry + timedelta(seconds=1))
+    assert restarted.current() is None
+    assert not restarted.expired()
+    assert restarted.revision() == (2 if retired == "stale" else 1)
