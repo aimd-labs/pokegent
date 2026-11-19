@@ -583,3 +583,222 @@ def test_hot_reload_during_one_run_never_stops(harness):
     assert all(r.verified_outcome is True for r in h.results)
     assert len(h.events.of_type(EventType.RUNTIME_STARTED)) == 1
     assert not h.events.of_type(EventType.RUNTIME_PAUSED) and not h.runner.stop_event.is_set()
+
+
+class SyntheticFallback:
+    def from_snapshot(self, snapshot):
+        return objective(objective_id="fallback_goal", set_by="fallback:dex", amount=99)
+
+
+def test_configured_fallback_reaches_next_actual_decider_frame(harness):
+    h = harness(plan=[objective(set_by="script")])
+    h.session.fallback = SyntheticFallback()
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert [obj.objective_id if obj else None for obj, _ in h.seen] == (
+        ["first"] + ["fallback_goal"] * 4)
+    assert all(frame.goal_id == obj.objective_id for obj, frame in h.seen)
+    assert h.store.revision() == 2
+    assert h.script.status()["completed_ids"] == ["first"]
+
+
+def test_fallback_config_is_opt_in():
+    cfg = config_from_mapping({"objectives": {"fallback": "dex"}})
+    assert cfg.dex_fallback
+    assert not config_from_mapping({}).dex_fallback
+
+
+@pytest.fixture
+def dex_runner(harness, monkeypatch):
+    import importlib
+
+    from pokegent.games.gen3.firered.reader.schemas import BagItem, BagPocket, Pokedex
+    from pokegent.games.gen3.firered.rom.wild import Encounter
+    from pokegent.goals.dex_fallback import DexFallback
+
+    validator = importlib.import_module("pokegent.goals.validate")
+    monkeypatch.setattr(validator, "resolve_map", lambda name: (0, 0))
+    monkeypatch.setattr(validator.map_names, "map_name", lambda *args: "TestLand")
+
+    def build(**kwargs):
+        h = harness(**kwargs)
+        h.session.fallback = DexFallback((Encounter("TestLand", "land", 1, .5, 2, 3),))
+        h.state.owned, h.state.hp, h.state.balls = (), 10, 10
+        original = h.source.read_snapshot
+
+        def read():
+            return original().model_copy(update={
+                "pokedex": Pokedex(owned=h.state.owned),
+                "party": (SimpleNamespace(is_egg=False, hp=h.state.hp, max_hp=10),),
+                "bag": (BagPocket(pocket="balls", capacity=16, items=(BagItem(item_id=4,
+                                                              quantity=h.state.balls),)),),
+            })
+        h.source.read_snapshot = read
+        return h
+    return build
+
+
+@pytest.mark.parametrize("plan", [None, [objective(set_by="script")]])
+def test_actual_dex_fallback_is_in_next_runner_frame(dex_runner, plan):
+    h = dex_runner(plan=plan)
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert [obj.objective_id for obj, frame in h.seen] == ["first"] + ["dex_1"] * 4
+    assert all(frame.goal_id == obj.objective_id for obj, frame in h.seen)
+    assert all(obj.revision == 2 for obj, frame in h.seen[1:])
+    assert "species 1" in h.seen[-1][1].context["objective"]
+    assert h.store.revision() == 2
+    assert h.session.objective.set_by == "fallback:dex"
+
+
+@pytest.mark.parametrize("field,value,reason", [
+    ("hp", 9, "heal prerequisite"), ("balls", 0, "restock prerequisite"),
+    ("owned", (1,), "no unowned species"),
+])
+def test_unresolved_fallback_pauses_before_goalless_decision(dex_runner, field, value, reason):
+    h = dex_runner()
+    setattr(h.state, field, value)
+    assert h.runner.run().status is RunStatus.SAFE_PAUSE
+    assert len(h.seen) == 1
+    assert reason in h.session.fallback_error
+    assert h.events.of_type(EventType.RUNTIME_PAUSED)[-1].outcome == "fallback_unavailable"
+
+
+@pytest.mark.parametrize("policy", ["hold", "pause"])
+def test_fallback_does_not_override_completion_policy(dex_runner, policy):
+    h = dex_runner(policy=policy)
+    assert h.runner._iteration() is None
+    status = h.runner._iteration()
+    assert status is (None if policy == "hold" else RunStatus.WAITING_OBJECTIVE)
+    assert h.store.current().objective_id == "first"
+    assert all(obj.objective_id == "first" for obj, _ in h.seen)
+
+
+def test_empty_startup_fallback_uses_fresh_safe_frame(dex_runner):
+    h = dex_runner()
+    assert h.store.clear(expected_revision=1)["cleared"]
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert h.seen and all(frame.goal_id == "dex_1" for _, frame in h.seen)
+
+
+def test_fallback_waits_for_entire_queue_and_never_bypasses_rejection(dex_runner):
+    h = dex_runner(plan=[objective(set_by="script"),
+                         objective(2, objective_id="second", set_by="script", amount=99)])
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert h.store.current().objective_id == "second"  # exhausted index, final goal incomplete
+    assert h.script.exhausted and h.script.status()["completed_ids"] == ["first"]
+    h.store.clear(expected_revision=2)
+    h.script.stopped = True
+    assert h.runner._iteration() is RunStatus.SAFE_PAUSE
+    assert "plan pending or rejected" in h.session.fallback_error
+
+
+def test_history_failure_with_fallback_pauses_without_clearing(dex_runner, monkeypatch):
+    h = dex_runner()
+    assert h.runner._iteration() is None
+    monkeypatch.setattr(h.store, "_log", lambda *args: False)
+    assert h.runner._iteration() is RunStatus.SAFE_PAUSE
+    assert h.store.current().objective_id == "first" and h.store.path.exists()
+    assert "completion not durable" in h.session.fallback_error
+
+
+def test_fallback_cas_preserves_concurrent_agent(dex_runner, monkeypatch):
+    h = dex_runner()
+    source = h.session.fallback.from_snapshot
+
+    def concurrent(snapshot):
+        data = source(snapshot)
+        assert h.store.propose(objective(3, objective_id="new_agent", amount=99)).accepted
+        return data
+    monkeypatch.setattr(h.session.fallback, "from_snapshot", concurrent)
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert h.store.current().objective_id == "new_agent"
+    assert h.store.current().forbid == ("sell",)
+    assert all(frame.goal_id == "new_agent" for _, frame in h.seen[1:])
+
+
+@pytest.mark.parametrize("unsafe", ["busy", "battle", "menu", "invalid"])
+def test_fallback_handoff_waits_for_fresh_safe_completion(dex_runner, unsafe):
+    h = dex_runner()
+    h.session.refresh()
+    h.state.money = 1
+    h.state.busy, h.state.battle = unsafe == "busy", unsafe == "battle"
+    h.state.scene = "menu.pause" if unsafe == "menu" else "field.free"
+    h.state.valid = unsafe != "invalid"
+    h.runner._objective_observe(h.runner._perceive())
+    assert h.store.current().objective_id == "first"
+    h.state.busy = h.state.battle = False
+    h.state.scene, h.state.valid = "field.free", True
+    h.runner._objective_observe(h.runner._perceive())
+    assert h.session.objective.objective_id == "dex_1"
+
+
+def test_uncompleted_operator_is_not_replaced_by_fallback(dex_runner):
+    h = dex_runner(set_by="operator", amount=99)
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert all(obj.set_by == "operator" and obj.forbid == ("sell",) for obj, _ in h.seen)
+    assert h.store.revision() == 1
+
+
+@pytest.mark.parametrize("cold", [False, True])
+@pytest.mark.parametrize("set_by", ["agent", "operator"])
+def test_expired_objective_does_not_authorize_fallback(dex_runner, set_by, cold):
+    from datetime import datetime, timedelta, timezone
+    h = dex_runner(set_by=set_by, amount=99)
+    expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    data = objective(2, set_by=set_by, amount=99)
+    data["expires_at"] = expiry.isoformat()
+    assert h.store.propose(data).accepted
+    h.store.clock = lambda: expiry + timedelta(seconds=1)
+    if cold:
+        h.store = ObjectiveStore(h.store.path, clock=h.store.clock)
+        h.session.store = h.store
+    retained = h.store.path.read_bytes()
+    assert h.runner.run().status is RunStatus.SAFE_PAUSE
+    assert h.store.path.read_bytes() == retained
+    assert not h.seen and "expired" in h.session.fallback_error
+    assert not any(row["event"] == "completed" for row in h.store.history())
+
+
+def test_fallback_restart_uses_durable_floor_and_does_not_reactivate_old_goal(dex_runner):
+    h = dex_runner(plan=[objective(set_by="script")])
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert h.store.commit_completion(objective_id="dex_1", expected_revision=2,
+                                     clear_completed=True)
+    h.store = ObjectiveStore(h.store.path)
+    script = ScriptedObjectiveSource(h.store, h.script.plan)
+    session = ObjectiveSession(h.store, script=script, fallback=h.session.fallback)
+    h.state.owned = ()
+    session.refresh()
+    session.observe(h.source.read_snapshot(), safe_boundary=True, clear_completed=True)
+    assert session.objective.objective_id == "dex_1" and session.objective.revision == 3
+    atomic_write_json(h.store.path, objective())
+    assert h.store.current().revision == 3
+
+
+def test_initial_corrupt_objective_diagnoses_instead_of_filling(dex_runner):
+    h = dex_runner()
+    path = h.store.path
+    path.write_text('{"malformed":')
+    h.store = ObjectiveStore(path)
+    h.session.store = h.store
+    assert h.runner.run().status is RunStatus.SAFE_PAUSE
+    assert not h.seen and h.store.current() is None
+    assert "rejected" in h.session.fallback_error
+
+
+@pytest.mark.parametrize("cold", [False, True])
+def test_new_manual_objective_after_expiry_can_complete_into_fallback(dex_runner, cold):
+    from datetime import datetime, timedelta, timezone
+    h = dex_runner(amount=99)
+    expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    assert h.store.propose({**objective(2, amount=99), "expires_at": expiry.isoformat()}).accepted
+    h.store.clock = lambda: expiry + timedelta(seconds=1)
+    if cold:
+        h.store = ObjectiveStore(h.store.path, clock=h.store.clock)
+        h.session.store = h.store
+    h.session.refresh()
+    assert h.store.last_warning().code == "expired"
+    assert h.store.propose(objective(3, objective_id="manual", set_by="operator")).accepted
+    assert h.runner.run().status is RunStatus.MAX_STEPS
+    assert h.store.current().objective_id == "dex_1" and h.store.revision() == 4
+    assert h.store.last_warning().code == "expired"  # old warning is no longer authority
+    assert not h.session.fallback_error

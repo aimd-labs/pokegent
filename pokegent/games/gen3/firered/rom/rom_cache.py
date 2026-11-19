@@ -23,7 +23,7 @@ from pathlib import Path
 from pokegent.games.gen3.firered.rom.rom_data import ROM_PATH_ENV, require_supported
 
 CACHE_ENV = "POKEGENT_ROM_DATA_CACHE"
-CACHE_FORMAT_VERSION = 2
+CACHE_FORMAT_VERSION = 3
 CACHE_FILES = (
     "regions.json",
     "regions.PROVENANCE.txt",
@@ -97,7 +97,14 @@ def cache_root() -> Path:
 
 
 _ROM_SHA1_CACHE: dict[tuple[str, int, int, int], str] = {}
-_CACHE_PATH_VALIDATION: dict[tuple[str, str, int, int], bool] = {}
+_CACHE_PATH_VALIDATION: dict[tuple[str, str, int, int, str | None], bool] = {}
+
+
+def _map_index_digest() -> str | None:
+    from pokegent.local_data import local_path
+
+    path = local_path('pret_map_groups.json')
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path is not None else None
 
 
 def _rom_sha1(path: str) -> str:
@@ -132,7 +139,11 @@ def existing_cache_path(rom: str | os.PathLike[str] | None = None) -> Path | Non
         stat = manifest.stat()
     except OSError:
         return None
-    key = (str(target), sha1, stat.st_mtime_ns, stat.st_size)
+    try:
+        index_digest = _map_index_digest()
+    except OSError:
+        return None
+    key = (str(target), sha1, stat.st_mtime_ns, stat.st_size, index_digest)
     valid = _CACHE_PATH_VALIDATION.get(key)
     if valid is None:
         valid = _valid_cache(target, sha1)
@@ -171,6 +182,9 @@ def _valid_cache(directory: Path, sha1: str) -> bool:
         if manifest.get("format_version") != CACHE_FORMAT_VERSION:
             return False
         if manifest.get("generator_sha256") != _generator_fingerprint():
+            return False
+        if ('map_index_sha256' not in manifest
+                or manifest['map_index_sha256'] != _map_index_digest()):
             return False
         if manifest.get("artifacts") != list(CACHE_FILES):
             return False
@@ -444,6 +458,7 @@ def _build_unlocked(
         manifest = {
             "format_version": CACHE_FORMAT_VERSION,
             "generator_sha256": _generator_fingerprint(),
+            "map_index_sha256": _map_index_digest(),
             "sha1": sha1,
             "profile": profile.profile_id,
             "artifacts": list(CACHE_FILES),

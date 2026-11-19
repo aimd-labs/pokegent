@@ -17,5 +17,26 @@ quiz answers, elevator destinations, mansion layouts and sprites are excluded. R
 struct layouts, constants, decoder mappings and curated identifiers describe interoperability facts;
 pret/pokefirered is credited as the technical reference. These facts do not include game datasets.
 
+The explicit private local-data setup command adapts the ordered-map and static tileset layout
+recipes from the earlier AIMD Labs worldgen/regiongen tooling, retaining AIMD Labs and Nous Research
+MIT attribution. It reads a user's verified pinned pret source at runtime, without executing it.
+No downloaded source, game text, output dataset or historical source tree is redistributed here.
+
 Python dependencies are installed separately through pyproject.toml and retain their own licenses.
 No third-party Python package, vendored skill or raster artwork is bundled in this source tree.
+
+The opt-in objective fallback adapts generic `DexFallback` selection and objective-session
+handoff code from MIT-licensed pokevon_agent, source revision
+`3de37392cbbfdff3876bfed98571aa861f4c1032` (`goals/dex_fallback.py` and
+`goals/source.py`). LICENSE retains the Nous Research notice. Species-name, town and
+story tables, removed tactical fields and private game inputs are excluded.
+
+The bounded `recent_choices` history and runner hooks adapt the MIT-licensed
+pokevon_agent `history.py` and `runner.py`, locally pinned at revision
+`7185ae105ca0317753f53e0f16eb1843028df119`. LICENSE retains the Nous Research notice.
+The port excludes the repetition ledger and recovery/route-assist code.
+
+The bounded stuck-progress bookkeeping and explicit stuck-review hooks adapt
+pokevon_agent `goals/tracker.py`, `goals/source.py` and `runner.py` at that same
+`7185ae105ca0317753f53e0f16eb1843028df119` source pin. Abort conditions, route assist
+and broader tactical/review event fields are excluded.

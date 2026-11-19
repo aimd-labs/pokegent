@@ -180,7 +180,7 @@ class SurfStart(_Schema):
 
 class SurfDismount(_Schema):
     land_elevation: Number
-    water_elevation: Number
+    water_elevation: Number | None = None
     rule: Text
 
 

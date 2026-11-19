@@ -28,13 +28,15 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
-from pokegent.goals.models import Objective
+from pokegent.goals.dex_fallback import DexFallback, FallbackUnavailable
+from pokegent.goals.models import Objective, probe_leaves
 from pokegent.goals.store import ObjectiveStore, Proposal, StoreWarning
 from pokegent.goals.tracker import (
     MILESTONE_COMPLETED,
     ObjectiveTracker,
     ProgressEvent,
     ProgressSink,
+    ReviewRequest,
 )
 from pokegent.goals.validate import Reason, ResolvedObjective, validate
 
@@ -134,16 +136,21 @@ class ObjectiveSession:
         *,
         tracker: ObjectiveTracker | None = None,
         script: ScriptedObjectiveSource | None = None,
+        fallback: DexFallback | None = None,
         stuck_after: int = 120,
         sink: ProgressSink | None = None,
     ) -> None:
         self.store = store
         # The tracker is driven through ``set_objective`` (not handed the store): the goal changes
         # at ``refresh()``, before the next perception, and not at some later ``update``.
-        self.tracker = tracker if tracker is not None else ObjectiveTracker()
+        self.tracker = tracker if tracker is not None else ObjectiveTracker(stuck_after=stuck_after)
         if sink is not None:
             self.tracker.sink = sink
         self.script = script
+        self.fallback = fallback
+        self.fallback_error: str | None = None
+        self._review_pending: tuple[str, int] | None = None
+        self._reviews_requested = 0
         self._held = _Held()
         self._view: GoalView | None = None
         self._warned_seen = store.warning_count
@@ -224,16 +231,21 @@ class ObjectiveSession:
         elif resolved is not None:
             self._rejection = None
         self._view = self._make_view()
+        if resolved is not None:
+            self.fallback_error = None
         return Refreshed(warnings, tuple(events), changed=bool(events))
 
     def _switch(self, resolved: ResolvedObjective | None) -> list[ProgressEvent]:
         held = self._held
         new_rev = resolved.objective.revision if resolved else 0
-        same = (held.resolved is None) == (resolved is None) and held.revision == new_rev
+        same = ((held.resolved is None) == (resolved is None) and held.revision == new_rev
+                and (resolved is None or held.resolved.objective.objective_id
+                     == resolved.objective.objective_id))
         if same:
             return []
         events = self.tracker.set_objective(resolved)
         self._held = _Held(resolved, new_rev)
+        self._review_pending = None
         self._hold_waiting_reason = None
         if new_rev:
             self.revisions_seen.append(new_rev)
@@ -277,7 +289,10 @@ class ObjectiveSession:
         if obj is not None and obj.kind == "hold" and not self.tracker.done:
             resolved = self._held.resolved
             probes = resolved.probes if resolved is not None else ()
-            if probes and all(probe.kind in ("flag", "var") for probe in probes):
+            if probes and all(
+                leaf.kind in ("flag", "var", "var_at_least")
+                for leaf in probe_leaves(probes)
+            ):
                 self._hold_waiting_reason = (
                     "hold objective has only unmet RAM probes; no input can satisfy "
                     + ", ".join(probe.label() for probe in probes)
@@ -306,7 +321,53 @@ class ObjectiveSession:
                 )
                 if committed and clear_completed:
                     events += self.refresh().events
+                elif not committed and clear_completed and self.fallback is not None:
+                    current = self.store.current()
+                    if current is not None and current.revision == objective.revision:
+                        self.fallback_error = "completion not durable; fallback withheld"
+        if safe_boundary and snapshot.usable and self.fallback is not None:
+            events += self._fallback_after_observe(snapshot)
         return events
+
+    def _fallback_after_observe(self, snapshot: StateSnapshot) -> tuple[ProgressEvent, ...]:
+        revision = self.store.revision()
+        if self.store.current() is not None:
+            return ()
+        script = self.script
+        if script is not None and (script.stopped or
+                len(script.status()["completed_ids"]) != len(script.plan)):
+            self.fallback_error = "objective plan pending or rejected; fallback withheld"
+            return ()
+        if self._rejection or self.store.expired():
+            self.fallback_error = "objective rejected or expired; supply an explicit objective"
+            return ()
+        try:
+            proposal = self.fallback.from_snapshot(snapshot)
+            result = self.store.propose({**proposal, "revision": revision + 1},
+                                        expected_revision=revision)
+            if not result.accepted:
+                self.fallback_error = "fallback proposal rejected; supply an explicit objective"
+            return self.refresh().events
+        except FallbackUnavailable as exc:
+            self.fallback_error = str(exc)
+        except Exception:
+            self.fallback_error = "fallback facts unavailable; supply an explicit objective"
+        return ()
+
+    @property
+    def review_pending(self) -> bool:
+        obj = self.objective
+        return obj is not None and self._review_pending == (obj.objective_id, obj.revision)
+
+    def take_reviews(self) -> list[ReviewRequest]:
+        requests = list(self.tracker.reviews)
+        self.tracker.reviews.clear()
+        self._reviews_requested = min((1 << 31) - 1, self._reviews_requested + len(requests))
+        obj = self.objective
+        if obj is not None and any((r.objective_id, r.revision) == (obj.objective_id, obj.revision)
+                                   for r in requests):
+            self._review_pending = (obj.objective_id, obj.revision)
+        return requests
 
     def superseded(self) -> bool:
         """A newer valid revision is in the file than the one this iteration runs under (the
@@ -340,6 +401,8 @@ class ObjectiveSession:
                     ),
                 }
             ),
+            "review_pending": self.review_pending,
+            "reviews_requested": self._reviews_requested,
             "completed": self.tracker.completed,
             "done": self.done,
             "revisions_seen": list(self.revisions_seen),

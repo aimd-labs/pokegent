@@ -59,9 +59,11 @@ from pokegent.goals import (
     ScriptedObjectiveSource,
 )
 from pokegent.goals.validate import MapDirectory
+from pokegent.history import DEFAULT_KEEP, MAX_KEEP
 from pokegent.loop import (
     ON_OBJECTIVE_DONE,
     EscalationAction,
+    EscalationKind,
     EscalationRequest,
     EscalationResponse,
     Runner,
@@ -168,9 +170,13 @@ class AppConfig:
     #: a finished objective at the next free-roaming decision: ``hold`` (default, stay alive and
     #: poll the file), ``pause`` (stop with ``WAITING_OBJECTIVE``, exit 3) or
     on_objective_done: str = "hold"
+    on_objective_review: str = "continue"
+    objective_stuck_after: int = 120
+    decision_history: int = DEFAULT_KEEP
     #: headless/maintenance opt-out: a satisfied objective success probe does not stop the run
     #: (``run.ignore_objective``, CLI ``--ignore-objective``; default off)
     ignore_objective: bool = False
+    dex_fallback: bool = False
     #: savestate checkpoints: every ``checkpoint_every`` iterations (0 = off) a state is written to
     #: ``<out>/checkpoints/`` and the newest ``checkpoint_keep`` stay; ``save_final_state`` writes
     #: ``<out>/final.state`` when the run ends, whatever the reason (the next run's ``--state``)
@@ -216,6 +222,16 @@ class AppConfig:
             or int(self.external.get("walk_step_limit", 8)) < 1
         ):
             raise AppError("external.walk_step_limit must be >= 1")
+        if (isinstance(self.decision_history, bool)
+                or not isinstance(self.decision_history, int)
+                or not 0 <= self.decision_history <= MAX_KEEP):
+            raise AppError(f"decision_history must be an integer from 0 to {MAX_KEEP}")
+        if self.on_objective_review not in ("continue", "pause", "stop"):
+            raise AppError("on_objective_review must be continue|pause|stop")
+        if (isinstance(self.objective_stuck_after, bool)
+                or not isinstance(self.objective_stuck_after, int)
+                or self.objective_stuck_after < 1):
+            raise AppError("objective_stuck_after must be an integer >= 1")
         if self.on_objective_done not in ON_OBJECTIVE_DONE:
             raise AppError(f"on_objective_done must be one of {ON_OBJECTIVE_DONE}")
         if not isinstance(self.ignore_objective, bool):
@@ -261,6 +277,7 @@ class AppConfig:
             "run_id",
             "goal_id",
             "on_objective_done",  # a top-level setting: run.on_objective_done
+            "decision_history",
         }
         unknown = sorted(set(self.runner) - runner_fields)
         if unknown:
@@ -273,6 +290,7 @@ class AppConfig:
             max_steps=self.max_steps,
             deadline_s=self.deadline_s,
             on_objective_done=self.on_objective_done,
+            decision_history=self.decision_history,
             ignore_objective=self.ignore_objective,
             autoplay=self.autoplay or "off",
             **{k: v for k, v in self.runner.items() if k not in ("max_steps", "deadline_s")},
@@ -280,6 +298,7 @@ class AppConfig:
 
 
 _SECTIONS = {
+    "objectives": {"fallback"},
     "schema_version": None,
     "autoplay": None,
     "external": {"walk_step_limit"},
@@ -290,6 +309,9 @@ _SECTIONS = {
         "restart_file",
         "goal_id",
         "on_objective_done",
+        "on_objective_review",
+        "objective_stuck_after",
+        "decision_history",
         "ignore_objective",
         "checkpoint_every",
         "checkpoint_keep",
@@ -342,8 +364,6 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
             "recovery config was removed: the runner now reports no progress and stops for "
             "supervisor review"
         )
-    if "objectives" in raw:
-        raise AppError("objectives.fallback was removed: an empty objective file remains goal-less")
     if "progression" in raw:
         raise AppError(
             "progression config was removed: the hand-authored story graph and derived "
@@ -359,8 +379,6 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
                 "instructions",
                 "route_assist",
                 "route_assist_repeat",
-                "on_objective_review",
-                "objective_stuck_after",
             }
         )
         if removed:
@@ -373,14 +391,18 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
         )
         if removed:
             raise AppError(f"removed config key(s): {removed}")
-    if isinstance(raw.get("run"), Mapping) and "decision_history" in raw["run"]:
-        raise AppError("run.decision_history was removed: decision history is owned by the agent")
     unknown = sorted(set(raw) - set(_SECTIONS))
     if unknown:
         raise AppError(f"unknown config sections {unknown}; known: {sorted(_SECTIONS)}")
     if raw.get("schema_version", 1) != 1:
         raise AppError(f"unsupported schema_version {raw.get('schema_version')!r}")
     kw: dict[str, Any] = {"run_id": run_id}
+    objectives = raw.get("objectives", {})
+    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
+        raise AppError("objectives must be a mapping with optional fallback")
+    if objectives.get("fallback", "off") not in ("off", "dex"):
+        raise AppError("objectives.fallback must be off|dex")
+    kw["dex_fallback"] = objectives.get("fallback", "off") == "dex"
     if raw.get("autoplay") is not None:
         kw["autoplay"] = raw["autoplay"]
     external = raw.get("external") or {}
@@ -466,8 +488,6 @@ def load_config_file(path: str | os.PathLike[str] | None) -> dict[str, Any]:
             "recovery config was removed: the runner now reports no progress and stops for "
             "supervisor review"
         )
-    if "objectives" in data:
-        raise AppError("objectives.fallback was removed: an empty objective file remains goal-less")
     legacy_field = data.get("field")
     is_legacy_field = isinstance(legacy_field, dict) and set(legacy_field) <= {"menus", "teach_tm"}
     if (
@@ -516,6 +536,7 @@ def load_config_file(path: str | os.PathLike[str] | None) -> dict[str, Any]:
 
 _USER_CONFIG_KEYS = frozenset(
     {
+        "objectives",
         "rom_path",
         "decider",
         "system1",
@@ -539,8 +560,10 @@ class RecordingSink:
         self,
         action: str = "pause",
         keep: int = 200,
+        review_action: str = "continue",
     ) -> None:
         self._action = EscalationAction(action)
+        self._review_action = EscalationAction(review_action)
         self._keep = keep
         self.requests: list[EscalationRequest] = []
         self.total = 0
@@ -549,7 +572,9 @@ class RecordingSink:
         self.total += 1
         if len(self.requests) < self._keep:
             self.requests.append(request)
-        return EscalationResponse(self._action, f"recording sink: {self._action.value}")
+        action = (self._review_action if request.kind is EscalationKind.OBJECTIVE_REVIEW
+                  else self._action)
+        return EscalationResponse(action, f"recording sink: {action.value}")
 
     def as_dicts(self) -> list[dict[str, Any]]:
         out = []
@@ -643,6 +668,8 @@ def build_runner(
         objectives,
         objective_plan,
         directory=objective_directory,
+        dex_fallback=config.dex_fallback,
+        stuck_after=config.objective_stuck_after,
     )
     bind_planning = getattr(decider, "bind_planning", None)
     if callable(bind_planning) and session is not None:
@@ -778,7 +805,7 @@ def build_runner(
             macro_finished=getattr(decider, "macro_finished", None),
         )
     if sink is None:
-        sink = RecordingSink()
+        sink = RecordingSink(review_action=config.on_objective_review)
     runner = Runner(
         decider=decider or FirstLegalDecider(),
         executor=executor,
@@ -803,9 +830,13 @@ def make_objective_session(
     plan: str | os.PathLike[str] | Sequence[Mapping[str, Any]] | None = None,
     *,
     directory: MapDirectory | None = None,
+    dex_fallback: bool = False,
+    stuck_after: int = 120,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
     if objectives is None:
+        if dex_fallback:
+            raise AppError("dex fallback needs the objective file it writes through")
         if plan is not None:
             raise AppError("an objective plan needs the objective file it writes through")
         return None
@@ -827,8 +858,20 @@ def make_objective_session(
             script = ScriptedObjectiveSource(store, plan)
         except PlanError as exc:
             raise AppError(f"objective plan: {exc}") from None
+    fallback = None
+    if dex_fallback:
+        from pokegent.games.gen3.firered.rom.wild import load_wild_table
+        from pokegent.goals.dex_fallback import DexFallback
+
+        try:
+            fallback = DexFallback(load_wild_table())
+        except (OSError, ValueError, RuntimeError, TypeError):
+            raise AppError("dex fallback requires valid private ROM encounter data",
+                           EXIT_ENVIRONMENT) from None
     if session is None:
-        return ObjectiveSession(store, script=script)
+        return ObjectiveSession(store, script=script, fallback=fallback, stuck_after=stuck_after)
+    if fallback is not None:
+        session.fallback = fallback
     if script is not None:
         session.script = script
     return session
@@ -1131,7 +1174,7 @@ def summarize(
         "events": {"count": len(envelopes)},
     }
     if app.objectives is not None:
-        doc["review_pending"] = False
+        doc["review_pending"] = summary.review_pending
         doc["objective"] = summary.objective or app.objectives.snapshot()
         doc["objective_events"] = {
             name: sum(1 for e in envelopes if e.type == etype and e.source == "objective")
@@ -1721,7 +1764,7 @@ def run_offline(
     if ignore_objective:
         overrides["ignore_objective"] = True
     if decision_history is not None:
-        raise AppError("--decision-history was removed: decision history is owned by the agent")
+        overrides["decision_history"] = decision_history
     if viewer:
         overrides["viewer"] = replace(
             cfg.viewer, **{k: v for k, v in viewer.items() if v is not None}

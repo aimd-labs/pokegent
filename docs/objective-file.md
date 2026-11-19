@@ -60,9 +60,27 @@ string. `pc` and `storage` are distinct executor classes.
 
 ### Removed in Phase 3
 
-`instructions`, `abort_if`, `next_review_on`, `run.on_objective_review`,
-`run.objective_stuck_after`, and `runner.review_events` were removed. Supplying any of these fields or
-configuration keys is rejected loudly.
+`instructions`, `abort_if` and `runner.review_events` remain removed and are rejected.
+
+### Opt-in stuck review
+
+`next_review_on: ["stuck"]` explicitly requests bounded advisory review of an unmet
+objective. The default is empty; other events and duplicate entries are rejected.
+`run.objective_stuck_after` is an integer >=1 (default120) of usable updates without
+new progress. Progress means a newly visited 4x4 map cell, changed flag count or an
+increase in satisfied probes. Cell memory is capped at4096 and clears at that cap;
+visits can count as new again after the cap. Hold/completed/absent goals are exempt.
+Progress re-arms one request per episode; goal id/revision changes reset tracking.
+
+`run.on_objective_review` accepts `continue` (default), `pause` or `stop`. Continue
+keeps the last valid objective; it does not clear, complete, replace or advance it.
+Review never overrides hard no-progress, hybrid recovery, operator ownership or
+fresh-RAM legality. A newer accepted objective clears pending review; queued facts
+retain their originating id/revision, and a stale response cannot stop a successor.
+The bounded queue holds64 requests; request counters saturate at2^31-1. Empty
+subscriptions are omitted from serialization to preserve older history equality;
+explicit stuck subscriptions persist across restart. No abort/recovery policy,
+route assist or story successor is supplied by this feature.
 
 ## 3. Kinds and targets
 
@@ -98,6 +116,8 @@ prove success, and success is never taken from model text.
 | `map_arrival` | `map` | current frame is in that map |
 | `flag` | `flag` 1..0x8FF, optional `expected` | saved event flag equals `expected` |
 | `var` | `var` 0x4000..0x40FF, `value` | event variable equals value |
+| `var_at_least` | same fields and bounds as `var` | readable event variable is at least value |
+| `any_of` | `children`: 1..8 leaf probes | at least one child is true; nested groups are rejected |
 | `badge` | `badge` 1..8 | corresponding badge flag is set |
 | `trainer_defeated` | `trainer_id` | trainer flag `0x500 + trainer_id` is set |
 | `party_healthy` | optional `min_fraction` | every party member has positive HP and the requested fraction (HP only) |
@@ -110,6 +130,14 @@ prove success, and success is never taken from model text.
 | `money_at_least` | `amount` 0..999999 | player money reaches amount |
 | `dex_owned` | `species` 1..151 | species is marked caught |
 | `dex_count` | `min` 0..151 | caught count reaches min |
+
+The outer `success_probes` list remains a conjunction. For a consumable item with persistent
+proof, use `{"kind":"any_of","children":[{"kind":"item","item":17},
+{"kind":"flag","flag":7}]}`. Unknown or unusable RAM never proves a leaf. A readable sparse
+variable table supplies implicit zero; an absent table is unknown. Script effects may mark an
+interaction as serving either new probe, but only fresh usable RAM can prove completion.
+RAM-only hold groups wait exactly like existing flag/var holds; groups containing other leaves
+remain actionable. Existing probe and objective JSON gains no fields or defaults.
 
 For example, this delegates training a specific live party member without adding a strategy:
 
@@ -291,3 +319,38 @@ satisfied objective continue without the normal completion wait. CLI objective i
 
 The supported configuration names relevant here are `run.on_objective_done` and
 `run.ignore_objective`; the removed review/stuck keys are listed above and are rejected.
+
+## 9. Opt-in successor fallback
+
+Existing plan queues advance to their next entry at a fresh safe completion boundary. To continue
+with a ROM-backed dex objective after the queue or a standalone objective completes, configure:
+
+```yaml
+run:
+  on_objective_done: continue
+objectives:
+  fallback: dex  # "off" by default; quote "off" in YAML
+```
+
+The run uses its existing objective file (default `<run dir>/objective.json`); in-process callers
+must supply a file/store to `build_runner`. Fallback proposals use the same validator, writer lock,
+compare-and-set, history and revision floor. A newer writer wins. Active agent/operator objectives
+and pending/rejected queues take precedence. Expiry does not prove completion or advance a queue.
+`hold` and `pause` retain their completed-objective behavior; fallback can also fill an initially
+empty store from a fresh usable safe frame. With fallback off, empty files remain goal-less.
+
+Fallback loads encounters only from the existing private ROM cache (supported ROM and local map
+data must already be supplied outside the checkout). It ranks unowned species with land encounters,
+using the fork's encounter-probability/current-map cost. It emits a `train` objective with a
+`dex_owned` RAM probe, not a story milestone or a guarantee that the encounter is reachable.
+No species-name or town table is shipped. Surf/fishing encounters are excluded in this slice.
+
+Known full-HP non-egg party RAM, Pokedex RAM and at least ten capture balls (item IDs 2, 3 or 4)
+are required. Capture eligibility retains the fork's HP-only check; it does not prove full PP or
+absence of status. The stronger public heal completion probe (HP, status and ROM-backed PP) is unchanged.
+The fork's heal/restock prerequisite intent is retained, but automatic destinations are not inferred:
+unresolved heal/restock, unknown facts, no remaining supported candidates, expired/rejected input,
+or rejected fallback proposals emit `runtime.paused` (`fallback_unavailable`) and SAFE_PAUSE (exit 1)
+at the safe boundary. Supply an explicit valid objective and resume. Missing/invalid private
+encounter data is a setup error (exit 4). Data generation, automatic shop/healing routes and complete
+story progression are outside this slice. Synthetic tests establish frame handoff, not a real run.

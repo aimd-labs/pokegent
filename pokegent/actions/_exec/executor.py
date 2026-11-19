@@ -90,6 +90,35 @@ def _progress_state_changed(before: Any, after: Any) -> bool:
     return getattr(before, "battle", None) is None and getattr(after, "battle", None) is not None
 
 
+def _durable_progress_changed(before: Any, after: Any) -> bool:
+    """Progress that is NOT a mere position/map change (party/bag/flags/money/storage/battle).
+
+    ``_progress_state_changed`` counts a map/position change as progress, so a warp ping that
+    hops between two maps gets ``progressed=True`` every action.  Loop detection must retire its
+    evidence only on genuinely useful (non-positional) progress, never on the positional ping that
+    IS the loop (issue #35 review).  This predicate drops the map/position check.
+    """
+    if before is None or after is None:
+        return False
+    before_party = getattr(before, "party", ())
+    after_party = getattr(after, "party", ())
+    if len(before_party) != len(after_party) or before_party != after_party:
+        return True
+    if getattr(before, "flags", None) != getattr(after, "flags", None):
+        return True
+    if getattr(before, "bag", None) != getattr(after, "bag", None):
+        return True
+    if getattr(getattr(before, "player", None), "money", None) != getattr(
+        getattr(after, "player", None), "money", None
+    ):
+        return True
+    before_storage = getattr(before, "storage", None)
+    after_storage = getattr(after, "storage", None)
+    if getattr(before_storage, "boxes", None) != getattr(after_storage, "boxes", None):
+        return True
+    return getattr(before, "battle", None) is None and getattr(after, "battle", None) is not None
+
+
 def _ram_player_position(snapshot: Any) -> tuple[object, ...] | None:
     """Return the RAM-backed player placement used to prove grass movement."""
     state = getattr(snapshot, "map", None)
@@ -561,6 +590,14 @@ class Executor:
                 if progress_obs and readable(progress_obs.snapshot, progress_obs.scene)
                 else None
             )
+            non_positional_progress = (
+                _durable_progress_changed(
+                    ctx.snapshot,
+                    progress_obs.snapshot,
+                )
+                if progress_obs and readable(progress_obs.snapshot, progress_obs.scene)
+                else None
+            )
             if (
                 not progressed
                 and progress_obs is not None
@@ -577,6 +614,7 @@ class Executor:
                 after_hash=after,
                 verified_outcome=verified,
                 progressed=progressed,
+                non_positional_progress=non_positional_progress,
                 dialog_fingerprint=dialog_fingerprint,
                 dialog_text=tuple(captured_dialog_text),
                 interrupted_scene=(interrupted_obs.scene.scene_id if interrupted_obs else None),

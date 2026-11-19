@@ -286,7 +286,7 @@ on. agent also needs a way to be told at the events it named, without the game e
 3. **`ObjectiveSession`** (store + tracker + optional script behind ONE consistent view per iteration). The runner
    calls `refresh()` at the start of an iteration (`os.stat` unless the file changed; never raises; a corrupt, too
    large, schema-invalid or stale file keeps the last valid objective), then `observe(snapshot)` after the perception
-   (probes, `abort_if`, stuck). The goal a frame was built under is the goal when the executor re-validates it, even if
+   (fresh success probes and bounded stuck detection). The goal a frame was built under is the goal when the executor re-validates it, even if
    agent writes a new file in between; a newer revision is applied by the next perception (`superseded()` makes the
    runner re-perceive instead of acting under the old one). `FamilyConfig.objectives` / `.graph` pass the session's
    objective source and a route graph to a family's `register(objectives=, graph=)` (`register_optional` supplies them by
@@ -301,25 +301,28 @@ on. agent also needs a way to be told at the events it named, without the game e
      `revision`, `reasons`, `kept` = the objective that stays active): `unreadable_file`, `file_too_large`,
      `schema_invalid`, `unknown_map`, `stale_revision`, `file_missing`, `expired`, `session_error`.
    * `escalation.requested` with `details.kind == "objective_review"` (`EscalationKind.OBJECTIVE_REVIEW`, no
-     `error_code`): `objective_id`, `revision`, `trigger` (a `next_review_on` event, or `abort:<condition>`), `abort`,
-     `review_pending`, `trigger_details`, `recent_events` (the last `review_events` = 8 events as short factual lines),
-     `situation` (scene, map, badges, party HP). The same request goes to the `EscalationSink`.
+     `error_code`): `objective_id`, `revision`, `trigger: stuck`,
+     `review_pending`, `trigger_details`. Requires explicit `next_review_on: ["stuck"]`;
+     the default is empty. The same request goes to the `EscalationSink`, whose configured
+     review response is continue/pause/stop. It cannot authorize completion, replacement
+     or a fallback, and a stale request cannot stop a concurrent successor. Queue capacity64
+     and counters capped at2^31-1 bound review bookkeeping. Existing hard safety/recovery
+     limits stay authoritative even when the review response is continue.
    * `runtime.paused` with `outcome` `waiting_objective` (pause policy) or `holding` (hold policy, followed by
      `runtime.resumed` when a newer revision arrives).
-5. **Review triggers.** A review is requested when an event in the active objective's `next_review_on` happens, or an
-   `abort_if` condition fires (an abort needs a review whether or not `next_review_on` names it; an abort absorbs a
-   review of the same name, one request). Sources: `whiteout` (the runner entered `system.whiteout`),
-   `party_fainted` (more fainted members than before), `stuck` (the tracker's idle detector, or the runner's
-   no-progress / busy-streak counters), `three_consecutive_no_progress` (three stuck episodes in a row without
-   anything new), `blocked` (no legal option), `milestone` / `goal_completed` (probes), `new_badge`, `expired` and
-   `timeout` (expiry). `unreachable` and `missing_capability` are accepted by the schema and by
-   `ObjectiveTracker.notify()`; the runner does not raise them yet (no typed failure channel from the field family).
-6. **The runner never blocks on a reviewer.** The sink's answer is applied as before (`CONTINUE` / `PAUSE` /
-   `STOP`); `PauseOnEscalation` and `RecordingSink` answer `CONTINUE` to a review (a review is advice, not a failure;
-   `AppConfig.on_objective_review` changes that). Until a newer revision arrives the run goes on under the last valid
-   objective, and `RunSummary.review_pending` / `summary.json.review_pending` say that a review is open.
+5. **Review triggers.** Only `next_review_on: ["stuck"]` opts an objective into review; the default is empty.
+   Unsupported events and `abort_if` remain rejected. Stuck signals come from the tracker's usable-idle detector
+   or the runner's existing no-progress/busy verdicts. Tracker `progress.stuck` telemetry may be emitted without
+   review opt-in; it does not itself request review or complete the objective. Progress re-arms one request per
+   episode. Existing hard safety/recovery limits remain authoritative regardless of the review response.
+6. **Review responses.** The sink's answer is applied as `CONTINUE` / `PAUSE` / `STOP`; no separate reviewer wait
+   is added. The application's `RecordingSink` defaults to `CONTINUE` for reviews, configured through
+   `AppConfig.on_objective_review`. The library runner's default `PauseOnEscalation` answers `PAUSE`, including
+   for reviews. A continue response retains the last valid objective; `RunSummary.review_pending` /
+   `summary.json.review_pending` report a dispatched review until the active objective identity changes.
 7. **`WAITING_OBJECTIVE`** (`RunStatus`, `runner.RunStatus.WAITING_OBJECTIVE`). An objective is DONE when all its
-   probes are true or an `abort_if` fired. This includes `hold`: an already-true RAM probe completes before input;
+   probes are true on fresh usable RAM. `abort_if` is rejected and cannot complete a goal. This includes `hold`:
+   an already-true RAM probe completes before input;
    an unmet hold with only flag/var probes waits as `WAITING_OBJECTIVE` instead of counting dialog options as progress. A done
    objective never starts a new free-roaming decision: at the first safe scene boundary (`field.free` or an idle
    `dialog.end`) with a chooseable (or an empty) option set, `RunnerConfig.on_objective_done` decides: `hold` (default) keeps the run alive without input, advancing
@@ -330,8 +333,8 @@ on. agent also needs a way to be told at the events it named, without the game e
    Queued/newer objectives survive; completion of an operator objective authorizes this transition
    while the manual-clear authority guard remains in force. The runner re-perceives after clearing
    before offering input. Neither objective changes nor completion in `continue` signal or restart
-   the writer. Mid-battle, menu, and other busy scenes are always played on;
-   readiness reviews never gate an action while a battle is active. No objective at all (no file, expired) is goal-less,
+   the writer. Completion handoff waits during battle, menu and other busy scenes;
+   review responses and hard safety limits still apply. No objective at all (no file, expired) is goal-less,
    not waiting. `AppConfig.on_objective_done`, `run.on_objective_done` in the
    run config, CLI `--on-objective-done`.
 8. **CLI and exit codes.** `pokegent run --objective FILE [--objective-plan PLAN.json] [--on-objective-done
@@ -353,9 +356,22 @@ Validate changes with `ruff check .`, `python -m compileall pokegent addons`, an
 `python tests/games/gen3/test_imports.py`.
 
 
-## 13. v1.4: decider decision history (removed in Phase 3)
+## 13. v1.4: bounded decider decision history
 
-Removed. The runner no longer keeps `recent_choices` or any history across frames; every decision frame carries only facts from the current frame (design rule: no counters, no cached state). What happened is in the event log, which the agent can read. `run.decision_history` is rejected as a removed key.
+`run.decision_history` (default 3, integer 0..8; 0 disables) adds `recent_choices`
+to the decider's context: its last choices, neutral executor outcomes and a bounded
+mechanical diff against the next decision context. Automatic waits are not choices.
+History clears on scene-family or objective id/revision changes and a decreasing
+battle turn counter. Map changes retain the bounded history and its transition diffs,
+including both directions of a cross-map revisit.
+Builder-owned `recent_choices` wins; provider state budgets may trim or drop history.
+
+The decider gets a copy; execution and choice validation use the paired original
+frame, including a new original when an external pending goal refresh rebuilds it.
+Options, fingerprints and fresh-RAM revalidation are unchanged. The original payload
+guard runs first. A leak introduced only by optional history clears that history and
+emits `runtime.degraded`; an original payload leak still blocks the decision.
+This is bounded context, with no repetition ledger, ranking or recovery behavior.
 
 ## 14. v1.5: tactical instructions (removed in Phase 3)
 
@@ -483,3 +499,13 @@ keeps the ordinary `no_route` / `unreachable` facts. This changes no executor, n
 requirement: the edge is still unmet, the step is simply visible as the next decision. The option
 keeps its own facts, so a fossil option stays `irreversible` with `risk: high`; handing an
 irreversible pick to the agent is the hybrid irreversible gate, not part of this contract.
+
+### Opt-in objective successor fallback
+
+With `objectives.fallback: dex` and `run.on_objective_done: continue`, the next decision after
+fresh safe completion uses the next configured queue entry or an eligible private-ROM-backed dex
+goal. Completion history and revision-floor/CAS rules above still apply. Pending/rejected queues,
+active foreign objectives and expiry cannot authorize fallback takeover. Missing/unknown facts,
+unresolved heal/restock prerequisites and no supported candidates diagnose and SAFE_PAUSE; missing
+private encounter data is a setup error. This restores no story dataset or tactical/review fields.
+See [the complete opt-in contract](objective-file.md#9-opt-in-successor-fallback).

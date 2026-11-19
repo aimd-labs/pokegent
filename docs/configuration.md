@@ -61,7 +61,7 @@ Saved-state validation checks the ROM header and RAM invariants, independently o
 classification. A healthy save in `scene.unknown` is resumable; unknown does not excuse corrupt RAM
 or a missing avatar outside the established pre-field callback allowlist.
 
-Old `recovery:`, `objectives:` and `runner.busy_nudge_after`
+Old `recovery:` and `runner.busy_nudge_after`
 keys are rejected with an error, never silently ignored.
 
 Environment overrides include `POKEGENT_ROM_PATH`, `POKEGENT_DECIDER`,
@@ -135,3 +135,28 @@ graceful-stop deadline, and 130 forced interrupt.
 Set `POKEGENT_LOCAL_DATA_DIR` before startup to load validated game-data files outside the checkout.
 `POKEGENT_MAP_GROUPS` optionally overrides the map index. See [local-data.md](local-data.md) for schemas,
 missing-file behavior and the setup limitation until automatic local generation exists.
+
+`run.objective_stuck_after` accepts an integer >=1 (default120).
+`run.on_objective_review` configures the application's `RecordingSink`: `continue`
+(default), `pause` or `stop`. The library runner's default `PauseOnEscalation` uses `PAUSE`.
+Only objectives explicitly setting `next_review_on: ["stuck"]` request review.
+Other review events and `abort_if` remain rejected. Tracker `progress.stuck` telemetry
+may fire without opt-in; an opted-in objective requests review once per episode,
+and progress re-arms it.
+Existing hard loop/recovery and legality limits still stop execution independently.
+See [objective stuck review](objective-file.md#opt-in-stuck-review) for progress/reset rules.
+
+`run.decision_history` accepts an integer from 0 to 8 (default 3); 0 disables it.
+`--decision-history N` overrides that setting. Recent decider choices, executor
+outcomes and short context diffs appear in `state.recent_choices`. Scene-family,
+objective id/revision and new-battle resets prevent stale history. Map transitions
+retain bounded history and its map diffs so both directions of a revisit stay visible.
+Provider budgets trim newest history items last and
+may drop the optional history entirely. This adds context, not loop recovery.
+
+`objectives.fallback` accepts `"off"` (default; quote it in YAML) or `dex`.
+Use `run.on_objective_done: continue`
+for completion-to-fallback handoff; hold/pause defaults are unchanged. The existing private ROM
+encounter cache and usable party/dex/bag facts are required. Unresolved healing/restocking or no
+supported candidate safely pauses instead of inventing a destination. See
+[successor fallback](objective-file.md#9-opt-in-successor-fallback) for conditions and limits.

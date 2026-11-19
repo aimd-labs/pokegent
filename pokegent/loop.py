@@ -53,6 +53,7 @@ from pokegent.errors import ErrorCode
 from pokegent.events import EventSink, EventType
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.source import ObjectiveSession, is_objective_rejection
+from pokegent.history import DEFAULT_KEEP, MAX_KEEP, DecisionHistory
 from pokegent.options.models import (
     Decider,
     DeciderTimeout,
@@ -129,6 +130,7 @@ class EscalationKind(str, Enum):
     ESCALATE_SCENE = "escalate_scene"  # catalog row whose only answer is escalation
     NO_BUILDER = "no_builder"
     NO_LEGAL_OPTION = "no_legal_option"
+    OBJECTIVE_REVIEW = "objective_review"
     NO_PROGRESS = "no_progress"
     BUSY_STUCK = "busy_stuck"
     DECIDER_FAILED = "decider_failed"
@@ -251,6 +253,13 @@ class RunnerConfig:
     #: Same (scene, option, fingerprint) attempted this many times inside the window => escalate.
     no_progress_limit: int = 8
     no_progress_window: int = 64
+    #: option_loop detector (issue #35): distinct option ids allowed across the full
+    #: ``loop_window * loop_min_cycles`` verified-decision interval, and min signature
+    #: revisits (returns to a previously-visited state) required to call it a closed loop.
+    loop_window: int = 64
+    loop_distinct_limit: int = 2
+    loop_signature_limit: int = 4
+    loop_min_cycles: int = 3
     invalid_retries: int = 2
     unknown_retries: int = 2
     settle_frames: int = 2
@@ -259,6 +268,8 @@ class RunnerConfig:
     busy_stuck_limit: int = 20
     decider_retries: int = 1
     invalid_choice_limit: int = 3
+    #: Bounded recent choices for the decider only; zero disables.
+    decision_history: int = DEFAULT_KEEP
     # Keep enough same-frame failures to suppress sibling option ids (PC party
     # actions can expose six targets) until the frame context changes.
     recent_failed_keep: int = 64
@@ -292,6 +303,10 @@ class RunnerConfig:
     system1_max_outage_s: float = 0.0
 
     def __post_init__(self) -> None:
+        if (isinstance(self.decision_history, bool)
+                or not isinstance(self.decision_history, int)
+                or not 0 <= self.decision_history <= MAX_KEEP):
+            raise ValueError(f"decision_history must be an integer from 0 to {MAX_KEEP}")
         if self.system1_outage not in ("wait", "pause"):
             raise ValueError("system1_outage must be wait|pause")
         if self.system1_max_outage_s < 0:
@@ -300,6 +315,10 @@ class RunnerConfig:
             "max_steps",
             "no_progress_limit",
             "no_progress_window",
+            "loop_window",
+            "loop_distinct_limit",
+            "loop_signature_limit",
+            "loop_min_cycles",
             "settle_frames",
             "busy_wait_frames",
             "busy_stuck_limit",
@@ -360,6 +379,7 @@ class ProgressCounters:
     #: one-frame settles the perceiver spent on transient invalid reads (observation, no input)
     transient_invalid_settled: int = 0
     #: objective bookkeeping: store warnings and iterations spent holding for a new objective
+    objective_reviews: int = 0
     objective_warnings: int = 0
     objective_idle: int = 0
     observation_errors: int = 0
@@ -470,6 +490,7 @@ class Runner:
         self._entered: str | None = None
         self._frame_no: int | None = None
         self._last_snapshot = None
+        self.history = DecisionHistory(self.config.decision_history)
         self._recent_failed: deque[dict[str, Any]] = deque(
             maxlen=max(1, self.config.recent_failed_keep)
         )
@@ -488,7 +509,14 @@ class Runner:
         self._busy_streak = 0
         self._invalid_choice_streak = 0
         self._rejected_choice_attempts: dict[tuple[str, str, ErrorCode], int] = {}
-        self._progress = ProgressMonitor(self.config.no_progress_limit, now=self.clock())
+        self._progress = ProgressMonitor(
+            self.config.no_progress_limit,
+            now=self.clock(),
+            loop_window=self.config.loop_window,
+            loop_distinct_limit=self.config.loop_distinct_limit,
+            loop_signature_limit=self.config.loop_signature_limit,
+            loop_min_cycles=self.config.loop_min_cycles,
+        )
         self._last_perception: Perception | None = None
         self._last_frame: DecisionFrame | None = None
         self._pending_objective_key: tuple[str, int] | None = None
@@ -604,6 +632,7 @@ class Runner:
             self.counters.as_dict(),
             self.coverage.to_dict(),
             self._previous.scene_id if self._previous else None,
+            review_pending=session.review_pending if session is not None else False,
             objective=session.snapshot() if session is not None else None,
             game_cleared=self.game_cleared,
             stop_reason=reason,
@@ -730,6 +759,19 @@ class Runner:
             and self._hybrid_recovery_decisions >= self.config.no_progress_limit
         ):
             return self._report_no_progress("agent recovery window exhausted", perception.frame)
+        # Loop detection is INDEPENDENT of progressed: a warp ping changes position on every
+        # step (progressed=True) yet is a closed client loop.  Surface it as a stall even though
+        # the semantic signature resets the window each step (issue #35).  It must NOT fire while
+        # a hybrid recovery window is active — an active recovery owns the bound, and re-firing
+        # here would SAFE_PAUSE before the agent could execute a single recovery action.
+        if (
+            not self._hybrid_no_progress_active
+            and not (self.objectives is not None and self.objectives.done)
+            and self._progress_tracks_scene(perception.scene.scene_id)
+        ):
+            loop_due = self._progress.loop_reason()
+            if loop_due is not None:
+                return self._report_no_progress(loop_due, perception.frame)
         if (
             not progressed
             and not (self.objectives is not None and self.objectives.done)
@@ -849,7 +891,7 @@ class Runner:
     def _progress_tracks_scene(scene_id: str | None) -> bool:
         return scene_id == "field.free" or scene_id in _FIELD_MENU_SCENES
 
-    def _finish_no_progress_recovery(self) -> None:
+    def _finish_no_progress_recovery(self, *, clear_loop: bool = False) -> None:
         if not self._hybrid_no_progress_active:
             return
         self._hybrid_no_progress_active = False
@@ -857,6 +899,13 @@ class Runner:
         self._attempts.clear()
         self._postcondition_attempts.clear()
         self._rejected_choice_attempts.clear()
+        # A completed recovery (durable progress observed) retires the closed-loop
+        # suspicion so the detector re-arms instead of reopening immediately
+        # (issue #35 review gap 2).  Loop evidence is retired only when that progress
+        # was genuinely non-positional: a two-map warp ping is ``progressed`` on every
+        # action yet is exactly the loop, so it must not clear the evidence.
+        self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                    clear_loop=clear_loop)
         notify = getattr(self.decider, "notify_progress", None)
         if callable(notify):
             notify()
@@ -1094,7 +1143,8 @@ class Runner:
             if not self._hybrid_no_progress_active:
                 self._hybrid_no_progress_active = True
                 self._hybrid_recovery_decisions = 0
-                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                            clear_loop=True)
             return self._handle_ready(perception)
         return self._escalate(
             EscalationKind.UNKNOWN_SCENE,
@@ -1278,6 +1328,7 @@ class Runner:
         frame = perception.frame
         assert frame is not None
         self._last_frame = frame
+        self.history.observe(frame, self._goal_key(frame))
         update_briefing = getattr(self.decider, "update_briefing", None)
         if callable(update_briefing):
             update_briefing(
@@ -1393,7 +1444,7 @@ class Runner:
                 ErrorCode.E_PAYLOAD_LEAK,
                 {"payload_leak": leak},
             )
-        shown = frame
+        shown = self._history_frame(frame)
         self._emit(
             EventType.DECISION_SYSTEMONE_REQUESTED,
             scene_id=frame.scene_id,
@@ -1418,8 +1469,11 @@ class Runner:
                 if callable(take_frame):
                     adopted = take_frame()
                     if adopted is not None:
+                        # External/hybrid return the shown copy unless the goal rebuilt it.
+                        if adopted is not shown:
+                            frame = adopted
+                            self.history.observe(frame, self._goal_key(frame))
                         shown = adopted
-                        frame = adopted
                 break
             except DeciderTimeout as exc:
                 last_error = exc
@@ -1726,6 +1780,19 @@ class Runner:
         view = self._goal_view(frame)
         return frame.goal_id, (view.revision if view is not None else None)
 
+    def _history_frame(self, frame: DecisionFrame) -> DecisionFrame:
+        shown = self.history.prepare(frame, self._goal_key(frame))
+        if shown is not frame:
+            try:
+                to_system_one_payload(shown)
+            except PayloadLeakError as exc:
+                self.history.reset()
+                self._emit(EventType.RUNTIME_DEGRADED, scene_id=frame.scene_id,
+                           request_id=frame.decision_id, outcome=ErrorCode.E_PAYLOAD_LEAK.value,
+                           details={"component": "decision_history", **exc.as_dict()})
+                return frame
+        return shown
+
     def _act(
         self,
         frame: DecisionFrame,
@@ -1784,9 +1851,12 @@ class Runner:
                     or result.progressed is True
                     or self._interrupted_by_battle(result)
                 ),
+                option_id=option_id,
             )
         self._record_dialog_block(frame, option_id, result, source=source)
         self._record_result(frame, option_id, result)
+        if source == "decider":
+            self.history.record(frame, option_id, result, self._goal_key(frame))
         notify = getattr(self.decider, "record_action_result", None)
         clear_autoplay_pending = getattr(self.decider, "clear_autoplay_pending", None)
         try:
@@ -1829,7 +1899,7 @@ class Runner:
         )
 
         if result.progressed is True:
-            self._finish_no_progress_recovery()
+            self._finish_no_progress_recovery(clear_loop=result.non_positional_progress is True)
         if self._hybrid_no_progress_active and source == "decider":
             self._hybrid_recovery_decisions += 1
 
@@ -1905,7 +1975,16 @@ class Runner:
 
         if result.progressed is True:
             self._attempts.clear()
-            self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+            # Executor-proven durable progress retires loop evidence: a real step forward
+            # means the closed-loop suspicion is stale and must re-arm (issue #35 review).
+            # Retire ONLY on genuinely non-positional progress: a two-map warp ping changes
+            # position (progressed=True) on every action yet is exactly the loop, so clearing
+            # every action would blind the detector (#35 review R3 regression).
+            self._progress.reset_window(
+                now=self.clock(),
+                iteration=self.counters.iterations,
+                clear_loop=result.non_positional_progress is True,
+            )
 
         text_wait_changed_state = (
             option is not None
@@ -2123,6 +2202,12 @@ class Runner:
         *,
         terminal: bool = False,
     ) -> RunStatus | None:
+        if self.objectives is not None and kind in (EscalationKind.NO_PROGRESS,
+                                                    EscalationKind.BUSY_STUCK):
+            self.objectives.tracker.note_stuck({"source": kind.value, "scene": scene_id})
+            review_status = self._dispatch_reviews()
+            if review_status is not None:
+                return review_status
         self.counters.escalations += 1
         self.coverage.escalated(scene_id or "scene.unknown")
         self._emit(
@@ -2146,7 +2231,8 @@ class Runner:
                 self._attempts.clear()
                 self._postcondition_attempts.clear()
                 self._rejected_choice_attempts.clear()
-                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations)
+                self._progress.reset_window(now=self.clock(), iteration=self.counters.iterations,
+                                            clear_loop=True)
                 self._stop_reason_override = None
                 self._verdict = "other"
                 return None
@@ -2275,8 +2361,31 @@ class Runner:
                 snapshot=self._last_snapshot,
             ).frame
             if rebuilt is not None:
+                self.history.observe(rebuilt, self._goal_key(rebuilt))
                 self._pending_objective_key = objective_key
             return rebuilt
+
+    def _dispatch_reviews(self) -> RunStatus | None:
+        session = self.objectives
+        assert session is not None
+        status = None
+        for review in session.take_reviews():
+            self.counters.objective_reviews = min(
+                (1 << 31) - 1, self.counters.objective_reviews + 1)
+            details = {"objective_id": review.objective_id, "revision": review.revision,
+                       "trigger": "stuck", "review_pending": session.review_pending,
+                       "trigger_details": dict(review.details)}
+            self._emit(EventType.ESCALATION_REQUESTED, outcome="objective_review",
+                       details={"kind": "objective_review", "error_code": None, **details})
+            request = EscalationRequest(EscalationKind.OBJECTIVE_REVIEW, self._entered,
+                                        self.counters.iterations, None, details)
+            response = self._ask_sink(request)
+            current = session.store.current()
+            # A retired request cannot pause/stop a concurrent successor.
+            if current is not None and (current.objective_id, current.revision) == (
+                    review.objective_id, review.revision):
+                status = status or self._apply_response(EscalationKind.OBJECTIVE_REVIEW, response)
+        return status
 
     def _objective_observe(self, perception: Perception) -> RunStatus | None:
         session = self.objectives
@@ -2289,6 +2398,13 @@ class Runner:
                 safe_boundary=self._objective_safe_boundary(perception),
                 clear_completed=self.config.on_objective_done == "continue",
             )  # completion is recorded only at the safe boundary
+        review_status = self._dispatch_reviews()
+        if review_status is not None:
+            return review_status
+        if session.fallback_error is not None and self._objective_safe_boundary(perception):
+            self._emit(EventType.RUNTIME_PAUSED, source="objective", outcome="fallback_unavailable",
+                       details={"reason": session.fallback_error})
+            return RunStatus.SAFE_PAUSE
         return None
 
     @staticmethod

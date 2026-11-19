@@ -57,7 +57,7 @@ from pokegent.games.gen3.firered.maps.map_schema import MapState, snapshot_map_i
 from pokegent.games.gen3.firered.maps.obstacles import kind_for_role
 from pokegent.games.gen3.firered.maps.world import WorldAdapter, WorldView
 from pokegent.games.gen3.firered.rom.constants import FLAG_BADGE01_GET, NUM_BADGES
-from pokegent.goals.models import Objective
+from pokegent.goals.models import Objective, probe_leaves
 from pokegent.goals.tracker import evaluate_probe
 from pokegent.goals.validate import ResolvedObjective
 from pokegent.navigation.objectives import resolve_collect_navigation
@@ -134,7 +134,7 @@ def _mark_teach_options_serving_objective(
     probes = resolved.probes if resolved is not None else obj.success_probes
     move_ids = {
         probe.move_id
-        for probe in probes
+        for probe in probe_leaves(probes)
         if probe.kind == "party_knows_move" and probe.move_id is not None
     }
     known_moves = {
@@ -1206,6 +1206,8 @@ class FieldBuilder:
 
     @staticmethod
     def _probe_text(probe) -> str:
+        if probe.kind in ("any_of", "var_at_least"):
+            return probe.label()
         if probe.kind == "var":
             return f"var 0x{probe.var:X} == {probe.value}"
         if probe.kind == "map_arrival":
@@ -1610,13 +1612,13 @@ class FieldBuilder:
                             if any(
                                 getattr(probe, "kind", None) == "trainer_defeated"
                                 and getattr(probe, "trainer_id", None) == npc.trainer_id
-                                for probe in probes
+                                for probe in probe_leaves(probes)
                             ):
                                 facts["serves_goal"] = True
                             if npc.trainer_kind == "gym_leader" and any(
                                 getattr(probe, "kind", None) == "badge"
                                 and getattr(probe, "badge", None) == facts["leader_badge"]
-                                for probe in probes
+                                for probe in probe_leaves(probes)
                             ):
                                 facts["serves_goal"] = True
                     if npc.gift is None and not object_gift_sources and npc.trainer_id is None:
