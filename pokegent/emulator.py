@@ -1276,6 +1276,13 @@ class RestoreInfo:
 # ---------------------------------------------------------------------------
 
 
+class DecisionIdle:
+    """Latched invalidation for one decision; only the emulator thread sets it."""
+
+    def __init__(self) -> None:
+        self.changed = threading.Event()
+
+
 class EmulatorActor:
     """Serialize every access to one backend; see the module docstring."""
 
@@ -1284,6 +1291,7 @@ class EmulatorActor:
         backend: Emulator,
         *,
         fps: Optional[float] = None,
+        realtime_idle_while_deciding: bool = False,
         chord_whitelist: Optional[FrozenSet[FrozenSet[str]]] = None,
         snapshot_regions: Sequence[MemoryRegion] = GBA_SNAPSHOT_REGIONS,
         max_hold_frames: int = 600,
@@ -1325,10 +1333,53 @@ class EmulatorActor:
         self._timer = timer
         self._seq = itertools.count(1)
         self._exclusive_access = threading.RLock()
-        self._clock = clock or EmuClock(backend, fps=fps, timer=timer)
+        self._clock = clock or EmuClock(
+            backend, fps=fps, timer=timer, idle_frames=not realtime_idle_while_deciding
+        )
+        self.realtime_idle_while_deciding = realtime_idle_while_deciding
+        if realtime_idle_while_deciding and (
+            self._clock.fps is None or self._clock.idle_frames
+        ):
+            raise ValueError("decision idle requires a paced clock with idle_frames=False")
         if not self._clock.is_alive():
             self._clock.start()
         self.snapshots_taken = 0
+
+    @contextmanager
+    def decision_wait(self, unchanged: Callable[[AtomicSnapshot], bool]) -> Iterator[DecisionIdle]:
+        """Idle only during a provider wait; stop at a boundary before revalidation.
+
+        The read-only guard runs after EVERY frame, latching even a change that later reverses.
+        Guard failures invalidate the decision without disabling audio/video emulation.
+        """
+        token = DecisionIdle()
+
+        def check(emu: Emulator) -> None:
+            if not token.changed.is_set():
+                try:
+                    if unchanged(self._snapshot_now(emu)):
+                        return
+                except Exception:
+                    pass  # unknown state is stale, never permission for input
+                token.changed.set()
+
+        def begin(emu: Emulator) -> None:
+            if self._clock._decision_idle is not None:
+                raise RuntimeError("a decision wait is already active")
+            emu.release_buttons()
+            check(emu)
+            self._clock._decision_idle = check
+
+        self._check_alive()
+        self._await(self._clock.submit_call(begin), self.call_timeout_s)
+        try:
+            yield token
+        finally:
+            def end(emu: Emulator) -> None:
+                check(emu)
+                self._clock._decision_idle = None
+
+            self._await(self._clock.submit_call(end), self.call_timeout_s)
 
     # -- helpers ------------------------------------------------------------
 
@@ -1766,9 +1817,11 @@ class EmuClock:
         self._queue: Deque[_Command] = collections.deque()  # writer commands, FIFO
         self._reads: Deque[_Command] = collections.deque()  # read calls, boundary
         self._active: Optional[_Command] = None
+        self._decision_idle: Optional[Callable[[Any], None]] = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name=name, daemon=True)
         self._frame_ms: Deque[float] = collections.deque(maxlen=600)
+        self._decision_guard_ms: Deque[float] = collections.deque(maxlen=600)
         self.resyncs = 0
         self.ticks = 0  # frames run by this clock
         self.watchdog_aborts = 0
@@ -1878,6 +1931,12 @@ class EmuClock:
         return {
             "frames": self.ticks,
             "frame_ms": {"p50": pct(0.5), "p99": pct(0.99), "mean": mean, "samples": n},
+            "decision_guard_ms": {
+                "mean": (sum(self._decision_guard_ms) / len(self._decision_guard_ms)
+                         if self._decision_guard_ms else 0.0),
+                "max": max(self._decision_guard_ms, default=0.0),
+                "samples": len(self._decision_guard_ms),
+            },
             "frames_per_s_while_running": (1000.0 / mean) if mean else 0.0,
             "resyncs": self.resyncs,
             "pending_commands": self.pending(),
@@ -1890,7 +1949,6 @@ class EmuClock:
 
     def _run(self) -> None:
         paced = self.fps is not None
-        free_run = paced and self.idle_frames  # tick even when no command needs frames
         period = self.period
         try:
             deadline = self._timer()
@@ -1898,6 +1956,7 @@ class EmuClock:
             while not self._stop.is_set():
                 self._drain_reads()
                 self._start_commands()
+                free_run = paced and (self.idle_frames or self._decision_idle is not None)
                 if self._active is None and not free_run:
                     with self._cv:
                         if not (self._queue or self._reads or self._stop.is_set()):
@@ -1956,6 +2015,10 @@ class EmuClock:
         self._emu.tick(1)
         self.ticks += 1
         self._frame_ms.append((self._timer() - t0) * 1000.0)
+        if self._decision_idle is not None:
+            guard_start = self._timer()
+            self._decision_idle(self._emu)
+            self._decision_guard_ms.append((self._timer() - guard_start) * 1000.0)
         cmd = self._active
         if cmd is not None:
             cmd.ran += 1

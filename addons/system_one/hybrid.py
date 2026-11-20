@@ -158,6 +158,14 @@ class HybridDecider:
         """Use the runner's same-snapshot refresh for escalated agent choices."""
         self.external.bind_pending_frame(refresh)
 
+    def bind_decision_valid(self, valid: Any) -> None:
+        bind = getattr(self.external, "bind_decision_valid", None)
+        if callable(bind):
+            bind(valid)
+
+    def discard_stale_decision(self) -> None:
+        self.external.discard_stale_decision()
+
     def take_decided_frame(self) -> DecisionFrame | None:
         """Adopt the frame paired with a choice refreshed while the agent waited."""
         return self.external.take_decided_frame()
@@ -204,13 +212,10 @@ class HybridDecider:
                 interruptible_wait=True,
             )
         scope = (frame.scene_id, frame.state_fingerprint)
-        if self._repeat_key is not None and self._repeat_key[:2] != scope:
-            self._repeat_key = None
-            self._repeat_count = 0
-        force_agent = self._repeat_count >= self.force_agent_after_repeats
-        if force_agent:
-            self._repeat_key = None
-            self._repeat_count = 0
+        # Offering or discarding a choice is not an executed action. Only result accounting
+        # updates the streak, including after a forced agent choice has actually completed.
+        force_agent = (self._repeat_key is not None and self._repeat_key[:2] == scope
+                       and self._repeat_count >= self.force_agent_after_repeats)
         started = time.monotonic()
         system_result: ChoiceResult | None = None
         system_error: Exception | None = None

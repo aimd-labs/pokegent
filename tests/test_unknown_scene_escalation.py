@@ -167,6 +167,30 @@ def test_unknown_offered_to_agent_with_bounded_real_execution(harness):
     assert not h.events.of_type(EventType.DECISION_SYSTEMONE_COMPLETED)
 
 
+def test_stale_unknown_decisions_cannot_renew_agent_window(harness):
+    from contextlib import contextmanager
+    from threading import Event
+
+    h = harness()
+    h.executor.actor.realtime_idle_while_deciding = True
+
+    @contextmanager
+    def stale_wait(guard):
+        changed = Event()
+        changed.set()
+        yield SimpleNamespace(changed=changed)
+
+    h.executor.actor.decision_wait = stale_wait
+    h.perceiver.source.decision_guard = lambda *args, **kwargs: None
+    h.decider.external.discard_stale_decision = lambda: None
+    summary = h.runner.run()
+    assert summary.status is RunStatus.SAFE_PAUSE
+    assert h.state.actions == 3
+    assert summary.counters["stale_decisions"] == 9
+    assert summary.counters["frozen_decisions"] == 3
+    assert len(h.offers) == 12
+
+
 @pytest.mark.parametrize("kwargs", [{"enabled": False}, {"hybrid": False}])
 def test_disabled_and_other_modes_retain_escalation(harness, kwargs):
     h = harness(**kwargs)

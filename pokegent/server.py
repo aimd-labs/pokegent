@@ -18,6 +18,7 @@ from pokegent.options.models import (
     ChoiceResult,
     DeciderTimeout,
     DecisionFrame,
+    StaleDecision,
     assert_payload_clean,
     sanitize_internal_text,
     to_system_one_payload,
@@ -157,6 +158,8 @@ class ExternalDecider:
         self._objective_status_cache: dict[str, Any] = {}
         self._objective_status_refreshing = False
         self._pending_frame_refresh: Any = None
+        self._decision_valid: Any = None
+        self._stale_decision = False
         self._agent_request_observer: Any = None
         self._planning_lock = threading.RLock()
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -475,6 +478,7 @@ class ExternalDecider:
             self._interrupt_requested.clear()
             self._macro_running = False
             self._choice = None
+            self._stale_decision = False
             self._outcome = None
             self._status = "waiting_for_choice"
             self._interruptible_wait = interruptible_wait
@@ -494,6 +498,14 @@ class ExternalDecider:
                 else time.monotonic() + wait_timeout
             )
             while self._choice is None:
+                if self._stale_decision or (
+                    self._decision_valid is not None and not self._decision_valid()
+                ):
+                    self._frame = None
+                    self._status = "running"
+                    self._interruptible_wait = False
+                    self._condition.notify_all()
+                    raise StaleDecision("observable state changed during decision idle")
                 if self._stop_requested.is_set():
                     self._frame = None
                     self._status = "stopped"
@@ -615,6 +627,30 @@ class ExternalDecider:
     def bind_pending_frame(self, refresh: Any) -> None:
         """Bind a same-snapshot frame refresh used while an agent is choosing."""
         self._pending_frame_refresh = refresh
+
+    def bind_decision_valid(self, valid: Any) -> None:
+        """Read a latched actor guard; never read the emulator on the HTTP thread."""
+        self._decision_valid = valid
+
+    def discard_stale_decision(self) -> None:
+        """Withdraw a choice invalidated after its provisional HTTP acknowledgement."""
+        with self._condition:
+            if self._choice is not None:
+                outcome = {
+                    "option_id": self._choice, "status": "stale", "outcome": "stale",
+                    "applied": False, "verified": False, "agent_choice": True,
+                    "decided_by": "agent", "reason": "state changed before input",
+                }
+                self._outcome = outcome
+                self._actions_since_decision.append(outcome)
+            self._decided_frame = None
+            self._agent_choice_pending = False
+            self._autoplay_pending = None
+            self._frame = None
+            self._choice = None
+            self._interruptible_wait = False
+            self._status = "running"
+            self._condition.notify_all()
 
     def bind_agent_request(self, observer: Any) -> None:
         """Observe an agent frame after it is published, before waiting for its choice."""
@@ -792,6 +828,10 @@ class ExternalDecider:
         with self._condition:
             if self._frame is None or body["frame_id"] != self._frame["frame_id"]:
                 raise LookupError("stale frame")
+            if self._decision_valid is not None and not self._decision_valid():
+                self._stale_decision = True
+                self._condition.notify_all()
+                raise LookupError("stale frame: observable state changed")
             allowed = {option["id"] for option in self._frame["options"]}
             allowed.update(option["id"] for option in self._frame.get("all_options", ()))
             if body["option_id"] not in allowed:

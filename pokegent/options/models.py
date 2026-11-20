@@ -608,6 +608,12 @@ class DeciderTimeout(DeciderError):
     code = ErrorCode.E_DECIDER_TIMEOUT
 
 
+class StaleDecision(DeciderError):
+    """Idle emulation invalidated the offered state; request a fresh decision, no input."""
+
+    code = ErrorCode.E_STALE_DECISION
+
+
 @runtime_checkable
 class Decider(Protocol):
     """Picks one option id from a frame. Synchronous; an async provider adapts to this."""
