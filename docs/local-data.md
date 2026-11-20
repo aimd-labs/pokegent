@@ -2,15 +2,18 @@
 
 The live stream runs this public code with private local game data kept outside the repository.
 No ROM, extracted dataset, sprites or run recordings are bundled. Bring your own legally obtained
-supported ROM. Complete first-start onboarding remains planned; the explicit generator below
-supplies local data, while native emulator/agent acceptance is a separate gate.
+supported ROM. The generator below supplies all seven local files and the ROM cache.
+The [clean-start recipe](clean-start.md) describes the accepted local emulator/agent path and its
+tested-host limits.
 
-## Explicit local setup (generator candidate)
+<a id="explicit-local-setup-generator-candidate"></a>
 
-`rom-data setup` now generates the seven files and builds the private ROM cache. Complete
-first-start emulator onboarding remains under validation; generation/cache success alone does
-not establish a successful emulator run. Use Python 3.11 and your own supported FireRed USA Rev 0
-ROM, outside this checkout. Native mGBA installation and the agent bridge are separate prerequisites.
+## Explicit local setup
+
+`rom-data setup` generates the seven files and builds the private ROM cache. Generation/cache
+success alone does not establish a successful emulator run. Use Python 3.11 and your own supported
+FireRed USA Rev 0 ROM outside this checkout. Native mGBA installation and the agent bridge are
+separate prerequisites.
 
 ```sh
 export FIRERED_ROM_PATH=/absolute/private/own-game.gba
@@ -124,9 +127,9 @@ Manual named indexes and their consumers retain their existing behavior. Generat
 the existing string-based objective resolver; historical names receive no new aliases. Combining
 this numeric override with a mismatched named Fly sidecar raises `LocalDataError` during import,
 rather than silently disabling Fly. Other sidecars retain their existing validation; there is no
-blanket mixed-data guard. No sidecars are generated. This slice does not provide named-data/cache
-compatibility, Fly or special-action tables, or a complete emulator run. Issue #1 remains open;
-synthetic checks do not demonstrate real-game capability.
+blanket mixed-data guard. No sidecars are generated. This numeric-only tool does not provide
+named-data/cache compatibility, Fly or special-action tables. Use the complete setup recipe for
+emulator runs; synthetic numeric-index checks alone do not demonstrate real-game capability.
 
 The first six filenames retain the earlier runtime's document schemas, except that the diagnostic
 Surf `water_elevation` may be omitted or null when unknown; legacy numeric values remain valid.

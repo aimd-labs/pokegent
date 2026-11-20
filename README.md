@@ -29,14 +29,15 @@ python tools/check_rom_data.py
 ```
 
 These checks need no ROM or emulator. Generate the local data and private ROM cache with
-[`pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR"`](docs/local-data.md#explicit-local-setup-generator-candidate).
-Follow the [native prerequisites](docs/native-install.md) before emulator use. Complete clean-start
-emulator/agent acceptance (B5) remains under validation; setup success alone does not prove it.
+[`pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR"`](docs/local-data.md#explicit-local-setup).
+The [clean-start recipe](docs/clean-start.md) covers native prerequisites, a fresh game and
+agent choices. Local acceptance reached the first field and three RAM-verified movements on
+the documented Ubuntu 24.04 host; setup success alone is not that gameplay proof.
 Set `POKEGENT_LOCAL_DATA_DIR` before startup. Optional features stay disabled if their files are
 absent; see [local data requirements](docs/local-data.md) for filenames and schemas.
-The native setup helper's six supported-platform tests skip on Ubuntu 26.04, currently used by
-`ubuntu-latest`; they are not claimed as executed in GitHub CI. B5 still needs portable synthetic
-coverage and supported-platform acceptance.
+The main `ubuntu-latest` CI job uses Ubuntu 26.04, where the six native-helper tests skip.
+The separate `native-helper` job runs all six on Ubuntu 24.04 and rejects skips or an empty suite.
+These synthetic checks use neither native binaries nor a ROM.
 
 For later emulator setup, install `.[mgba,dashboard]` and configure `FIRERED_ROM_PATH` with an
 absolute path outside the checkout. `POKEGENT_LOCAL_DATA_DIR` supplies the local game-data files;
