@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from pokegent.games.gen3.firered.maps import map_names
@@ -187,7 +188,15 @@ def trim_briefing(result: dict[str, Any], *, max_bytes: int = BRIEFING_MAX_BYTES
             mark("diagnostics")
         return changed
 
+    def drop_story_facts() -> bool:
+        if "story_facts" not in result:
+            return False
+        del result["story_facts"]
+        mark("story_facts")
+        return True
+
     reductions = (
+        drop_story_facts,
         drop_events,
         drop_side,
         reduce_bag,
@@ -210,6 +219,7 @@ def build_briefing(
     world: Any = None,
     objective: Any = None,
     events: list[dict[str, Any]] | None = None,
+    story_facts: Mapping[str, Any] | None = None,
     trim: bool = True,
 ) -> dict[str, Any]:
     """Build only facts already present in the snapshot/ROM tables.
@@ -380,4 +390,6 @@ def build_briefing(
     result["summary"] = summary
     # Keys are machine-facing navigation data and are deliberately kept out of readable fields.
     result["keys"] = {"location": location}
+    if story_facts is not None:
+        result["story_facts"] = dict(story_facts)
     return trim_briefing(result) if trim else result

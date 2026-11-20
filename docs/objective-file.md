@@ -413,5 +413,31 @@ the same process-boundary race as existing stop decisions.
 This slice has invented-data behavioral tests only. Digests declare provenance and
 bind the authored policy; they do not authenticate a real ROM or establish complete
 story coverage. Real generation, setup/cache identity binding, scoped temporary
-facts, same-snapshot owner/provider facts and private phase/transition acceptance
+facts and private phase/transition acceptance
 remain separate gates. No game graph or policy is packaged with the engine.
+
+Story mode also adds optional `story_facts` to agent/SystemOne state and the owner
+briefing, including while a manual goal is active. These read-only facts use the
+exact snapshot that built the offered options; they never replace or clear a goal.
+`schema: story-facts/1` reports `status: available|unknown|complete`, the next
+incomplete required challenge in authored order, and its prerequisite closure.
+Each entry has a presentation `label` and `state: proven|unmet|unknown`. A proven
+intermediate node discharges its historical prerequisites. Unknown never proves
+completion; `available` means evidence is readable, not that the challenge is ready.
+`policy: authored`, `provenance: declared` and `readiness: prerequisites_only`
+describe the current limits explicitly.
+
+`counts` (`proven`, `unmet`, `unknown`, `total`) cover the relevant prerequisite
+closure before presentation truncation, excluding the challenge itself. Complete
+story has no next challenge and an empty closure. Labels have at most 80 characters;
+at most six prerequisites and one challenge fit within 1536 JSON bytes, with
+`truncated: true` when detail is removed. Unsafe labels omit the whole optional
+facts unit with a redacted diagnostic. Provider reduction and the 6144-byte briefing
+budget may drop the whole unit; provider reductions and briefing diagnostics record
+that drop. Facts do not enter action fingerprints or history context differences.
+Pending goal refresh rebuilds from the same held snapshot and preserves its facts;
+the briefing remains the last observed view. Off/Dex payloads stay unchanged.
+
+The artifact's 64-node/64-KiB caps remain unchanged. Their fit for a complete real
+story, including badges, key items, HMs and side gates, remains unmeasured pending
+complete generation and coverage validation. Synthetic tests establish no such fit.

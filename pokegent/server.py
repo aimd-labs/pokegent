@@ -650,7 +650,9 @@ class ExternalDecider:
                 self._objective_store.current() if self._objective_store is not None else None
             )
             briefing = build_briefing(
-                snapshot, tables=tables, world=world, objective=objective, events=events, trim=False
+                snapshot, tables=tables, world=world, objective=objective, events=events,
+                trim=False,
+                story_facts=frame.context.get("story_facts") if frame is not None else None,
             )
             if frame is not None:
                 keys = briefing.get("keys")
