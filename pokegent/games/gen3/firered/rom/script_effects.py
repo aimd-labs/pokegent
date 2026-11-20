@@ -6,7 +6,7 @@ This module is read-only: unresolved native behavior and operands are reported, 
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Literal
 
 from pokegent.games.gen3.firered.rom.script_scan import (
@@ -18,6 +18,7 @@ from pokegent.games.gen3.firered.rom.script_scan import (
 )
 
 GuardKind = Literal["flag", "var", "item", "item_space", "badge", "hm", "trainer"]
+Origin = tuple[int, int, str, int]  # path epoch, writer site, command, selector/source
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,22 @@ class Guard:
     subject: int
     operator: str
     value: int | bool
+    origin: Origin | None = field(default=None, repr=False)
+
+    @property
+    def identity(self):
+        if self.kind != "var":
+            return self.kind, self.subject
+        source = ("entry", self.subject) if self.origin is None else self.origin
+        if self.origin is not None and self.origin[2] == "entry":
+            source = ("entry", self.origin[3])
+        if self.origin is not None and self.origin[2:] == ("special", 391):
+            source = ("entry_quest_log",)
+        return self.kind, source
+
+    @property
+    def sort_key(self):
+        return repr((self.identity, self.operator, self.value))
 
 
 @dataclass(frozen=True)
@@ -72,6 +89,7 @@ class _Comparison:
     value: int | bool
     result_value: int | None = None
     known_value: int | None = None
+    origin: Origin | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +100,8 @@ class _State:
     variables: tuple[tuple[int, int], ...] = ()
     comparison: _Comparison | None = None
     steps: int = 0
+    origins: tuple[tuple[int, Origin], ...] = ()
+    quest_log_entry: bool = True
 
 
 # IDs from pret/pokefirered 037335f data/specials.inc whose native implementation changes
@@ -281,6 +301,17 @@ _VAR_RESULT_WRITERS = {
     "checkmonmodernfatefulencounter",
 }
 
+# Active yielding paths in pinned scrcmd.c; a future UI read is no longer entry-equivalent.
+_YIELDS = frozenset({
+    "gotonative", "waitstate", "endram", "animateflash", "fadescreen", "fadescreenspeed",
+    "delay", "warp", "warpsilent", "warpdoor", "warphole", "warpteleport", "warpspinenter",
+    "waitse", "waitfanfare", "fadeoutbgm", "waitmovement", "waitmovementat", "lockall", "lock",
+    "waitmessage", "waitbuttonpress", "yesnobox", "multichoice", "multichoicedefault",
+    "multichoicegrid", "hidemonpic", "trainerbattle", "dotrainerbattle", "dowildbattle",
+    "pokemart", "pokemartdecoration", "pokemartdecoration2", "playslotmachine",
+    "choosecontestmon", "waitfieldeffect", "waitmoncry", "waitdooranim",
+})
+
 # These reviewed ferry helpers consume special variables but do not clobber all of them.  Keep
 # only their decomp-proven writes; every other special retains the conservative invalidation.
 _FERRY_SPECIAL_VAR_WRITES: dict[int, tuple[int, ...] | None] = {
@@ -325,6 +356,43 @@ for _index, _delta in enumerate(_DIRECTIONS):
 _MOVEMENT[0x6E] = _MOVEMENT[0x6F] = (0, 1)
 
 
+def _written_registers(command: Cmd, tracked: set[int]) -> set[int]:
+    """Pinned scrcmd.c/script_menu.c writes; comparison flags are not VAR_RESULT."""
+    name = command.name
+    if name in {"setvar", "addvar", "subvar", "copyvar", "setorcopyvar", "checkcoins"}:
+        return {command.u16()}
+    if name == "getplayerxy":
+        return {command.u16(), command.u16(2)}
+    if name == "gettime":
+        return {0x8000, 0x8001, 0x8002}
+    if name == "textcolor":
+        return {0x8012, 0x8013}
+    if name == "getbraillestringwidth":
+        return {0x8004}
+    if name == "checkpartymove":
+        return {0x800D, 0x8004}
+    if name == "checkmoney":
+        return {0x800D} if command.operands[4] == 0 else set()
+    if name in _VAR_RESULT_WRITERS or name in {"checkitem", "checkitemspace"}:
+        return {0x800D}
+    if name in {"special", "specialvar"}:
+        special = command.u16(2 if name == "specialvar" else 0)
+        if special == 391:
+            writes = {0x800D}
+        elif special == 216:
+            writes = {0x403A}
+        elif special == 344:
+            writes = {0x800D}
+        elif special in {273, 306, 352, 440}:
+            writes = set()
+        elif special in _FERRY_SPECIAL_VAR_WRITES:
+            writes = set(_FERRY_SPECIAL_VAR_WRITES[special] or ())
+        else:
+            writes = tracked | {*range(0x8004, 0x8008), 0x800D}
+        return writes | ({command.u16()} if name == "specialvar" else set())
+    return set()
+
+
 def interpret(
     rom: bytes,
     script_ptr: int,
@@ -353,7 +421,8 @@ def interpret(
         if state.steps >= max_steps:
             unknown.add(f"step limit ({max_steps}) from {script_ptr:#x}")
             continue
-        signature = (state.pc, state.stack, state.guards, state.variables, state.comparison)
+        signature = (state.pc, state.stack, state.guards, state.variables, state.comparison,
+                     state.origins, state.quest_log_entry)
         if signature in seen:
             continue
         if len(seen) >= max_states:
@@ -369,46 +438,47 @@ def interpret(
         next_pc = command.addr + 1 + len(command.operands)
         prior_variables = dict(state.variables)
         variables = dict(prior_variables)
-        comparison = _comparison(command, variables, state.comparison)
+        origins = dict(state.origins)
+        writes = _written_registers(command, set(variables) | set(origins))
+        special = command.u16(2 if command.name == "specialvar" else 0) if command.name in {
+            "special", "specialvar"} else None
+        for variable in writes:
+            variables.pop(variable, None)
+            name = command.name
+            if special == 391 and not state.quest_log_entry:
+                name = "special_unbound"
+            selector = special if special is not None else variable
+            if special == 344:
+                name, selector = "list_menu", prior_variables.get(0x8004, -1)
+            origins[variable] = (state.steps + 1, command.addr, name,
+                                 selector)
+        comparison = _comparison(command, prior_variables, state.comparison, origins)
         if command.name == "setvar":
             variables[command.u16()] = command.u16(2)
         elif command.name in {"addvar", "subvar"}:
             variable, operand = command.u16(), command.u16(2)
-            if variable in variables:
+            operand = (operand if command.name == "addvar" or operand < 0x4000
+                       else prior_variables.get(operand))
+            if variable in prior_variables and operand is not None:
                 delta = operand if command.name == "addvar" else -operand
-                variables[variable] = (variables[variable] + delta) & 0xFFFF
+                variables[variable] = (prior_variables[variable] + delta) & 0xFFFF
             else:
                 variables.pop(variable, None)
         elif command.name in {"copyvar", "setorcopyvar"}:
             dest, source = command.u16(), command.u16(2)
             if command.name == "setorcopyvar" and source < 0x4000:
                 variables[dest] = source
-            elif source in variables:
-                variables[dest] = variables[source]
             else:
-                variables.pop(dest, None)
-        elif command.name in {"special", "specialvar"}:
-            special_id = command.u16(2 if command.name == "specialvar" else 0)
-            writes = (
-                _FERRY_SPECIAL_VAR_WRITES.get(special_id, ...)
-                if context.preserve_seagallop_special_vars
-                else ...
-            )
-            if writes is ...:
-                for variable in (*range(0x8004, 0x8008), 0x800D):
-                    variables.pop(variable, None)
-            elif writes is not None:
-                for variable in writes:
-                    variables.pop(variable, None)
-            if command.name == "specialvar":
-                variables.pop(command.u16(), None)
-            if special_id == 216:
-                variables.pop(0x403A, None)
-        elif command.name == "getplayerxy":
-            variables.pop(command.u16(), None)
-            variables.pop(command.u16(2), None)
-        elif command.name == "random":
-            variables.pop(0x800D, None)
+                if source in prior_variables:
+                    variables[dest] = prior_variables[source]
+                origins[dest] = dict(state.origins).get(source, (0, 0, "entry", source))
+        elif command.name == "gettime":
+            variables.update({variable: 0 for variable in writes})
+        elif command.name == "textcolor":
+            variables[0x8012] = command.operands[0]
+            if 0x8012 in prior_variables:
+                variables[0x8013] = prior_variables[0x8012]
+            origins[0x8013] = dict(state.origins).get(0x8012, (0, 0, "entry", 0x8012))
         base = _State(
             next_pc,
             state.stack,
@@ -416,7 +486,13 @@ def interpret(
             tuple(sorted(variables.items())),
             comparison,
             state.steps + 1,
+            tuple(sorted(origins.items())),
+            state.quest_log_entry and command.name not in _YIELDS
+            and (special is None or special in {216, 391, 424, 425, 429}),
         )
+
+        if command.name in {"setptr", "setptrbyte", "copybyte"}:
+            unknown.add(f"unresolved memory write at {command.addr:#x}")
 
         if command.name in _EFFECT_COMMANDS:
             effects.append(_effect(rom, command, state.guards, prior_variables, context))
@@ -488,7 +564,8 @@ def interpret(
 
 
 def _comparison(
-    command: Cmd, variables: dict[int, int], current: _Comparison | None
+    command: Cmd, variables: dict[int, int], current: _Comparison | None,
+    origins: dict[int, Origin],
 ) -> _Comparison | None:
     if command.name == "checkflag":
         flag = command.u16()
@@ -496,11 +573,12 @@ def _comparison(
     if command.name == "checktrainerflag":
         return _Comparison("trainer", command.u16(), True)
     if command.name == "checkitem":
-        return _Comparison("item", command.u16(), command.u16(2))
+        return _Comparison("item", command.u16(), command.u16(2), origin=origins.get(0x800D))
     if command.name == "checkitemspace":
-        return _Comparison("item_space", command.u16(), command.u16(2))
+        return _Comparison("item_space", command.u16(), command.u16(2),
+                           origin=origins.get(0x800D))
     if command.name == "checkpartymove":
-        return _Comparison("hm", command.u16(), True)
+        return _Comparison("hm", command.u16(), True, origin=origins.get(0x800D))
     if command.name in _VAR_RESULT_WRITERS:
         return None
     if command.name in {"setvar", "addvar", "subvar", "copyvar", "setorcopyvar"}:
@@ -518,10 +596,12 @@ def _comparison(
                 "item_space",
                 "hm",
             }
+            and current.origin == origins.get(0x800D)
         ):
             return replace(current, result_value=command.u16(2))
         variable = command.u16()
-        return _Comparison("var", variable, command.u16(2), known_value=variables.get(variable))
+        return _Comparison("var", variable, command.u16(2), known_value=variables.get(variable),
+                           origin=origins.get(variable))
     if command.name == "compare_var_to_var" and command.u16(2) in variables:
         variable = command.u16()
         return _Comparison(
@@ -529,6 +609,7 @@ def _comparison(
             variable,
             variables[command.u16(2)],
             known_value=variables.get(variable),
+            origin=origins.get(variable),
         )
     if command.name.startswith("compare_") or command.name in {"special", "specialvar"}:
         return None
@@ -602,8 +683,10 @@ def _branch(
         yes, no = guards
     else:
         operator = CONDITIONS[condition]
-        yes = Guard(comparison.kind, comparison.subject, operator, comparison.value)
-        no = Guard(comparison.kind, comparison.subject, _NEGATE[operator], comparison.value)
+        yes = Guard(comparison.kind, comparison.subject, operator, comparison.value,
+                    comparison.origin)
+        no = Guard(comparison.kind, comparison.subject, _NEGATE[operator], comparison.value,
+                   comparison.origin)
     no_guards = _add_guard(base.guards, no)
     if no_guards is not None:
         todo.append(replace(base, guards=no_guards))
@@ -715,11 +798,13 @@ def _effect(
     elif name in {"addvar", "subvar"}:
         variable, operand = command.u16(), command.u16(2)
         current = variables.get(variable)
-        delta = operand if name == "addvar" else -operand
+        term = operand if name == "addvar" or operand < 0x4000 else variables.get(operand)
+        delta = term if name == "addvar" else -term if term is not None else None
         values = {
             "var": variable,
             "operand": operand,
-            "value": (current + delta) & 0xFFFF if current is not None else None,
+            "value": ((current + delta) & 0xFFFF
+                      if current is not None and delta is not None else None),
         }
         if current is None:
             reason = f"variable {variable:#06x} has no tracked value before {name}"
@@ -971,7 +1056,7 @@ def _add_guard(guards: tuple[Guard, ...], guard: Guard) -> tuple[Guard, ...] | N
     if guard in guards:
         return guards
     for existing in guards:
-        if (existing.kind, existing.subject) != (guard.kind, guard.subject):
+        if existing.identity != guard.identity:
             continue
         if guard.operator == "eq" and (
             (existing.operator == "eq" and existing.value != guard.value)

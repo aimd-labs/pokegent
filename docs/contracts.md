@@ -530,3 +530,17 @@ readiness beyond prerequisites. The bounded unit is leak-checked before attachme
 omitted on failure, and dropped whole under provider/briefing budget pressure.
 It does not alter objective/history serialization, action fingerprints or frame
 pairing. Pending goal rebuilds reuse the same snapshot; briefing stays unchanged.
+
+## Symbolic script facts
+
+Script variable conditions retain the value's writer and path lifetime. Later writes
+cannot contradict or satisfy an earlier value's condition; copies retain their source
+value identity. Only proven entry facts and exact supported quest-log or menu origins
+may be projected into navigation capabilities. Unsupported historical conditions are
+reported and their effects withheld, while independent proven effects remain usable.
+Decoder/control-flow uncertainty still withholds the whole interpretation. Repeated
+writer loops retain the existing step/state bounds and report incomplete on exhaustion.
+These are guarded possibilities, never fresh completion, animation success or input
+legality. Raw memory aliases remain unknown. Flag and inventory mutation lifetimes
+are outside this register correction. Objective, reader and local-data schemas do not
+change; symbolic origin metadata is internal and may appear in private audit receipts.
