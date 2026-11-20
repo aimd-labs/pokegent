@@ -48,8 +48,9 @@ The server refuses stale frame tokens with HTTP 409 and malformed or unknown opt
 choices with HTTP 400. The example also refuses IDs absent from its inspected set.
 On a stale token, inspect again and reconsider the choice; never copy an old choice
 onto a new token automatically. Request failures stop the example without retrying.
-Do not use `pokegent step ... choose` for this binding: it currently refetches the
-latest frame before submitting (#61).
+`pokegent step choose <option-id> --frame-id <inspected-token>` submits that exact
+frame id without refetching, so a stale choice cannot rebind to a later frame;
+without `--frame-id` it still refetches the current frame and binds to it.
 
 Offered actions come from RAM-backed legality checks. Before input, the executor
 rechecks the scene, state fingerprint and action against fresh RAM, then verifies
