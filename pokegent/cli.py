@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import os
+import stat
 import sys
 import time
 import urllib.error
@@ -564,6 +565,68 @@ def cmd_run(args):
     except AppError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(getattr(exc, "exit_code", EXIT_USAGE))
+    # Opt-in retention (issue #59): after a completed run, prune the OLDER completed
+    # sibling run dirs under --out's parent, keeping the newest N, the active run dir and
+    # any current/recovery state path.  Guarded and never deletes without a completion
+    # marker; best-effort (a prune failure must not flip the run's exit code).
+    if args.retain_runs is not None and report.exit_code >= 0:
+        from pokegent.retention import prune_completed_runs
+
+        out_path = Path(out)
+        refs: list[object] = [out_path]
+        if state is not None:
+            refs.append(state)
+        # A live/recovery `current.state` pointer is a TEXT file holding the path the
+        # runtime may resume from; protect its target too (fail-closed on --retain-runs N).
+        live_home_dir = (
+            args.live_home
+            if getattr(args, "live_home", None)
+            else os.environ.get("LIVE_HOME")
+        )
+        if live_home_dir:
+            cur = (Path(live_home_dir).expanduser() / "current.state")
+            try:
+                pointer_stat = cur.stat()
+            except FileNotFoundError:
+                pass  # an absent pointer is allowed by the current-state contract
+            except (OSError, UnicodeDecodeError) as exc:
+                print(
+                    f"retention: skipped: cannot inspect current-state pointer "
+                    f"({type(exc).__name__})",
+                    file=sys.stderr,
+                )
+                sys.exit(report.exit_code)
+            else:
+                if not stat.S_ISREG(pointer_stat.st_mode):
+                    print("retention: skipped: current-state pointer is not a regular file",
+                          file=sys.stderr)
+                    sys.exit(report.exit_code)
+                try:
+                    target = cur.read_text(encoding="utf-8").strip()
+                    if target:
+                        refs.append(target)
+                except (OSError, UnicodeDecodeError) as exc:
+                    print(
+                        f"retention: skipped: cannot read current-state pointer "
+                        f"({type(exc).__name__})",
+                        file=sys.stderr,
+                    )
+                    sys.exit(report.exit_code)
+        try:
+            result = prune_completed_runs(
+                out_path.resolve().parent,
+                keep=args.retain_runs,
+                active=out_path,
+                references=refs,
+            )
+            if result.failures:
+                print(
+                    "retention: skipped for safety:"
+                    + ", ".join(f"{p.name} ({why})" for p, why in result.failures),
+                    file=sys.stderr,
+                )
+        except Exception as exc:  # best effort
+            print(f"retention: {exc}", file=sys.stderr)
     sys.exit(report.exit_code)
 
 
@@ -678,6 +741,13 @@ def main(argv=None):
         "--out", default=None, help="output directory (default from config or runs/<run-id>/)"
     )
     run_p.add_argument("--run-id", default=None, help="run id (default <state>-<utc time>)")
+    run_p.add_argument(
+        "--retain-runs",
+        type=int, default=None, metavar="N",
+        help=("opt-in retention: after the run, prune OTHER completed sibling run dirs under "
+              "--out's parent keeping the N most recent, the active run, and any referenced "
+              "/current-state paths (issue #59)"),
+    )
     run_p.add_argument("--config", default=None, help="user YAML (default ./pokegent.yaml)")
     run_p.add_argument("--rom", default=None, help="ROM path (default $FIRERED_ROM_PATH)")
     run_p.add_argument(
