@@ -1,10 +1,10 @@
 # Connect your own agent or model
 
 Use Python 3.11 and the installed checkout environment. Emulator runs also require
-[local ROM data setup](local-data.md#explicit-local-setup-generator-candidate) and
+[local ROM data setup](local-data.md#explicit-local-setup) and
 [native mGBA prerequisites](native-install.md). Keep your ROM, saved state, generated
-files and run configuration outside the checkout. Complete clean-start emulator and
-agent acceptance (B5) remains separate from these synthetic examples.
+files and run configuration outside the checkout. Start a fresh game with the
+[clean-start recipe](clean-start.md), which records the accepted local result and host limits.
 
 ## Agent mode: inspect, choose, verify
 
@@ -34,7 +34,7 @@ The example uses the existing `pokegent.server.request` client (35-second HTTP
 timeout) and sends exactly the token it inspected:
 
 ```json
-{"frame_id": "external-1", "option_id": "<id-from-that-frame>"}
+{"frame_id": "<inspected-frame-token>", "option_id": "<id-from-that-frame>"}
 ```
 
 `POST /choose` returns HTTP 202 with `accepted: true` and `status: queued`; that

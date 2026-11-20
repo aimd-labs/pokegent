@@ -1,14 +1,17 @@
 # Native mGBA setup
 
 Tested boundary: Ubuntu 24.04 amd64, CPython 3.11, `mgba==0.10.2` and Ubuntu
-`libmgba0.10t64=0.10.2+dfsg-1.1build3`. This proves imports and empty-core
-initialization; first-start gameplay remains a separate acceptance gate.
+`libmgba0.10t64=0.10.2+dfsg-1.1build3`. ROM-free checks proved imports and empty-core
+initialization. Later [clean-start acceptance](clean-start.md) reached the first field and
+three RAM-verified movements using these pinned public archives offline in a fresh
+Python environment.
+That gameplay attempt did not invoke the helper's download command below.
 Other operating systems, architectures and minimal Ubuntu images are unverified.
 
 The [PyPI binding](https://pypi.org/project/mgba/0.10.2/) is an unofficial
 MPL-2.0 package. Its metadata says the upstream Python bindings are deprecated;
 it does not claim upstream support. The Linux wheel requires a separate native
-library and contains the packager's RUNPATH `/home/dimitri/mgba-emu/mgba/build`.
+library and contains a RUNPATH pointing at the packager's build directory.
 The explicit private load path below takes precedence; inspect actual loaded
 paths when diagnosing imports.
 
@@ -70,7 +73,7 @@ PY
 ```
 
 Expect the binding module under your venv and `libmgba.so.0.10.2` under your
-private native prefix. The proof used `mCoreCreate(mPLATFORM_GBA)`, successful
+private native prefix. The ROM-free proof used `mCoreCreate(mPLATFORM_GBA)`, successful
 `core.init(core)`, and exactly one `core.deinit(core)` through CFFI ownership,
 without loading a ROM, resetting/running frames or sending input. Import success
 alone does not establish ROM/save isolation or successful gameplay.
