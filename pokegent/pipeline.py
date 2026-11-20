@@ -27,7 +27,7 @@ from typing import Any, Protocol
 
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.source import GoalSource, GoalView
-from pokegent.options.models import DecisionFrame, Option, freeze
+from pokegent.options.models import DecisionFrame, Option, assert_payload_clean, freeze
 from pokegent.options.ranking import rank_field_options
 from pokegent.options.registry import BuildContext, BuilderRegistry
 from pokegent.state.catalog import PAUSE_SCENE_IDS, SceneCatalog
@@ -408,6 +408,7 @@ class Perceiver:
                 confirmed_over=confirmed,
             )
         frame = self._with_item_storage_fact(frame, snapshot)
+        frame = self._with_story_facts(frame, snapshot)
         wrong = self._wrong_verbs(frame)
         kind = PerceptionKind.READY if frame.chooseable() else PerceptionKind.NO_OPTIONS
         if scene.is_unknown:
@@ -421,6 +422,23 @@ class Perceiver:
             wrong_verbs=wrong,
             confirmed_over=confirmed,
         )
+
+    def _with_story_facts(self, frame: DecisionFrame, snapshot: StateSnapshot) -> DecisionFrame:
+        facts_for = getattr(self.goal_source, "story_facts", None)
+        if not callable(facts_for):
+            return frame
+        try:
+            facts = facts_for(snapshot)
+            if facts is None:
+                return frame
+            assert_payload_clean({"state": {"story_facts": facts},
+                                  "instructions": "", "criteria": {}}, frame)
+            return frame.model_copy(update={"context": freeze(
+                {**frame.context, "story_facts": facts})})
+        except Exception:
+            # Optional narrative is omitted as a unit; never disclose failing label text.
+            logger.warning("story facts omitted: unavailable or unsafe presentation")
+            return frame
 
     def _with_item_storage_fact(
         self, frame: DecisionFrame, snapshot: StateSnapshot

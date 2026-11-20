@@ -522,3 +522,11 @@ milestone. Required completion produces `story_complete` SAFE_PAUSE at the exist
 safe boundary, rechecking the empty revision and successor after callbacks. No
 terminal hold, silent Dex switch, new input or navigation policy is introduced.
 See [the schema and limits](objective-file.md#10-opt-in-authored-story-source-synthetic-engine-slice).
+
+Optional `story_facts` are read-only state/briefing data from the exact offered
+frame's snapshot, also during manual goals. They expose authored-order challenge
+and proven/unmet/unknown prerequisite evidence, with declared provenance and no
+readiness beyond prerequisites. The bounded unit is leak-checked before attachment,
+omitted on failure, and dropped whole under provider/briefing budget pressure.
+It does not alter objective/history serialization, action fingerprints or frame
+pairing. Pending goal rebuilds reuse the same snapshot; briefing stays unchanged.

@@ -167,6 +167,10 @@ class ObjectiveSession:
     def current(self) -> GoalView | None:
         return self._view
 
+    def story_facts(self, snapshot: StateSnapshot) -> dict | None:
+        """Read-only even when an operator goal suppresses fallback admission."""
+        return self.fallback.facts(snapshot) if isinstance(self.fallback, StoryFallback) else None
+
     def objective_source(self) -> Callable[[str | None], ResolvedObjective | None]:
         """The field builder's objective source: the resolved objective of THIS iteration's view."""
 

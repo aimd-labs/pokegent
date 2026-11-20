@@ -289,7 +289,8 @@ def reduce_state(state: Mapping[str, Any], max_tokens: int) -> StateReduction:
         for keep, name in ((5, "trim_lists_5"), (2, "trim_lists_2")):
             paths: list[str] = []
             trimmed = {
-                k: (v if k in PROTECTED_KEYS else _trim_lists(v, keep, k, paths, k))
+                k: (v if k in PROTECTED_KEYS or k == "story_facts"
+                    else _trim_lists(v, keep, k, paths, k))
                 for k, v in current.items()
             }
             if paths:

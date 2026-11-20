@@ -39,6 +39,7 @@ SKIP_KEYS = frozenset(
         "entries_labelled",
         "dialog_text",
         "situation",
+        "story_facts",
         HISTORY_KEY,
     }
 )

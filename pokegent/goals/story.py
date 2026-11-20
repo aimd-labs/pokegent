@@ -128,13 +128,71 @@ class StoryFallback:
     def __init__(self, graph, nodes, resolved):
         self.graph, self.nodes, self.resolved = graph, nodes, resolved
 
+    def _states(self, snapshot):
+        states = {}
+        for key, resolved in self.resolved.items():
+            values = ([_proof(probe, snapshot) for probe in resolved.probes]
+                      if snapshot.usable else [None])
+            states[key] = False if False in values else None if None in values else True
+        return states
+
+    def facts(self, snapshot):
+        """Read-only prerequisite evidence; authored order is not derived readiness."""
+        states = self._states(snapshot)
+        order = self.graph.policy.order
+        challenge = next((key for key in order if key in self.graph.policy.required
+                          and states[key] is not True), None)
+        relevant = set()
+
+        def visit(key):
+            for dependency in self.nodes[key].requires:
+                if dependency not in relevant:
+                    relevant.add(dependency)
+                    # Persistent downstream proof discharges consumed earlier prerequisites.
+                    if states[dependency] is not True:
+                        visit(dependency)
+
+        if challenge is not None:
+            visit(challenge)
+        labels = {}
+        truncated = False
+        for key in relevant | ({challenge} if challenge is not None else set()):
+            obj = self.nodes[key].objective
+            text = " ".join((obj.rationale or obj.kind).split())
+            labels[key] = text[:80]
+            truncated |= len(text) > 80
+
+        def entry(key):
+            return {"label": labels[key], "state": (
+                "unknown" if states[key] is None else "proven" if states[key] else "unmet")}
+
+        prerequisites = [key for key in order if key in relevant]
+        counts = {name: sum(states[key] is value for key in relevant)
+                  for name, value in (("proven", True), ("unmet", False), ("unknown", None))}
+        result = {
+            "schema": "story-facts/1", "status": (
+                "complete" if challenge is None else "unknown"
+                if states[challenge] is None or counts["unknown"] else "available"),
+            "policy": "authored", "provenance": "declared",
+            "readiness": "prerequisites_only",
+            "next_challenge": entry(challenge) if challenge is not None else None,
+            "prerequisites": [entry(key) for key in prerequisites[:6]],
+            "counts": {**counts, "total": len(relevant)},
+            "truncated": truncated or len(prerequisites) > 6,
+        }
+        while len(json.dumps(result).encode("utf-8")) > 1536:
+            result["truncated"] = True
+            if result["prerequisites"]:
+                result["prerequisites"].pop()
+            else:
+                item = result["next_challenge"]
+                item["label"] = item["label"][:len(item["label"]) // 2]
+        return result
+
     def from_snapshot(self, snapshot):
         if not snapshot.usable:
             raise FallbackUnavailable("story requires usable RAM")
-        states = {}
-        for key, resolved in self.resolved.items():
-            values = [_proof(probe, snapshot) for probe in resolved.probes]
-            states[key] = False if False in values else None if None in values else True
+        states = self._states(snapshot)
 
         def frontier(key):
             if states[key] is None:
