@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import os
+import stat
 import sys
 import time
 import urllib.error
@@ -584,13 +585,33 @@ def cmd_run(args):
         )
         if live_home_dir:
             cur = (Path(live_home_dir).expanduser() / "current.state")
-            if cur.is_file():
+            try:
+                pointer_stat = cur.stat()
+            except FileNotFoundError:
+                pass  # an absent pointer is allowed by the current-state contract
+            except (OSError, UnicodeDecodeError) as exc:
+                print(
+                    f"retention: skipped: cannot inspect current-state pointer "
+                    f"({type(exc).__name__})",
+                    file=sys.stderr,
+                )
+                sys.exit(report.exit_code)
+            else:
+                if not stat.S_ISREG(pointer_stat.st_mode):
+                    print("retention: skipped: current-state pointer is not a regular file",
+                          file=sys.stderr)
+                    sys.exit(report.exit_code)
                 try:
                     target = cur.read_text(encoding="utf-8").strip()
                     if target:
                         refs.append(target)
-                except OSError:
-                    pass
+                except (OSError, UnicodeDecodeError) as exc:
+                    print(
+                        f"retention: skipped: cannot read current-state pointer "
+                        f"({type(exc).__name__})",
+                        file=sys.stderr,
+                    )
+                    sys.exit(report.exit_code)
         try:
             result = prune_completed_runs(
                 out_path.resolve().parent,

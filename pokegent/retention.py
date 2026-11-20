@@ -84,7 +84,9 @@ def _is_referenced(path: Path, references: object) -> bool:
     """True if ``path`` is, or is a parent of, any reference (live save / current pointer)."""
     for ref in _iter_references(references):
         try:
-            return path.resolve() in ref.resolve().parents or path.resolve() == ref.resolve()
+            resolved = ref.resolve()
+            if path.resolve() in resolved.parents or path.resolve() == resolved:
+                return True
         except OSError:
             if str(path) in str(ref):
                 return True

@@ -166,6 +166,112 @@ def test_prune_zero_keeps_active_and_reference(tmp_path):
     assert (recovered / "resume.state").exists()
 
 
+def test_prune_checks_references_after_unmatched_reference(tmp_path):
+    parent = tmp_path / "runs"
+    parent.mkdir()
+    referenced = _mk(parent, "live-REFERENCED", completed=True, extra="resume.state")
+    _age(referenced, 1)
+    newest = _mk(parent, "live-NEWEST", completed=True)
+    _age(newest, 2)
+
+    result = prune_completed_runs(
+        parent,
+        keep=0,
+        references=[tmp_path / "elsewhere", referenced / "resume.state"],
+    )
+
+    assert result.deleted == [newest]
+    assert referenced.exists()
+    assert (referenced / "resume.state").exists()
+
+
+@pytest.mark.parametrize("exit_code", [0, 4])
+@pytest.mark.parametrize("state_exists", [True, False])
+@pytest.mark.parametrize("reference_source", ["state", "pointer"])
+def test_cli_retain_zero_preserves_input_reference(
+    tmp_path, monkeypatch, exit_code, state_exists, reference_source
+):
+    from types import SimpleNamespace
+
+    from pokegent import app, cli
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    referenced = runs / "live-REFERENCED"
+    referenced.mkdir()
+    (referenced / "summary.json").write_text("{}")
+    target = referenced / "input.state"
+    if state_exists:
+        target.write_text("synthetic")
+    if reference_source == "state":
+        state = target
+        live_home = tmp_path / "live-home"
+    else:
+        state = tmp_path / "missing-input.state"
+        live_home = tmp_path / "live-home"
+        live_home.mkdir()
+        (live_home / "current.state").write_text(str(target))
+    (runs / "live-OLDER").mkdir()
+    (runs / "live-OLDER" / "summary.json").write_text("{}")
+    config = tmp_path / "config.yaml"
+    config.write_text("{}")
+    monkeypatch.setattr(app, "run_offline", lambda **kwargs: SimpleNamespace(exit_code=exit_code))
+    monkeypatch.setenv("LIVE_HOME", str(live_home))
+
+    with pytest.raises(SystemExit) as ended:
+        cli.main([
+            "run", "--state", str(state), "--config", str(config), "--out",
+            str(runs / "live-ACTIVE"), "--retain-runs", "0",
+        ])
+
+    assert ended.value.code == exit_code
+    assert referenced.exists()
+    assert (runs / "live-OLDER").exists() is False
+
+
+@pytest.mark.parametrize("exit_code", [0, 4])
+@pytest.mark.parametrize("failure", ["decode", "io"])
+def test_cli_skips_pruning_when_current_pointer_cannot_be_read(
+    tmp_path, monkeypatch, exit_code, failure
+):
+    from types import SimpleNamespace
+
+    from pokegent import app, cli
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    candidate = runs / "live-OLDER"
+    candidate.mkdir()
+    (candidate / "summary.json").write_text("{}")
+    active = runs / "live-ACTIVE"
+    live_home = tmp_path / "live-home"
+    live_home.mkdir()
+    pointer = live_home / "current.state"
+    pointer.write_bytes(b"\xff") if failure == "decode" else pointer.write_text("/ignored.state")
+    config = tmp_path / "config.yaml"
+    config.write_text("{}")
+    monkeypatch.setattr(app, "run_offline", lambda **kwargs: SimpleNamespace(exit_code=exit_code))
+    monkeypatch.setenv("LIVE_HOME", str(live_home))
+    if failure == "io":
+        original_read_text = Path.read_text
+
+        def read_text(path, *args, **kwargs):
+            if path == pointer:
+                raise PermissionError("synthetic unreadable pointer")
+            return original_read_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", read_text)
+
+    with pytest.raises(SystemExit) as ended:
+        cli.main([
+            "run", "--new-game", "--config", str(config), "--out", str(active),
+            "--retain-runs", "0",
+        ])
+
+    assert ended.value.code == exit_code
+    assert candidate.exists()
+
+
 @pytest.mark.parametrize("bad", ["../escape", "a/b", "x y", ""])
 def test_safe_run_id_rejects(bad):
     with pytest.raises(RunRetentionError):
