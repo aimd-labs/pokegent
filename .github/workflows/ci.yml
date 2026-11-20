@@ -9,6 +9,31 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  native-helper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: '3.11'
+      - name: Synthetic native helper tests without skips
+        run: |
+          python3.11 - <<'PY'
+          import platform
+          import unittest
+
+          suite = unittest.defaultTestLoader.discover('tests', pattern='test_native_setup.py')
+          from test_native_setup import SUPPORTED
+
+          assert SUPPORTED and platform.machine() == 'x86_64', 'unsupported helper test host'
+          assert suite.countTestCases() == 6, 'expected six native helper tests'
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          assert result.testsRun == 6 and not result.skipped, 'all six tests must run'
+          assert result.wasSuccessful() and not result.expectedFailures, 'helper tests failed'
+          PY
   public-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
