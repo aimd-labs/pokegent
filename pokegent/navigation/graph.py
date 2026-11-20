@@ -877,7 +877,7 @@ class NavigationGraph:
             return guard
         if guard.origin is None:
             return guard if 0x4000 <= guard.subject < 0x8000 else None
-        _, _, command, selector = guard.origin
+        _, _, command, selector = guard.origin[:4]
         if command == "entry" and 0x4000 <= selector < 0x8000:
             return replace(guard, subject=selector, origin=None)
         if command == "special" and selector == 391 and (

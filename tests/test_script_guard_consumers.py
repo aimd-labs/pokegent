@@ -167,3 +167,18 @@ def test_native_ferry_converted_response_retains_page_membership():
     assert route.menu_pcs == ((0, BASE+menu.source+4),)
     edge = graph._ferry_edge(route, CapabilityState(quest_log_state=0, vars=((0x4076, 6),)))
     assert edge is not None and all(row.met for row in edge.requirements)
+
+
+def test_independent_native_outputs_reach_consumer_refusal_audit():
+    # Unknown transient inputs isolate identity from saved-variable clobber policy.
+    raw = code(b'\x25'+struct.pack('<H', 205), compare(0x8004, 0), (1, 'next'),
+               b'\x02', 'next', compare(0x8005, 1), (1, 'yes'), b'\x02',
+               'yes', b'\x29\x07\x00\x02')
+    result = interpret(raw, BASE)
+    assert result.complete
+    assert len([effect for effect in flags(result) if effect.value('flag') == 7]) == 1
+    graph = graph_for(result)
+    projected = graph._complete_effects('on_load_barriers:on_load', result, state=state())
+    assert not any(effect.kind == 'setflag' and effect.value('flag') == 7
+                   for effect in projected)
+    assert graph.script_incomplete_counts['on_load_barriers:on_load'] == 1

@@ -264,3 +264,56 @@ def test_stable_quest_value_identity_and_mutation_yield_uncertainty(between, sec
         supported_later = replace(later, operator='ne', value=2)
         assert NavigationGraph._requirement_from_guard(supported_first, cap).met
         assert (NavigationGraph._entry_guard(supported_later) is not None) is entry_equivalent
+
+
+# Native outputs are independent unless the source contract proves a copy alias.
+_NATIVE_OUTPUTS = [
+    (b'\x25'+struct.pack('<H', 205), 0x8004, 0x8005),
+    (b'\x26'+struct.pack('<HH', 0x4009, 205), 0x4009, 0x8005),
+    (b'\x26'+struct.pack('<HH', 0x4009, 216), 0x4009, 0x403A),
+    (b'\x26'+struct.pack('<HH', 0x4009, 344), 0x4009, RESULT),
+    (b'\x26'+struct.pack('<HH', 0x4009, 391), 0x4009, RESULT),
+    (b'\x26'+struct.pack('<HH', 0x4009, 423), 0x4009, RESULT),
+    # Clear the HM comparison predicate so both observations are variable guards.
+    (b'\x7c\x01\x00'+compare(0x4000, 0), 0x8004, RESULT),
+    (b'\x42'+struct.pack('<HH', 0x4001, 0x4002), 0x4001, 0x4002),
+]
+
+
+@pytest.mark.parametrize('writer,first,second', _NATIVE_OUTPUTS)
+def test_independent_outputs_allow_opposite_value_branches(writer, first, second):
+    from test_script_guard_consumers import code
+    raw = code(writer, compare(first, 0), (1, 'next'), b'\x02', 'next',
+               compare(second, 1), (1, 'yes'), b'\x02', 'yes', b'\x29\x07\x00\x02')
+    result = interpret(raw, BASE)
+    assert result.complete, result.unknown
+    reached = [effect for effect in flags(result) if effect.value('flag') == 7]
+    assert len(reached) == 1
+    assert len(reached[0].guards) == 2
+
+
+@pytest.mark.parametrize('writer,first,second', _NATIVE_OUTPUTS)
+def test_independent_output_identities_do_not_minimize(writer, first, second):
+    left = flags(guarded(writer, var=first, value=0, condition=1))[-1].guards[0]
+    right = flags(guarded(writer, var=second, value=0, condition=1))[-1].guards[0]
+    assert left.identity != right.identity
+    if writer[0] in {0x25, 0x26}:
+        assert left.origin[:4] == right.origin[:4]
+    opposite = replace(right, operator='ne')
+    assert not NavigationGraph._opposite_guards(left, opposite)
+    assert frozenset() not in NavigationGraph._minimize_guard_clauses(((left,), (opposite,)))
+
+
+@pytest.mark.parametrize('writer,source,_second', _NATIVE_OUTPUTS)
+def test_output_copies_still_reject_same_value_contradictions(writer, source, _second):
+    from test_script_guard_consumers import code
+    copy = b'\x19'+struct.pack('<HH', 0x4010, source)
+    raw = code(writer, compare(source, 0), (1, 'copy'), b'\x02', 'copy', copy,
+               compare(0x4010, 1), (1, 'yes'), b'\x02', 'yes', b'\x29\x07\x00\x02')
+    result = interpret(raw, BASE)
+    assert result.complete
+    assert not any(effect.value('flag') == 7 for effect in flags(result))
+    source_guard = flags(guarded(writer, var=source, value=0, condition=1))[-1].guards[0]
+    copied_guard = flags(guarded(writer+copy, var=0x4010, value=0, condition=1))[-1].guards[0]
+    assert source_guard.origin == copied_guard.origin
+    assert source_guard.identity == copied_guard.identity

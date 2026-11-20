@@ -18,7 +18,8 @@ from pokegent.games.gen3.firered.rom.script_scan import (
 )
 
 GuardKind = Literal["flag", "var", "item", "item_space", "badge", "hm", "trainer"]
-Origin = tuple[int, int, str, int]  # path epoch, writer site, command, selector/source
+# Path epoch, writer site, command, selector/source, optional independent destination.
+Origin = tuple[int, int, str, int] | tuple[int, int, str, int, int]
 
 
 @dataclass(frozen=True)
@@ -452,6 +453,9 @@ def interpret(
                 name, selector = "list_menu", prior_variables.get(0x8004, -1)
             origins[variable] = (state.steps + 1, command.addr, name,
                                  selector)
+            # Native outputs are independent; only the proven 391 RESULT stays canonical.
+            if special is not None and not (special == 391 and variable == 0x800D):
+                origins[variable] += (variable,)
         comparison = _comparison(command, prior_variables, state.comparison, origins)
         if command.name == "setvar":
             variables[command.u16()] = command.u16(2)
