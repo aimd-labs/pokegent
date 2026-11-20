@@ -26,6 +26,7 @@ def test_surf_diagnostics_follow_extracted_facts(badge_number, dismount, section
     badge = f'FLAG_BADGE{badge_number:02}_GET'
     files = {
         'data/maps/map_groups.json': b'{"group_order":["Demo"],"Demo":["Room"]}',
+        'data/maps/Room/map.json': b'{"id":"MAP_ROOM"}',
         'src/field_control_avatar.c': (
             f'if (FlagGet({badge}) == TRUE && PartyHasMonWithSurf()'
             ' == TRUE && IsPlayerFacingSurfableFishableWater() == TRUE)').encode(),
