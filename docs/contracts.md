@@ -544,3 +544,19 @@ These are guarded possibilities, never fresh completion, animation success or in
 legality. Raw memory aliases remain unknown. Flag and inventory mutation lifetimes
 are outside this register correction. Objective, reader and local-data schemas do not
 change; symbolic origin metadata is internal and may appear in private audit receipts.
+
+Story admission at the objective-session factory binds declared provenance to the
+selected verified ROM image, pinned exact-seven setup, active index and fresh cache
+file hashes, including prebuilt story sessions. Missing identity fails closed with
+a redacted setup error and no automatic regeneration. Loader-only structural use
+retains its API. `objectives.story_path` selects a sibling private artifact without
+changing seven-file setup ownership. Current facts, completion, queue/CAS authority
+and frame pairing retain their existing same-snapshot contracts.
+
+Explicit offline `rom-data story` generation produces only a conditional partial
+candidate for independent source/data review. The exact negated return-branch
+premise remains attached to all scoped effects and candidate receipts; it is never
+observed current RAM or readiness. The unrestricted incomplete interpretation and
+unsupported branch remain visible. Three exact spatial exceptions remain unresolved.
+No static derivation completes an objective: both persistent milestones still need
+current usable same-snapshot proof through the existing session/runner boundary.

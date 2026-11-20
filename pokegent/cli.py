@@ -859,6 +859,10 @@ def main(argv=None):
                              help='absolute external path; existing manual data is preserved')
     local_setup.add_argument('--decomp', type=Path,
                              help='offline clean pinned checkout or gzip tarball')
+    story = rom_data_sub.add_parser(
+        'story', help='Generate a partial conditional private candidate')
+    for flag in ('rom', 'decomp', 'policy', 'local-data', 'cache', 'out-dir'):
+        story.add_argument('--' + flag, type=Path, required=True)
     map_index = rom_data_sub.add_parser("map-index", help="Generate a numeric structural index")
     map_index.add_argument("--numeric-labels", action="store_true", required=True,
                            help="explicitly accept numeric labels without named compatibility")
@@ -987,6 +991,19 @@ def main(argv=None):
                       file=sys.stderr)
                 sys.exit(2)
             print('Private local data and ROM cache are ready. Restart runtime processes.')
+            return
+        if args.rom_data_action == 'story':
+            from pokegent.games.gen3.firered.rom.story_generation import generate_story
+
+            try:
+                os.environ['POKEGENT_LOCAL_DATA_DIR'] = str(args.local_data)
+                os.environ['POKEGENT_ROM_DATA_CACHE'] = str(args.cache)
+                generate_story(args.rom, args.decomp, args.policy, args.out_dir)
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+                print('error: conditional story generation failed; inputs preserved. '
+                      'See docs/local-data.md.', file=sys.stderr)
+                sys.exit(2)
+            print('Private partial conditional candidate written; acceptance pending review.')
             return
         if args.rom_data_action == "map-index":
             from pokegent.games.gen3.firered.rom.map_index import MapIndexError, build_map_index

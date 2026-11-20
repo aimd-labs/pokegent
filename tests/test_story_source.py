@@ -180,6 +180,8 @@ def test_config_file_and_final_override_phases(tmp_path):
 
 
 def test_factory_existing_session_and_direct_guards(tmp_path, monkeypatch):
+    # Structural synthetic source: real selected-input admission is covered separately.
+    monkeypatch.setattr("pokegent.goals.story_identity.verify_identity", lambda *_: None)
     load(tmp_path)
     monkeypatch.setenv("POKEGENT_LOCAL_DATA_DIR", str(tmp_path))
     with pytest.raises(AppError):
