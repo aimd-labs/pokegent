@@ -230,7 +230,11 @@ def edge_targets(state: MapState) -> list[Target]:
 
 
 def object_targets(
-    state: MapState, nav: N.Navigator, *, required_npc: int | None = None
+    state: MapState,
+    nav: N.Navigator,
+    *,
+    required_npc: int | None = None,
+    exempt_required_npc_hidden: bool = False,
 ) -> list[Target]:
     out = []
     for obj in state.objects:
@@ -247,7 +251,19 @@ def object_targets(
             continue  # not spawned, hidden, or nothing to run: nothing to talk to
         # A navigation target may be retained outside the camera only after RAM proves its hide
         # flag clear. A set or unreadable flag means the ROM object has not spawned yet.
-        if obj.hidden_flag_id and obj.hidden_flag_set is not False:
+        # Item balls invert that: their flag records "already picked up", so a cleared or
+        # unreadable flag must NOT hide the ball (an unknown flag on a ball is still findable).
+        if obj.role == "item_ball":
+            if obj.hidden_flag_set is True:  # ball already taken
+                continue
+        elif (
+            obj.hidden_flag_id
+            and obj.hidden_flag_set is not False
+            and (
+                not exempt_required_npc_hidden
+                or obj.local_id != required_npc
+            )
+        ):
             continue
         if obj.role in N.OBSTACLE_ROLES or obj.role == "fossil":
             continue  # field-mechanic targets are emitted by obstacle_targets
@@ -508,6 +524,7 @@ def enumerate_targets(
     tiles: tuple[tuple[int, int], ...] = (),
     training: bool = False,
     required_npc: int | None = None,
+    exempt_required_npc_hidden: bool = False,
 ) -> list[Target]:
     targets = [warp_target(state, nav, w) for w in state.warps]
     targets += edge_targets(state)
@@ -515,7 +532,10 @@ def enumerate_targets(
     targets += grass_targets(state, nav)
     if training:
         targets += cave_training_targets(state, nav)
-    targets += object_targets(state, nav, required_npc=required_npc)
+    targets += object_targets(
+        state, nav, required_npc=required_npc,
+        exempt_required_npc_hidden=exempt_required_npc_hidden,
+    )
     targets += pc_targets(state, nav)
     # Hidden items remain adapter facts, but their walk/face/dialog interaction is not
     # represented by the proven executable target contract yet.
