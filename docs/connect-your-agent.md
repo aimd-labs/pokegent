@@ -50,7 +50,9 @@ On a stale token, inspect again and reconsider the choice; never copy an old cho
 onto a new token automatically. Request failures stop the example without retrying.
 `pokegent step choose <option-id> --frame-id <inspected-token>` submits that exact
 frame id without refetching, so a stale choice cannot rebind to a later frame;
-without `--frame-id` it still refetches the current frame and binds to it.
+with `--frame-id`, the CLI prints the `/choose` acceptance response, which confirms
+the choice is queued but does not verify a game action. Without `--frame-id`, it
+still refetches the current frame, binds to it, and prints the subsequent fetched frame.
 
 Offered actions come from RAM-backed legality checks. Before input, the executor
 rechecks the scene, state fingerprint and action against fresh RAM, then verifies
