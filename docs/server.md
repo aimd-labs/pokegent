@@ -15,10 +15,12 @@ pokegent run --state path/to/start.state --rom "$FIRERED_ROM_PATH" \
 
 Use the [connect-your-agent guide](connect-your-agent.md#agent-mode-inspect-choose-verify)
 and its executable example to inspect a frame and submit its exact `frame_id` with an offered
-`option_id`. The default bridge port is 19760. `pokegent step --port 19760` can inspect a frame,
-but the CLI `choose` command currently fetches the latest frame again (#61), so it does not
-preserve the binding to the frame you inspected. HTTP 202 acknowledges a queued choice;
-execution results arrive in subsequent feedback.
+`option_id`. The default bridge port is 19760. `pokegent step --port 19760` can inspect a frame.
+With `choose --frame-id <id>`, the CLI sends that inspected token without a `GET` and prints
+the `/choose` acceptance response: the choice is queued, not a verified action. Without
+`--frame-id`, it keeps the legacy refetch behavior and prints the subsequent fetched frame.
+The older unconditional refetch warning from #61 applies only when `--frame-id` is omitted.
+Execution results arrive in subsequent feedback.
 
 When the runner advances a dialog on the agent's behalf during any action, that action's feedback
 item also has `dialog_text`, a list containing each decoded page captured at the executor's
