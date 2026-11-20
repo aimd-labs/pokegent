@@ -70,6 +70,8 @@ def _needed(path: str) -> bool:
             'tools/mapjson/mapjson.cpp', 'asm/macros/map.inc', 'src/special_field_anim.c',
             'include/constants/menu.h', 'include/constants/moves.h',
             'include/constants/metatile_behaviors.h',
+            'asm/macros/event.inc', 'src/scrcmd.c', 'src/item.c',
+            'data/scripts/std_msgbox.inc', 'src/data/items.json',
             'data/layouts/layouts.json', 'src/data/tilesets/headers.h',
             'src/data/tilesets/metatiles.h',
         }

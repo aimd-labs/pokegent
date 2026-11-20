@@ -10,7 +10,6 @@ import json
 import re
 import struct
 
-from pokegent.games.gen3.firered.rom.rom_cache import _pret_macro_name
 from pokegent.games.gen3.firered.rom.setup_source import SetupError, Source
 
 
@@ -52,9 +51,15 @@ class Facts:
         raw = source.json('data/maps/map_groups.json')
         self.groups = {'group_order': raw['group_order'],
                        'groups': {key: raw[key] for key in raw['group_order']}}
-        self.maps = {_pret_macro_name(name): (name, [g, n])
-                     for g, key in enumerate(raw['group_order'])
-                     for n, name in enumerate(raw[key])}
+        self.maps = {}
+        for g, key in enumerate(raw['group_order']):
+            for n, name in enumerate(raw[key]):
+                constant = source.json(f'data/maps/{name}/map.json').get('id')
+                if (not isinstance(constant, str)
+                        or not re.fullmatch(r'MAP_[A-Z0-9_]+', constant)
+                        or constant in self.maps):
+                    raise SetupError('invalid or ambiguous source map id')
+                self.maps[constant] = (name, [g, n])
         self.defines = {}
         for file in ('flags', 'opponents', 'menu', 'moves', 'metatile_behaviors', *extra_headers):
             for name, value in re.findall(r'^#define\s+(\w+)\s+([^\n]+)',

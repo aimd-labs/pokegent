@@ -242,3 +242,29 @@ derivation and structural/runtime identity admission pass. No gameplay was prove
 A terminal `story_complete` means only the explicitly required partial subset is
 proven by current usable RAM. Full story coverage and the size of a complete artifact
 remain open; a two-node candidate is not a complete-story cap measurement.
+
+The recipe's additive optional `continuation` block composes the prefix with one
+partial item-acquisition endpoint. It keeps `schema_version: 1`; omitting the block
+preserves the two-node recipe. Selectors are private authored source symbols:
+`map`, `object`, `script`, `item`, `gift_flag`, `scene_var`, `boarding_map`,
+`boarding_scripts` (two), `ticket_flag`, `ticket_trigger_var`, `rival_map`,
+`rival_scripts` (three), `rival_scene_var`, `departure_map`, `departure_frame`.
+Use policy order `helped`, `gift`, `acquisition`, required `acquisition`, and a
+rationale for each node. No packaged selector values or game data are provided.
+
+The generator joins source and compiled objects, conditional ticket consumers,
+and rival triggers. No rival milestone is emitted without admitted durable proof;
+current legal trigger options remain necessary guidance. Prefix assumptions stay
+on prefix evidence; the separate consumer premise is never current RAM.
+The acquisition objective has exactly one current BAG item probe (quantity >= 1).
+A one-shot gift flag is never a completion alternative. The source can attempt a
+gift, fail capacity, and still exhaust its one-shot state: an exhausted gift with
+no bag item cannot be retried by that script. Talk options do not promise recovery.
+Unknown/unusable RAM cannot prove completion; PC items do not count.
+
+The separately triggered departure root remains incomplete/excluded, including its
+unclassified native effect. Acquisition neither requires departure execution nor
+proves exit, warp, route availability, learned moves or field readiness. The receipt
+retains source hashes/text, exact assumptions, attempt effects, raw prefix limits,
+and separate excluded-root evidence. A three-node result is visibly partial and
+still requires independent source/data review; it closes no full-coverage gate.

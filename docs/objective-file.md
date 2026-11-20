@@ -453,3 +453,9 @@ matching declarations are insufficient for runtime use. Inputs are admitted once
 per session construction; restart after replacing game inputs. Admission never
 fetches, rebuilds or repairs them. Current completion still requires a usable
 same-snapshot proof. No real recipe or full-story coverage is supplied by this slice.
+
+A generated optional acquisition continuation completes only from its single
+current usable BAG item probe, never from a gift flag or historical possession.
+A failed one-shot attempt may leave the objective permanently unmet; the talk
+target provides no retry or route guarantee. Excluded departure/exit behavior and
+field readiness do not become proven when this partial endpoint completes.
