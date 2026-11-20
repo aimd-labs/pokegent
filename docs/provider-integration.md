@@ -208,9 +208,23 @@ ruff check .
 python -m compileall pokegent addons
 python tests/games/gen3/test_imports.py
 pokegent provider check                       # env config + mock and stub self-tests
-pokegent provider check --config config.yaml
+pokegent provider check --config config.yaml  # includes stub test when installed
+pokegent provider check --config offline.yaml --no-stub  # mock checks only; no endpoint needed
 pokegent provider check --config config.yaml --live   # ONE real request to the configured provider
 ```
+
+For an offline mock-only check, `offline.yaml` can contain:
+
+```yaml
+system_one:
+  enabled: false
+  primary: mock
+```
+
+This validates the configuration and exercises synthetic choices, including rejection of an
+unknown choice. It does not construct or contact the configured provider, verify endpoint
+compatibility, or establish live model behavior. The stub test is separate and optional; `--no-stub`
+skips it. Add `--live` only when you intend to make a real provider call.
 
 The stub (stdlib, 127.0.0.1, ports 19700-19799 only) answers a valid Choice, a wrong key, NaN or
 Infinity probabilities, a bad sum or confidence, broken JSON, slow responses, 4xx/429/5xx bursts
