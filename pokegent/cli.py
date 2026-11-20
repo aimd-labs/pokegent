@@ -789,6 +789,13 @@ def main(argv=None):
     step_sub = step_p.add_subparsers(dest="step_action")
     choose_p = step_sub.add_parser("choose", help="choose an option")
     choose_p.add_argument("option_id")
+    choose_p.add_argument(
+        "--frame-id",
+        default=None,
+        metavar="FRAME_ID",
+        help="bind the choice to this exact inspected frame id; skips the current-frame "
+        "refetch, so a stale choice cannot rebind to a later frame",
+    )
     step_sub.add_parser("interrupt", help="stop a running macro at its next safe boundary")
     screenshot_p = step_sub.add_parser("screenshot", help="save the latest external game frame")
     screenshot_p.add_argument("--out", default="screenshot.png", metavar="FILE")
@@ -899,18 +906,34 @@ def main(argv=None):
 
         try:
             if args.step_action == "choose":
-                wait = "" if args.wait is None else f"&wait={args.wait}"
-                frame = request(args.port, f"/frame?all=1{wait}")
-                request(
-                    args.port,
-                    "/choose",
-                    body={
-                        "frame_id": frame["frame_id"],
-                        "option_id": args.option_id,
-                    },
-                )
-                path = f"/frame?wait={args.wait}" if args.wait is not None else "/frame"
-                print(json.dumps(request(args.port, path), indent=2))
+                if args.frame_id is not None:
+                    # Bind to the exact inspected frame: no refetch, no rebinding.
+                    print(
+                        json.dumps(
+                            request(
+                                args.port,
+                                "/choose",
+                                body={
+                                    "frame_id": args.frame_id,
+                                    "option_id": args.option_id,
+                                },
+                            ),
+                            indent=2,
+                        )
+                    )
+                else:
+                    wait = "" if args.wait is None else f"&wait={args.wait}"
+                    frame = request(args.port, f"/frame?all=1{wait}")
+                    request(
+                        args.port,
+                        "/choose",
+                        body={
+                            "frame_id": frame["frame_id"],
+                            "option_id": args.option_id,
+                        },
+                    )
+                    path = f"/frame?wait={args.wait}" if args.wait is not None else "/frame"
+                    print(json.dumps(request(args.port, path), indent=2))
             elif args.step_action == "screenshot":
                 from pokegent.server import request_bytes
 
