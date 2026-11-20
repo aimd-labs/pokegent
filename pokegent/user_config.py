@@ -12,6 +12,8 @@ import yaml
 
 from pokegent.env import get_system1_env
 
+_EXTERNAL_KEYS = frozenset({"port", "walk_step_limit"})
+
 DEFAULTS: dict[str, Any] = {
     "decider": "hybrid",
     "autoplay": None,
@@ -127,6 +129,22 @@ def load_user_config(
         raise ValueError("external.timeout was removed: agent choices wait for the agent")
     if "POKEGENT_EXTERNAL_TIMEOUT" in environ:
         raise ValueError("POKEGENT_EXTERNAL_TIMEOUT was removed: agent choices wait for the agent")
+    if "external" in data:
+        external = data["external"]
+        if not isinstance(external, Mapping):
+            raise ValueError("external must be a mapping")
+        unknown = sorted(str(key) for key in external if key not in _EXTERNAL_KEYS)
+        if unknown:
+            raise ValueError(f"unknown external settings: {', '.join(unknown)}")
+    for name, field in (
+        ("POKEGENT_EXTERNAL_PORT", "external.port"),
+        ("POKEGENT_EXTERNAL_WALK_STEP_LIMIT", "external.walk_step_limit"),
+    ):
+        if environ.get(name) not in (None, ""):
+            try:
+                int(environ[name])
+            except (TypeError, ValueError):
+                raise ValueError(f"{field} must be an integer") from None
     if isinstance(data.get("field"), Mapping) and "teach_tm" in data["field"]:
         raise ValueError("field.teach_tm was removed: legal TM/HM teaching is always enabled")
     if "recovery" in data:
@@ -171,7 +189,9 @@ def load_user_config(
     key_env = system1.get("api_key_env")
     if key_env and key_env in environ:
         result["system1"] = dict(system1, api_key=environ[key_env])
-    port = int(result["external"]["port"])
+    port = result["external"]["port"]
+    if not isinstance(port, int) or isinstance(port, bool):
+        raise ValueError("external.port must be an integer")
     if not 19700 <= port <= 19799:
         raise ValueError("external.port must be between 19700 and 19799")
     if result["decider"] not in {"agent", "system1", "first", "forced", "hybrid", "external"}:
@@ -180,7 +200,10 @@ def load_user_config(
         raise ValueError("autoplay was removed: forced autoplay no longer exists")
     if result.get("autoplay") not in (None, "off"):
         raise ValueError("autoplay must be off")
-    if int(result["external"].get("walk_step_limit", 8)) < 1:
+    walk_step_limit = result["external"].get("walk_step_limit", 8)
+    if not isinstance(walk_step_limit, int) or isinstance(walk_step_limit, bool):
+        raise ValueError("external.walk_step_limit must be an integer")
+    if walk_step_limit < 1:
         raise ValueError("external.walk_step_limit must be >= 1")
     hybrid = result["hybrid"]
     threshold = hybrid["escalate_below_confidence"]
