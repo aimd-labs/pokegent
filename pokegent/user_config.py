@@ -135,8 +135,11 @@ def load_user_config(
             "supervisor review"
         )
     objectives = data.get("objectives", {})
-    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
-        raise ValueError("objectives must be a mapping with optional fallback")
+    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback", "story_path"}:
+        raise ValueError("objectives must be a mapping with optional fallback and story_path")
+    if "story_path" in objectives and (not isinstance(objectives["story_path"], str)
+                                        or not objectives["story_path"]):
+        raise ValueError("objectives.story_path must be a nonempty path string")
     if objectives.get("fallback", "off") not in ("off", "dex", "story"):
         raise ValueError("objectives.fallback must be off|dex|story")
     if (

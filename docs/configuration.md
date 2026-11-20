@@ -166,8 +166,13 @@ supported candidate safely pauses instead of inventing a destination. See
 `objectives.fallback: story` opts into the bounded authored progression source.
 The file must explicitly contain `run.on_objective_done: continue`; CLI `continue`
 does not repair a missing/hold/pause setting, and later hold/pause overrides fail.
-Supply external `POKEGENT_LOCAL_DATA_DIR/progression.json`; missing or invalid data
-is a redacted setup error. This file is separate from the seven setup schemas.
+Set optional `objectives.story_path` to an external artifact path. If omitted, the
+loader uses `POKEGENT_LOCAL_DATA_DIR/progression.json`. Use a sibling directory for
+story output: the exact-seven setup rerun rejects extra files. Runtime admission
+requires the selected supported ROM, pinned seven-file setup, matching active map
+index and a freshly validated cache. Missing or mismatched input is a redacted
+setup error; admission never repairs or regenerates data. Off/Dex requirements
+are unchanged.
 All-required completion SAFE_PAUSEs with `story_complete` after a successor/revision
 recheck. See [story source](objective-file.md#10-opt-in-authored-story-source-synthetic-engine-slice)
 for the fixed schema, authored policy, synthetic-only scope and remaining gates.

@@ -362,6 +362,7 @@ run:
   on_objective_done: continue
 objectives:
   fallback: story
+  story_path: /private/story/progression.json
 ```
 
 The configuration file itself must say `continue`. AppConfig rejects missing/default
@@ -370,8 +371,10 @@ A later CLI `hold`/`pause` override is also rejected. Off and Dex retain their e
 behavior. Story needs the same objective store; it never replaces an active manual or
 operator goal, bypasses a pending/rejected queue, or treats an expired file as empty.
 
-Supply `progression.json` in `POKEGENT_LOCAL_DATA_DIR`, outside the checkout (including
-symlink targets). The independent fixed loader accepts at most 64 KiB and does not
+Supply `objectives.story_path` outside the checkout (including symlink targets).
+The legacy default is `POKEGENT_LOCAL_DATA_DIR/progression.json`; use a sibling
+directory to preserve exact-seven setup reruns. The independent fixed loader
+accepts at most 64 KiB and does not
 add an eighth local-data/setup schema. All records must validate before use:
 
 - `schema_version`: 1.
@@ -410,11 +413,11 @@ rechecks the empty store revision, manual successor, expiry/rejection and queue 
 Runner applies that result. An external write after this final check is subject to
 the same process-boundary race as existing stop decisions.
 
-This slice has invented-data behavioral tests only. Digests declare provenance and
-bind the authored policy; they do not authenticate a real ROM or establish complete
-story coverage. Real generation, setup/cache identity binding, scoped temporary
-facts and private phase/transition acceptance
-remain separate gates. No game graph or policy is packaged with the engine.
+The story engine has invented-data behavioral tests. Runtime admission verifies
+declared identity against selected local inputs; that does not establish complete
+story coverage. Explicit partial conditional candidate generation is described in
+[local data](local-data.md); independent source/data and native phase/transition
+acceptance remain separate gates. No game graph or policy is packaged with the engine.
 
 Story mode also adds optional `story_facts` to agent/SystemOne state and the owner
 briefing, including while a manual goal is active. These read-only facts use the
@@ -441,3 +444,12 @@ the briefing remains the last observed view. Off/Dex payloads stay unchanged.
 The artifact's 64-node/64-KiB caps remain unchanged. Their fit for a complete real
 story, including badges, key items, HMs and side gates, remains unmeasured pending
 complete generation and coverage validation. Synthetic tests establish no such fit.
+
+Runtime admission independently compares the declared ROM/source/index/pin to the
+selected supported image, verified exact-seven setup and fresh cache artifact
+hashes through the active map-index environment seam. This applies to file, store
+and prebuilt story sessions. The loader alone remains structural validation;
+matching declarations are insufficient for runtime use. Inputs are admitted once
+per session construction; restart after replacing game inputs. Admission never
+fetches, rebuilds or repairs them. Current completion still requires a usable
+same-snapshot proof. No real recipe or full-story coverage is supplied by this slice.

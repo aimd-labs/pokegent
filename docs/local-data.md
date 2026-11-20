@@ -180,3 +180,65 @@ integer payload IDs, including nested integer-keyed collections and literal `fro
 Named protocol/struct fields, text decoders and repeated small layout permutations do not match
 this shape. This is a content-review tripwire: smaller tables, symbolic/computed data and game
 text still require manual review. A clean guard result does not establish data provenance.
+
+Optional authored story artifacts belong in a separate external directory selected
+with `objectives.story_path`. They are not an eighth setup schema. Story runtime
+admission requires the selected supported ROM, current pinned setup manifest,
+active named index and fresh hash-validated cache for that ROM and shipped source.
+A mismatch refuses admission without repair; use the explicit offline setup/cache
+commands before restarting. Loader-only validation does not establish compatibility.
+The bounded story engine does not supply a generated real or full-story policy.
+
+Generate a conditional partial candidate explicitly (all input/output paths external):
+
+```sh
+pokegent rom-data story --rom "$OWN_ROM" --decomp "$PINNED_SOURCE" \
+  --policy "$AUTHORED_POLICY" --local-data "$SEVEN_FILE_SETUP" \
+  --cache "$ROM_CACHE" --out-dir "$NEW_STORY_DIRECTORY"
+```
+
+This command neither fetches source nor repairs setup/cache. The output directory
+must be absent and separate from managed setup/cache. It contains `progression.json`
+and a private `receipt.json`, with directory/file modes 0700/0600. Original outputs
+are preserved. Use `objectives.story_path` to select the resulting progression.
+
+The explicit input below uses invented selectors, which must be replaced with
+selectors from the user's verified source. There is no packaged default policy:
+
+```json
+{
+  "schema_version": 1, "coverage": "partial", "readiness": "prerequisites-only",
+  "map": "MAP_DEMO", "objects": ["LOCALID_GUIDE", "LOCALID_CREATURE"],
+  "npc_script": "Demo_Guide", "computer_script": "Demo_Console",
+  "return_alias": "RETURNED", "phase_alias": "IN_MACHINE",
+  "helped_flag": "FLAG_HELPED", "gift_flag": "FLAG_GIFT", "gift_item": "ITEM_TOKEN",
+  "policy": {"order": ["helped", "gift"], "required": ["gift"]},
+  "rationales": {
+    "helped": "Partial: ask for help, then use the readable console.",
+    "gift": "Partial: collect the actual gift."
+  }
+}
+```
+
+The fixed recipe derives exactly two persistent milestone predicates. Source and
+compiled events must prove the expected branch/phase, object and sign joins. The
+conditional premise is the negation of the exact source/compiled return branch; it
+is recorded on every static effect and candidate receipt, never observed RAM or a
+new readiness field. The helped-effect proof also requires the positive phase guard.
+Both temporary bits remain distinct from persistent completion. Gender/response
+alternatives and capacity-guarded actual gift effects must be retained.
+
+The receipt hashes raw authored input separately from effective order/required
+policy and the exact artifact bytes. It records ROM/profile/source/setup-index/cache
+identity, joins, guards and original interpretations. The unrestricted script result
+remains authoritative and incomplete; its excluded response loop is unsupported.
+The scoped query must have zero decoder/control unknowns; precisely three reviewed
+spatial effects remain unresolved, with their exact special/reference/selector joins.
+These effects retain task-capacity, collision, timing and render/animation limits.
+No input legality, traversal or guaranteed completion follows. `accepted_recipe`
+remains false pending independent source/data review, even when conditional
+derivation and structural/runtime identity admission pass. No gameplay was proved.
+
+A terminal `story_complete` means only the explicitly required partial subset is
+proven by current usable RAM. Full story coverage and the size of a complete artifact
+remain open; a two-node candidate is not a complete-story cap measurement.

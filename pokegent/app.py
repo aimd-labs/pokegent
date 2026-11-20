@@ -178,6 +178,7 @@ class AppConfig:
     ignore_objective: bool = False
     dex_fallback: bool = False
     story_fallback: bool = False
+    story_path: str | None = None
     #: savestate checkpoints: every ``checkpoint_every`` iterations (0 = off) a state is written to
     #: ``<out>/checkpoints/`` and the newest ``checkpoint_keep`` stay; ``save_final_state`` writes
     #: ``<out>/final.state`` when the run ends, whatever the reason (the next run's ``--state``)
@@ -233,6 +234,9 @@ class AppConfig:
                 or not isinstance(self.objective_stuck_after, int)
                 or self.objective_stuck_after < 1):
             raise AppError("objective_stuck_after must be an integer >= 1")
+        if self.story_path is not None and (not isinstance(self.story_path, str)
+                                            or not self.story_path):
+            raise AppError("objectives.story_path must be a nonempty path string")
         if self.story_fallback and (self.dex_fallback or self.on_objective_done != "continue"):
             raise AppError("story fallback requires continue and cannot combine with dex")
         if self.on_objective_done not in ON_OBJECTIVE_DONE:
@@ -401,12 +405,16 @@ def config_from_mapping(raw: Mapping[str, Any], *, run_id: str = "run") -> AppCo
         raise AppError(f"unsupported schema_version {raw.get('schema_version')!r}")
     kw: dict[str, Any] = {"run_id": run_id}
     objectives = raw.get("objectives", {})
-    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback"}:
-        raise AppError("objectives must be a mapping with optional fallback")
+    if not isinstance(objectives, Mapping) or set(objectives) - {"fallback", "story_path"}:
+        raise AppError("objectives must be a mapping with optional fallback and story_path")
     if objectives.get("fallback", "off") not in ("off", "dex", "story"):
         raise AppError("objectives.fallback must be off|dex|story")
     kw["dex_fallback"] = objectives.get("fallback", "off") == "dex"
     kw["story_fallback"] = objectives.get("fallback", "off") == "story"
+    kw["story_path"] = objectives.get("story_path")
+    if kw["story_path"] is not None and (not isinstance(kw["story_path"], str)
+                                         or not kw["story_path"]):
+        raise AppError("objectives.story_path must be a nonempty path string")
     if raw.get("autoplay") is not None:
         kw["autoplay"] = raw["autoplay"]
     external = raw.get("external") or {}
@@ -674,6 +682,8 @@ def build_runner(
         directory=objective_directory,
         dex_fallback=config.dex_fallback,
         story_fallback=config.story_fallback,
+        story_path=config.story_path,
+        rom_path=rom_path,
         stuck_after=config.objective_stuck_after,
     )
     bind_planning = getattr(decider, "bind_planning", None)
@@ -837,6 +847,8 @@ def make_objective_session(
     directory: MapDirectory | None = None,
     dex_fallback: bool = False,
     story_fallback: bool = False,
+    story_path: str | os.PathLike[str] | None = None,
+    rom_path: str | os.PathLike[str] | None = None,
     stuck_after: int = 120,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
@@ -876,12 +888,23 @@ def make_objective_session(
         except (OSError, ValueError, RuntimeError, TypeError):
             raise AppError("dex fallback requires valid private ROM encounter data",
                            EXIT_ENVIRONMENT) from None
-    if story_fallback:
+    from pokegent.goals.story import StoryFallback
+
+    if story_fallback or (not dex_fallback and session is not None
+                          and isinstance(session.fallback, StoryFallback)):
         from pokegent.goals.story import load_progression
+        from pokegent.goals.story_identity import verify_identity
 
         try:
-            fallback = load_progression(directory=store.directory)
-        except ValueError:
+            if story_fallback:
+                fallback = load_progression(
+                    path=Path(story_path).expanduser() if story_path else None,
+                    directory=store.directory,
+                )
+            else:
+                fallback = session.fallback
+            verify_identity(fallback.graph, rom_path)
+        except (ValueError, TypeError):
             raise AppError("story fallback requires valid private progression data",
                            EXIT_ENVIRONMENT) from None
     if session is None:

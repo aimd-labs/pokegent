@@ -47,7 +47,7 @@ def message(source: Source, file: str, label: str) -> str:
 
 
 class Facts:
-    def __init__(self, source: Source):
+    def __init__(self, source: Source, *, extra_headers=()):
         self.source = source
         raw = source.json('data/maps/map_groups.json')
         self.groups = {'group_order': raw['group_order'],
@@ -56,7 +56,7 @@ class Facts:
                      for g, key in enumerate(raw['group_order'])
                      for n, name in enumerate(raw[key])}
         self.defines = {}
-        for file in ('flags', 'opponents', 'menu', 'moves', 'metatile_behaviors'):
+        for file in ('flags', 'opponents', 'menu', 'moves', 'metatile_behaviors', *extra_headers):
             for name, value in re.findall(r'^#define\s+(\w+)\s+([^\n]+)',
                                           source.text(f'include/constants/{file}.h'), re.M):
                 value = value.split('//')[0].split('/*')[0].strip()
