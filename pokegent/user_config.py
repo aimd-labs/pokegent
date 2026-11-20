@@ -13,6 +13,48 @@ import yaml
 from pokegent.env import get_system1_env
 
 _EXTERNAL_KEYS = frozenset({"port", "walk_step_limit"})
+_CONSUMED_KEYS = {
+    # Canonical names are forwarded to SystemOneConfig; these user-config aliases are
+    # translated by to_legacy_config below.
+    "system1": frozenset({
+        "base_url", "api_key_env", "timeouts", "outage", "max_outage_s",
+        "provider_url", "protocol", "endpoint_path", "auth_header", "model",
+        "request_model", "api_key", "timeout_seconds", "connect_timeout_seconds",
+        "read_timeout_seconds", "fallback_provider", "max_state_tokens",
+        "max_options_per_question", "option_order", "require_fresh_snapshot",
+        "strict_model_pin", "retry", "breaker", "rate", "calibration",
+    }),
+    "hybrid": frozenset({"escalate_below_confidence", "override_window_s",
+                          "escalate_on_no_progress", "escalate_unknown_scene",
+                          "force_agent_after_repeats"}),
+    "battle": frozenset({"opponent_knowledge"}),
+    "field": frozenset({"menus"}),
+    "output": frozenset({"run_dir"}),
+}
+
+
+def _validate_consumed_sections(data: Mapping[str, Any]) -> None:
+    """Reject malformed sections at the user-config boundary before consumers dereference them."""
+    for section, allowed in _CONSUMED_KEYS.items():
+        if section not in data:
+            continue
+        body = data[section]
+        if not isinstance(body, Mapping):
+            raise ValueError(f"{section} must be a mapping")
+        unknown = sorted(str(key) for key in body if key not in allowed)
+        if unknown:
+            raise ValueError(f"unknown {section} settings: {', '.join(unknown)}")
+    system1 = data.get("system1")
+    if isinstance(system1, Mapping) and "timeouts" in system1:
+        timeouts = system1["timeouts"]
+        if isinstance(timeouts, Mapping):
+            unknown = sorted(str(key) for key in timeouts if key != "request")
+            if unknown:
+                raise ValueError(f"unknown system1.timeouts settings: {', '.join(unknown)}")
+        elif isinstance(timeouts, bool) or not isinstance(timeouts, (int, float)):
+            raise ValueError("system1.timeouts must be a positive number or mapping")
+        elif timeouts <= 0:
+            raise ValueError("system1.timeouts must be positive")
 
 DEFAULTS: dict[str, Any] = {
     "decider": "hybrid",
@@ -111,6 +153,7 @@ def load_user_config(
         data = {}
     if not isinstance(data, Mapping):
         raise ValueError("user config must be a mapping")
+    _validate_consumed_sections(data)
     if (
         "hybrid" in data
         and isinstance(data["hybrid"], Mapping)
