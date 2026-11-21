@@ -692,7 +692,8 @@ class NavigationAdapter:
                 candidate = next((option for option in options
                     if option.chooseable
                     and option.facts.get("selection_reason") != "repeated_failure"
-                    and option.facts.get("target", {}).get("kind") == "tile"
+                    and isinstance(option.facts.get("target"), dict)
+                    and option.facts["target"].get("kind") == "tile"
                     and self._matches_route_end(option, edge.destination)), None)
                 if candidate is not None:
                     local_step = candidate

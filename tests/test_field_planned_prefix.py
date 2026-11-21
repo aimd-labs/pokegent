@@ -1,6 +1,7 @@
 """Coordinate goals behind script geometry still expose the existing walking prefix."""
 from dataclasses import replace
 
+import pytest
 from test_field_targets_hidden_flags import _object, _state
 from test_planner_fossil_step import _FakeGraph
 from test_probe_primitives import snapshot
@@ -17,6 +18,7 @@ from pokegent.navigation.models import (
     NavigationPlan,
     NavigationTarget,
 )
+from pokegent.options.models import Legality, Option
 from pokegent.options.registry import BuildContext
 from pokegent.state.scenes import SceneResult
 
@@ -103,3 +105,15 @@ def test_non_toggle_plan_does_not_add_same_map_prefix():
     without_toggle = replace(plan, route=tuple(e for e in plan.route if e.kind != 'toggle'))
     builder.navigation.plan = lambda *_args, **_kwargs: without_toggle
     assert not any(o.chooseable and o.id.startswith('tile:') for o in builder.build(ctx).options)
+
+
+@pytest.mark.parametrize('target', [None, 'not a mapping'])
+def test_prefix_matching_tolerates_options_without_mapping_targets(target):
+    builder, ctx, _, plan = blocked_point_frame()
+    options = list(builder.build(ctx).options)
+    unrelated = Option(id='invented:unrelated', label='Unrelated option',
+        legality=Legality.LEGAL, executor_ref='field.wait', facts={'target': target})
+    annotated, _ = builder.navigation.annotate([unrelated, *options], ctx.snapshot,
+        builder.objectives(ctx.goal_id), plan=plan)
+    assert not next(o for o in annotated if o.id == unrelated.id).facts.get('next_route_step')
+    assert next(o for o in annotated if o.facts.get('next_route_step')).id == 'tile:3:4'
