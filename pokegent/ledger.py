@@ -107,12 +107,63 @@ _MIGRATIONS = ((
         FOREIGN KEY(segment_id,event_id)
             REFERENCES ingested_events(segment_id,event_id)
     )""",
+), (
+    """ALTER TABLE saves ADD COLUMN comparison_group TEXT CHECK(
+        comparison_group IS NULL OR (typeof(comparison_group)='text'
+        AND length(comparison_group) BETWEEN 1 AND 128
+        AND comparison_group=trim(comparison_group)))""",
+    """ALTER TABLE saves ADD COLUMN game_origin_seconds INTEGER CHECK(
+        game_origin_seconds IS NULL OR (typeof(game_origin_seconds)='integer'
+        AND game_origin_seconds BETWEEN 0 AND 3599999))""",
 ),)
 SCHEMA_VERSION = len(_MIGRATIONS)
 
 
 class LedgerSchemaError(ValueError):
     """Database ownership, version or catalog is unsupported; no automatic repair."""
+
+
+def configure_comparison(
+    db: sqlite3.Connection,
+    save_id: str,
+    *,
+    comparison_group: str,
+    game_origin_seconds: int,
+) -> None:
+    """Set explicit immutable split identity inside the caller's transaction."""
+    if not db.in_transaction:
+        raise ValueError("caller must start a transaction")
+    if (
+        not isinstance(comparison_group, str)
+        or not comparison_group.strip()
+        or len(comparison_group) > 128
+    ):
+        raise ValueError("comparison_group must be 1..128 non-whitespace characters")
+    if comparison_group != comparison_group.strip():
+        raise ValueError("comparison_group cannot have surrounding whitespace")
+    if (
+        isinstance(game_origin_seconds, bool)
+        or not isinstance(game_origin_seconds, int)
+        or not 0 <= game_origin_seconds <= 3599999
+    ):
+        raise ValueError("game_origin_seconds must be an integer from 0 through 3599999")
+    row = db.execute(
+        "SELECT mode,rom_profile,comparison_group,game_origin_seconds FROM saves WHERE id=?",
+        (save_id,),
+    ).fetchone()
+    if row is None:
+        raise KeyError(save_id)
+    if row[0] is None or row[1] is None:
+        raise ValueError("save mode and ROM profile must be known")
+    requested = (comparison_group, game_origin_seconds)
+    if row[2:] == requested:
+        return
+    if row[2] is not None or row[3] is not None:
+        raise ValueError("comparison identity is immutable")
+    db.execute(
+        "UPDATE saves SET comparison_group=?,game_origin_seconds=? WHERE id=?",
+        (*requested, save_id),
+    )
 
 
 _CATALOG = """SELECT type,name,tbl_name,sql FROM sqlite_master
