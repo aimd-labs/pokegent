@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -29,7 +30,7 @@ def seeded(path):
 def test_scoped_queries_keep_unknowns_and_refs_inert(tmp_path):
     path = tmp_path / "ledger.sqlite3"
     seeded(path)
-    with open_readonly(path) as db:
+    with closing(open_readonly(path)) as db:
         result = status(db, "a")
         assert result["runs"][0]["wall_seconds"] is None
         assert result["objectives"] == []
@@ -90,7 +91,7 @@ def test_sql_authorizer_refuses_mutations_and_file_functions(tmp_path, sql):
     path = tmp_path / "ledger.sqlite3"
     seeded(path)
     before = path.read_bytes()
-    with open_readonly(path) as db, pytest.raises(sqlite3.DatabaseError):
+    with closing(open_readonly(path)) as db, pytest.raises(sqlite3.DatabaseError):
         query(db, sql)
     assert path.read_bytes() == before
 
@@ -98,7 +99,7 @@ def test_sql_authorizer_refuses_mutations_and_file_functions(tmp_path, sql):
 def test_query_parameters_and_row_limit(tmp_path):
     path = tmp_path / "ledger.sqlite3"
     seeded(path)
-    with open_readonly(path) as db:
+    with closing(open_readonly(path)) as db:
         assert query(db, "SELECT id FROM saves WHERE id=?", ("a",)) == [{"id": "a"}]
         with pytest.raises(ValueError, match="row limit"):
             query(db, "SELECT id FROM saves ORDER BY id", max_rows=1)
@@ -108,11 +109,37 @@ def test_recursive_query_is_interrupted_and_connection_closes(tmp_path):
     path = tmp_path / "ledger.sqlite3"
     seeded(path)
     db = open_readonly(path)
-    with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+    with closing(db), pytest.raises(sqlite3.OperationalError, match="interrupted"):
         query(
             db,
             "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT sum(x) FROM n",
         )
-    db.close()
     with pytest.raises(sqlite3.ProgrammingError, match="closed"):
         db.execute("SELECT 1")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT randomblob(2147483647)",
+        "SELECT printf('%1000000000s','x')",
+        "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<20) "
+        "SELECT group_concat(printf('%500000s','x')) FROM n",
+    ],
+)
+def test_large_builtin_values_and_aggregates_are_bounded(tmp_path, sql):
+    path = tmp_path / "ledger.sqlite3"
+    seeded(path)
+    with closing(open_readonly(path)) as db, pytest.raises(sqlite3.Error):
+        query(db, sql)
+
+
+def test_cumulative_result_bytes_are_bounded(tmp_path):
+    path = tmp_path / "ledger.sqlite3"
+    seeded(path)
+    sql = (
+        "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100) "
+        "SELECT hex(randomblob(200000)) FROM n"
+    )
+    with closing(open_readonly(path)) as db, pytest.raises(ValueError, match="byte limit"):
+        query(db, sql)

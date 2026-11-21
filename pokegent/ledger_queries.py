@@ -6,17 +6,21 @@ import os
 import sqlite3
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import closing
 from urllib.parse import quote
 
 from pokegent import ledger
 
 MAX_ROWS = 10_000
 QUERY_SECONDS = 2.0
-_DENIED_FUNCTIONS = {"load_extension", "writefile", "readfile"}
+MAX_VALUE_BYTES = 8 * 1024 * 1024
+MAX_RESULT_BYTES = 16 * 1024 * 1024
+MAX_SQL_BYTES = 64 * 1024
+_DENIED_FUNCTIONS = {"load_extension", "writefile", "readfile", "printf", "format"}
 
 
 def open_readonly(path: str | os.PathLike[str]) -> sqlite3.Connection:
-    """Open an existing, owned ledger without migration or write access."""
+    """Open an existing owned ledger read-only; callers must explicitly close it."""
     raw = os.fspath(path)
     if not raw.strip() or raw == ":memory:" or raw.startswith("file:") or "\x00" in raw:
         raise ValueError("ledger requires an explicit filesystem path")
@@ -24,16 +28,18 @@ def open_readonly(path: str | os.PathLike[str]) -> sqlite3.Connection:
     if not os.path.isfile(absolute):
         raise FileNotFoundError(absolute)
     uri = "file:" + quote(absolute, safe="/") + "?mode=ro"
-    db = sqlite3.connect(uri, uri=True, isolation_level=None)
+    db = sqlite3.connect(uri, uri=True, isolation_level=None, timeout=1.0)
     try:
         db.enable_load_extension(False)
+        db.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_VALUE_BYTES)
+        db.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, MAX_SQL_BYTES)
         db.execute("PRAGMA query_only=ON")
         db.execute("PRAGMA trusted_schema=OFF")
         version = db.execute("PRAGMA user_version").fetchone()[0]
         owner = db.execute("PRAGMA application_id").fetchone()[0]
         if version != ledger.SCHEMA_VERSION or owner != ledger.APPLICATION_ID:
             raise ledger.LedgerSchemaError("unsupported run ledger ownership or version")
-        with sqlite3.connect(":memory:") as reference:
+        with closing(sqlite3.connect(":memory:")) as reference:
             for migration in ledger._MIGRATIONS[:version]:
                 for statement in migration:
                     reference.execute(statement)
@@ -70,7 +76,7 @@ def query(
     max_rows: int = MAX_ROWS,
     timeout: float = QUERY_SECONDS,
 ) -> list[dict[str, object]]:
-    """Run a parameterized read query with wall-time and result bounds."""
+    """Run a parameterized read query with wall-time, row, SQL and byte bounds."""
     if not 1 <= max_rows <= MAX_ROWS or not 0 < timeout <= QUERY_SECONDS:
         raise ValueError("query bounds exceed the supported limits")
     deadline = time.monotonic() + timeout
@@ -79,10 +85,27 @@ def query(
     try:
         cursor.execute(sql, parameters)
         names = [column[0] for column in cursor.description or ()]
-        rows = cursor.fetchmany(max_rows + 1)
-        if len(rows) > max_rows:
-            raise ValueError("query returned more than the row limit")
-        return [dict(zip(names, row)) for row in rows]
+        rows = []
+        size = 0
+        for _ in range(max_rows + 1):
+            row = cursor.fetchone()
+            if row is None:
+                break
+            if len(rows) == max_rows:
+                raise ValueError("query returned more than the row limit")
+            result = dict(zip(names, row))
+            size += sum(
+                len(value)
+                if isinstance(value, bytes)
+                else len(value.encode("utf-8"))
+                if isinstance(value, str)
+                else 8
+                for value in row
+            )
+            if size > MAX_RESULT_BYTES:
+                raise ValueError("query result exceeded the byte limit")
+            rows.append(result)
+        return rows
     finally:
         cursor.close()
         db.set_progress_handler(None, 0)
