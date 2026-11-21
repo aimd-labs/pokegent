@@ -6,6 +6,7 @@ from contextlib import closing
 import pytest
 
 from pokegent import ledger
+from pokegent.ledger_observations import ingest_observation
 from pokegent.ledger_queries import open_readonly
 from pokegent.ledger_splits import splits
 
@@ -24,6 +25,7 @@ def add_sample(db, save_id, seg, event, observed, clock, milestone=None):
         (seg, seg, save_id),
     )
     source = "src-" + event
+    receipt = "ram-observation:" + event
     db.execute(
         "INSERT INTO ingest_sources(id,segment_id,source_ref,generation) VALUES(?,?,?,0)",
         (source, seg, source),
@@ -31,9 +33,9 @@ def add_sample(db, save_id, seg, event, observed, clock, milestone=None):
     db.execute(
         "INSERT INTO ingested_events(segment_id,event_id,source_id,seq,byte_offset) "
         "VALUES(?,?,?,?,0)",
-        (seg, event, source, 1),
+        (seg, receipt, source, 1),
     )
-    db.execute("INSERT INTO observation_clocks VALUES(?,?,?,?)", (seg, event, observed, clock))
+    db.execute("INSERT INTO observation_clocks VALUES(?,?,?,?)", (seg, receipt, observed, clock))
     if milestone:
         kind, value = milestone
         db.execute(
@@ -103,6 +105,21 @@ def test_configuration_requires_known_identity_and_is_immutable(db):
                 db.rollback()
 
 
+@pytest.mark.parametrize("profile", ["", "   "])
+def test_empty_profile_is_unknown_for_configuration_and_splits(db, profile):
+    with db:
+        add_save(db, "blank-profile", profile=profile)
+    with pytest.raises(ValueError, match="ROM profile"):
+        db.execute("BEGIN")
+        try:
+            ledger.configure_comparison(
+                db, "blank-profile", comparison_group="route-a", game_origin_seconds=0
+            )
+        finally:
+            db.rollback()
+    assert splits(db, "blank-profile")["available"] is False
+
+
 def test_origin_matching_reference_and_negative_delta_readonly(db, tmp_path):
     with db:
         add_save(db, "current")
@@ -127,6 +144,57 @@ def test_origin_matching_reference_and_negative_delta_readonly(db, tmp_path):
         assert out["milestones"][0]["delta_seconds"] == -10
         with pytest.raises(sqlite3.DatabaseError):
             ro.execute("UPDATE saves SET label='x'")
+
+
+def test_real_observation_writer_receipts_produce_split_delta(db):
+    with db:
+        add_save(db, "current", origin=0)
+        add_save(db, "reference", origin=0)
+        for save_id, segment, observation_id, at, seconds in (
+            ("current", "current-seg", "current-observation", "2026-01-01T00:00:00Z", 100),
+            ("reference", "reference-seg", "reference-observation", "2026-01-02T00:00:00Z", 120),
+        ):
+            db.execute(
+                "INSERT INTO runs(id,run_id,save_id,source_ref) VALUES(?,?,?,'synthetic')",
+                (segment, segment, save_id),
+            )
+            ingest_observation(
+                db,
+                save_id=save_id,
+                segment_id=segment,
+                observation_id=observation_id,
+                observed_at=at,
+                source_ref="synthetic",
+                payload={
+                    "snapshot_seq": 1,
+                    "rom_profile": "fr",
+                    "game_seconds": seconds,
+                    "milestones": [["badge", "1", "possession"]],
+                },
+            )
+    rows = db.execute(
+        "SELECT m.source_event_id,c.event_id FROM milestones m "
+        "JOIN observation_clocks c ON c.segment_id=m.segment_id "
+        "AND c.event_id='ram-observation:' || m.source_event_id ORDER BY m.save_id"
+    ).fetchall()
+    assert rows == [
+        ("current-observation", "ram-observation:current-observation"),
+        ("reference-observation", "ram-observation:reference-observation"),
+    ]
+    path = db.execute("PRAGMA database_list").fetchone()[2]
+    with closing(open_readonly(path)) as ro:
+        result = splits(ro, "current")["milestones"]
+    assert result == [
+        {
+            "kind": "badge",
+            "value": "1",
+            "observed_elapsed_seconds": 100,
+            "observation_reason": None,
+            "reference_elapsed_seconds": 120,
+            "delta_seconds": -20,
+            "reference_reason": None,
+        }
+    ]
 
 
 def test_unavailable_unknown_and_clock_rollback(db):
@@ -170,6 +238,8 @@ def test_incompatible_references_and_null_clock_are_not_used(db):
         {"origin": None},
         {"mode": None},
         {"profile": None},
+        {"profile": ""},
+        {"profile": "   "},
     ],
 )
 def test_references_require_all_known_matching_metadata(db, override):

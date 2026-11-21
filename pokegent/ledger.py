@@ -153,7 +153,11 @@ def configure_comparison(
     ).fetchone()
     if row is None:
         raise KeyError(save_id)
-    if row[0] is None or row[1] is None:
+    if (
+        row[0] not in {"casual", "speedrun"}
+        or not isinstance(row[1], str)
+        or not row[1].strip()
+    ):
         raise ValueError("save mode and ROM profile must be known")
     requested = (comparison_group, game_origin_seconds)
     if row[2:] == requested:

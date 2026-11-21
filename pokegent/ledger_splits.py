@@ -31,9 +31,11 @@ def splits(db: sqlite3.Connection, save_id: str) -> dict[str, object]:
     if not selected_rows:
         raise KeyError(save_id)
     selected = selected_rows[0]
-    if any(
-        selected[k] is None
-        for k in ("mode", "rom_profile", "comparison_group", "game_origin_seconds")
+    if (
+        selected["mode"] not in {"casual", "speedrun"}
+        or not isinstance(selected["rom_profile"], str)
+        or not selected["rom_profile"].strip()
+        or any(selected[k] is None for k in ("comparison_group", "game_origin_seconds"))
     ):
         return {
             "available": False,
@@ -50,7 +52,8 @@ def splits(db: sqlite3.Connection, save_id: str) -> dict[str, object]:
     compatible = query(
         db,
         "SELECT id FROM saves WHERE id<>? AND mode=? AND rom_profile=? AND comparison_group=? "
-        "AND game_origin_seconds IS NOT NULL",
+        "AND typeof(rom_profile)='text' AND trim(rom_profile)<>'' "
+        "AND mode IN ('casual','speedrun') AND game_origin_seconds IS NOT NULL",
         (save_id, selected["mode"], selected["rom_profile"], selected["comparison_group"]),
     )
     eligible = [row["id"] for row in compatible if row["id"] not in decreased]
@@ -59,7 +62,7 @@ def splits(db: sqlite3.Connection, save_id: str) -> dict[str, object]:
         "SELECT m.kind,m.value,c.game_seconds FROM milestones m "
         "JOIN runs r ON r.id=m.segment_id AND r.save_id=m.save_id "
         "LEFT JOIN observation_clocks c ON c.segment_id=m.segment_id "
-        "AND c.event_id=m.source_event_id "
+        "AND c.event_id='ram-observation:' || m.source_event_id "
         "WHERE m.save_id=? "
         "AND m.observation IN ('achievement','possession') "
         "ORDER BY c.game_seconds,m.id",
@@ -87,7 +90,7 @@ def splits(db: sqlite3.Connection, save_id: str) -> dict[str, object]:
             "FROM milestones m JOIN runs r ON r.id=m.segment_id AND r.save_id=m.save_id "
             "JOIN saves s ON s.id=m.save_id "
             "JOIN observation_clocks c ON c.segment_id=m.segment_id "
-            "AND c.event_id=m.source_event_id "
+            "AND c.event_id='ram-observation:' || m.source_event_id "
             f"WHERE m.save_id IN ({marks}) AND c.game_seconds IS NOT NULL "
             "AND m.observation IN ('achievement','possession') "
             "AND c.game_seconds>=s.game_origin_seconds GROUP BY m.kind,m.value",
