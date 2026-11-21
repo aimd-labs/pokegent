@@ -390,7 +390,7 @@ def test_real_search_counter_stops_at_expansion_limit(tmp_path):
     assert "search budget exhausted after 1 states" in plan.blocked_route_fact
     assert calls == [True]  # preserve the original choice-frontier fallback
     records = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert records and all(row["type"] == "plan_budget_exceeded" for row in records)
+    assert records and all(row["type"] == "navigation.plan_budget_exceeded" for row in records)
     assert all(row["public_visibility"] for row in records)
     assert {row["details"]["phase"] for row in records} == {"available", "blocked"}
     assert all(row["details"]["expanded"] == row["details"]["limit"] == 1 for row in records)
@@ -403,7 +403,7 @@ def test_objective_budget_abandons_route_and_does_not_change_general_default(tmp
     bounded = adapter.plan(_snapshot(), _resolved(), objective_budget=1)
     assert bounded is None
     record = json.loads((tmp_path / "events.jsonl").read_text().splitlines()[-1])
-    assert record["type"] == "plan_budget_exceeded"
+    assert record["type"] == "navigation.plan_budget_exceeded"
     assert record["public_visibility"] is True
     assert record["details"]["scope"] == "objective"
     assert record["details"]["explored"] == 1
