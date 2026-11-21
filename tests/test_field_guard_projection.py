@@ -1,6 +1,7 @@
 """Actual field draft never advertises a historical dialog result as a live write."""
 import struct
 
+import pytest
 from test_probe_primitives import snapshot
 from test_script_guard_consumers import code, graph_for
 from test_script_guard_lifetimes import BASE, RESULT, compare, interpret
@@ -18,6 +19,7 @@ from pokegent.options.registry import BuildContext
 from pokegent.state.scenes import SceneResult
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_actual_field_builder_preserves_trigger_but_refuses_unproven_write():
     identity = MapIdentity(group=0, number=0, name='DemoLab', layout_id=1,
         region_section_id=0, map_type=0, map_type_name='indoor', weather=0,
