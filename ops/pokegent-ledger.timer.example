@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll local Pokegent runs for ledger ingestion
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=pokegent-ledger.service
+
+[Install]
+WantedBy=default.target

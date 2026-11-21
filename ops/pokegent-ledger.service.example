@@ -1,0 +1,12 @@
+[Unit]
+Description=Ingest local Pokegent run output and viewer RAM into the local ledger
+# Example only. The owner selects the installed Pokegent executable and confirms its import path,
+# then copies, installs, and enables a user unit with locally chosen directories.
+
+[Service]
+Type=oneshot
+UMask=0077
+NoNewPrivileges=yes
+TimeoutStartSec=45s
+EnvironmentFile=%h/.config/pokegent/ledger-ingest.env
+ExecStart=/usr/bin/env ${POKEGENT_BIN} ledger ingest --save ${SAVE_ID} --runs-dir ${RUNS_DIR} --db ${LEDGER_DB} --live-home ${LIVE_HOME} --viewer-port ${VIEWER_PORT} --json
