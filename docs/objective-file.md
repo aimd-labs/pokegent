@@ -459,3 +459,20 @@ current usable BAG item probe, never from a gift flag or historical possession.
 A failed one-shot attempt may leave the objective permanently unmet; the talk
 target provides no retry or route guarantee. Excluded departure/exit behavior and
 field readiness do not become proven when this partial endpoint completes.
+
+### SHOP feasibility contract (pure foundation; not wired)
+
+SHOP completion remains bag possession, regardless of how the item was acquired. While the
+requested quantity is unmet, the target map binds the merchant being assessed. The pure
+`pokegent.goals.shop_feasibility.assess_shop` contract returns `SATISFIABLE` when supported facts
+show the request can be met, `UNSATISFIABLE` only when complete ROM-proven inventory for that exact
+map omits the item, `BLOCKED` when the item is stocked but known money or access is insufficient,
+and `UNKNOWN` when required facts are missing, partial, or bound to another map. An already-owned
+requested quantity is `SATISFIABLE` without requiring a purchase event.
+
+The assessment accepts internal typed facts only; objective JSON cannot claim inventory
+completeness or provide proof booleans. Callers are responsible for binding facts to the same ROM
+and target map and supplying a fresh usable bag quantity; `item_price` is the price per requested
+item id. This contract has no ROM inventory
+producer or objective-admission integration yet, so it makes no live rejection and does not claim
+that any item is globally unobtainable.
