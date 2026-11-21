@@ -162,7 +162,6 @@ def test_each_result_writer_supersedes_a_known_input_value(name):
     assert flags(result)
 
 
-@pytest.mark.skip(reason="re-land in #106")
 def test_interpreter_preserves_unknown_origin_as_none():
     result = guarded(b'', var=0x4001, value=0)
     guards = [guard for effect in flags(result) for guard in effect.guards
