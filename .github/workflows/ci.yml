@@ -9,6 +9,22 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  public-startup-latency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: '3.11'
+      - name: Install public runtime dependencies
+        run: python -m pip install -e . pytest
+      - name: Check timeout failure handling without waiting
+        run: python -m pytest -q tests/test_public_startup_latency.py
+      - name: Verify public ROM factory startup under 30 seconds
+        run: python tools/check_public_startup_latency.py
   native-helper:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
