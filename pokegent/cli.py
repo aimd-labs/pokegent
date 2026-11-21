@@ -676,6 +676,24 @@ def main(argv=None):
 
     sub = parser.add_subparsers(dest="command")
 
+    ledger_p = sub.add_parser("ledger", help="Query the local read-only run ledger")
+    ledger_sub = ledger_p.add_subparsers(dest="ledger_action", required=True)
+    for ledger_action in ("status", "incidents", "milestones"):
+        action_p = ledger_sub.add_parser(ledger_action, help=f"Show ledger {ledger_action}")
+        action_p.add_argument("--save", required=True, help="save identity")
+        action_p.add_argument("--db", default=None, metavar="FILE", help="ledger file")
+        action_p.add_argument("--live-home", default=None, help="LIVE_HOME override")
+        action_p.add_argument("--json", action="store_true", help="emit JSON")
+    sql_p = ledger_sub.add_parser(
+        "sql", help="Run a bounded read-only ledger query",
+        description=("Run bounded, read-only SQL against the owned ledger. JSON BLOB values "
+                     "are objects with type 'blob' and lowercase hex data."),
+    )
+    sql_p.add_argument("sql", metavar="SQL")
+    sql_p.add_argument("--db", default=None, metavar="FILE", help="ledger file")
+    sql_p.add_argument("--live-home", default=None, help="LIVE_HOME override")
+    sql_p.add_argument("--json", action="store_true", help="emit JSON")
+
     # --- info ---
     info_p = sub.add_parser("info", help="Show ROM information")
     info_p.add_argument("--rom", required=True, help="Path to Pokemon ROM file")
@@ -965,7 +983,11 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
-    if args.command == "provider":
+    if args.command == "ledger":
+        from pokegent.ledger_cli import run
+
+        return run(args)
+    elif args.command == "provider":
         cmd_provider(args)
     elif args.command == "info":
         cmd_info(args)
