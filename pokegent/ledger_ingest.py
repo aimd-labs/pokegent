@@ -71,8 +71,12 @@ def _event(raw: bytes, run_id: str) -> tuple[dict[str, Any], str]:
         "public_visibility",
         "details",
     }
-    if value.keys() - allowed:
-        raise IngestError("event envelope has unknown fields")
+    unknown = sorted(value.keys() - allowed)
+    if unknown:
+        raise IngestError(
+            f"event envelope has unknown fields: {', '.join(unknown)} "
+            "(schema compatibility required)"
+        )
     required = {"schema_rev", "id", "run_id", "seq", "observed_at", "type", "source", "details"}
     if not required.issubset(value):
         raise IngestError("event envelope is missing required fields")
@@ -483,7 +487,8 @@ def ingest_run(
         if stop_reason is not None and not isinstance(stop_reason, str):
             raise IngestError("summary stop_reason must be a string")
         db.execute(
-            "UPDATE runs SET verdict=?,exit_reason=?,wall_seconds=? "
+            "UPDATE runs SET verdict=COALESCE(?,verdict),"
+            "exit_reason=COALESCE(?,exit_reason),wall_seconds=COALESCE(?,wall_seconds) "
             "WHERE id=? AND run_id=? AND save_id=?",
             (verdict, stop_reason, wall, segment_id, run_id, save_id),
         )

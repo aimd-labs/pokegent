@@ -1,5 +1,20 @@
 # Local game data
 
+## Local run ledger
+
+`pokegent ledger ingest --save ID --run-dir DIR --db FILE` reads explicit runner output
+directories and stores bounded event history in the local SQLite ledger. `--runs-dir DIR`
+processes at most 100 immediate run directories per invocation. Repeated calls are resumable;
+incomplete final event lines remain unadvanced. Stored source and checkpoint references are inert
+text and are never followed. Keep the database on a local filesystem that supports SQLite WAL;
+network filesystems and DrvFS are unsupported.
+
+RAM observations may be read from a bounded operator telemetry JSON file with
+`--telemetry-file FILE`, or from a fixed loopback viewer endpoint with `--viewer-port PORT`.
+Only `state.observation` paired to the selected `run.run_id` and stamped by
+`freshness.state.updated_at` is admitted. Missing or stale-shaped telemetry leaves RAM facts
+unknown while event ingestion continues. Generic per-user timer examples are in `ops/`.
+
 The live stream runs this public code with private local game data kept outside the repository.
 No ROM, extracted dataset, sprites or run recordings are bundled. Bring your own legally obtained
 supported ROM. The generator below supplies all seven local files and the ROM cache.
