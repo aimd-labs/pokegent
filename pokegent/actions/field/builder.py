@@ -1304,6 +1304,11 @@ class FieldBuilder:
             return "push the boulder"
         if edge.kind == "gate":
             return "open the gate"
+        if edge.kind == "toggle":
+            target = edge.target_dict()
+            if target.get("local_id"):
+                return f"interact with NPC {target['local_id']}"
+            return f"interact with sign {target.get('event')}"
         return f"travel to {name}"
 
     @staticmethod
