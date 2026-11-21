@@ -168,6 +168,22 @@ def test_required_npc_unknown_hidden_still_refused_for_talk_objective():
     assert all(t.option_id != "talk:7" for t in targets)
 
 
+def test_required_npc_set_hidden_flag_is_refused_even_with_exemption():
+    npc = _object(
+        7,
+        role="npc",
+        x=2,
+        y=4,
+        hidden_flag_id=49,
+        hidden_flag_set=True,
+    )
+    state = _state((npc,))
+    targets = object_targets(
+        state, _nav(state), required_npc=7, exempt_required_npc_hidden=True
+    )
+    assert all(t.option_id != "talk:7" for t in targets)
+
+
 def test_taken_item_ball_is_skipped():
     ball = _object(
         2,

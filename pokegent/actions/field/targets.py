@@ -259,9 +259,10 @@ def object_targets(
         elif (
             obj.hidden_flag_id
             and obj.hidden_flag_set is not False
-            and (
-                not exempt_required_npc_hidden
-                or obj.local_id != required_npc
+            and not (
+                exempt_required_npc_hidden
+                and obj.local_id == required_npc
+                and obj.hidden_flag_set is None
             )
         ):
             continue
