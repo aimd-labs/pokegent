@@ -260,7 +260,9 @@ class DialogBuilder:
     def _yes_no(self, ctx, snapshot, ui, text) -> FrameDraft:
         scene = ctx.scene.scene_id
         mechanism = (
-            "pc_storage_yes_no"
+            "party_exit_yes_no"
+            if E.party_exit_yes_no_open(ui)
+            else "pc_storage_yes_no"
             if E.pc_storage_yes_no_open(ui)
             else "multichoice_yes_no"
             if E.yes_no_multichoice(ui, snapshot.rom_profile)
@@ -272,12 +274,19 @@ class DialogBuilder:
         assert sm is not None
         if mechanism == "pc_storage_yes_no":
             text = DialogText(("Continue BOX operations?",), source="pc_storage")
+        if mechanism == "party_exit_yes_no":
+            # The verified owning task proves the effect. gStringVar4 may be stale.
+            text = DialogText(
+                ("Use the selected field move to leave this area?",), source="party_exit_task"
+            )
         info = classify_prompt(text)
         heal = scene == E.HEAL_OFFER
         if heal and info.kind is not PromptKind.HEAL:
             return self._missing(scene, "heal offer without the heal question text")
         source_task = (
-            TASK_MULTICHOICE
+            E.PARTY_EXIT_TASK
+            if mechanism == "party_exit_yes_no"
+            else TASK_MULTICHOICE
             if mechanism == "multichoice_yes_no"
             else "Task_OnBPressed"
             if mechanism == "pc_storage_yes_no"
@@ -290,6 +299,11 @@ class DialogBuilder:
         yes_leg, no_leg, yes_effect, no_effect, yes_facts = self._yes_no_policy(
             info, ctx.goal_id, ctx.objective_kind
         )
+        if mechanism == "party_exit_yes_no":
+            yes_leg = no_leg = Legality.LEGAL
+            yes_effect = "Uses the already selected Dig or Teleport field move to leave this area."
+            no_effect = "Cancels leaving this area and returns to choosing a party member."
+            yes_facts = {"prompt_kind": "party_exit", "effect_known": True}
         # Every yes/no adapter option participates in the common affirmative-first
         # ordering contract, including prompts that are not START-menu prompts.
         yes_facts = {**yes_facts, "affirmative": True}

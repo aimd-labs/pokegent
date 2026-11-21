@@ -38,6 +38,7 @@ PRINTING = "dialog.printing"
 ADVANCE = "dialog.advance"
 END = "dialog.end"
 YES_NO = "dialog.yes_no"
+PARTY_EXIT_TASK = "Task_HandleFieldMoveExitAreaYesNoInput"
 MULTICHOICE = "dialog.multichoice"
 GRID_CHOICE = "dialog.grid_choice"
 LIST = "dialog.list"
@@ -157,6 +158,24 @@ def pc_storage_yes_no_open(ui: UiEvidence) -> bool:
         and sm.window_id == yn.window_id
         and sm.min_cursor_pos == 0
         and sm.max_cursor_pos == 1
+    )
+
+
+def party_exit_yes_no_open(ui: UiEvidence) -> bool:
+    """Dig/Teleport's input task owns this menu, not the field-script yes/no task."""
+    yn, sm, party = ui.menu.yes_no, ui.menu.menu, ui.menu.party
+    return bool(
+        ui.valid and ui.main.valid and ui.main.in_battle is False
+        and ui.tasks.valid and ui.menu.valid and ui.text.valid
+        and callback_name(ui) == "CB2_UpdatePartyMenu"
+        and ui.field.valid and ui.field.fade_active is False
+        and party is not None and party.active_hint is True and party.menu_type == 0
+        and any(t.func.name == PARTY_EXIT_TASK and t.func.verified for t in ui.tasks.active)
+        and yn is not None and yn.window_in_use
+        and sm is not None and sm.window_in_use and sm.consistent
+        and sm.window_id == yn.window_id
+        and sm.min_cursor_pos == 0 and sm.max_cursor_pos == 1
+        and sm.cursor_pos in (0, 1)
     )
 
 
@@ -326,6 +345,12 @@ def classify(snapshot: StateSnapshot, text: DialogText | None = None) -> Verdict
         )
     if ui.main.in_battle:
         return None  # battle (incl. capture naming) belongs to the battle family
+
+    if party_exit_yes_no_open(ui):
+        return Verdict(
+            YES_NO, 0.95, False,
+            {"callback": cb, "mechanism": "party_exit_yes_no", "source_task": PARTY_EXIT_TASK},
+        )
 
     if cb == "CB2_WhiteOut":
         return Verdict(WHITEOUT, 0.9, True, {"phase": "white_out_callback", "callback": cb})

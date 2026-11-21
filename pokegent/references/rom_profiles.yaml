@@ -772,6 +772,11 @@ profiles:
         verified_by:
           - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 3 states"
           - "ui_probe: historical local validation, real inputs on the real emulator via EmulatorActor, 2026-10-08, scenario start_menu, save_prompt: the task that reads the START menu input"
+      Task_HandleFieldMoveExitAreaYesNoInput:
+        address: 0x08124828
+        source: "pret pokefirered 037335f4 src/party_menu.c: Task_FieldMoveExitAreaYesNo installs this task after printing; only Dig/Teleport use it; YES exits the area, NO returns to party selection"
+        verified_by:
+          - "official pret/pokefirered symbols branch pokefirered.sym: 08124828 l 00000088 Task_HandleFieldMoveExitAreaYesNoInput; independently checked 2026-11-21"
       Task_YesNoMenu_HandleInput:
         address: 0x0809CE54
         source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_YESNO_MENU_HANDLE_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_YesNoMenu_HandleInput (src/script_menu.c)"

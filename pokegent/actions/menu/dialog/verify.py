@@ -66,7 +66,8 @@ def _prompt_closed(v: VerifyContext) -> bool:
     ui = v.after.ui
     if ui is None or not ui.valid:
         return False
-    if E.yes_no_open(ui) or E.pc_storage_yes_no_open(ui) or E.multichoice_open(ui):
+    if (E.yes_no_open(ui) or E.pc_storage_yes_no_open(ui)
+            or E.party_exit_yes_no_open(ui) or E.multichoice_open(ui)):
         return False
     expected = v.option.facts.get("return_phase") if v.option is not None else None
     if expected:
