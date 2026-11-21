@@ -457,12 +457,12 @@ def test_v1_upgrade_adds_typed_composite_clock_table(tmp_path, monkeypatch):
 
     path = tmp_path / "v1.sqlite"
     with monkeypatch.context() as patch:
-        patch.setattr(ledger, "_MIGRATIONS", ledger._MIGRATIONS[:-1])
+        patch.setattr(ledger, "_MIGRATIONS", ledger._MIGRATIONS[:1])
         patch.setattr(ledger, "SCHEMA_VERSION", len(ledger._MIGRATIONS))
         with closing(ledger.open_ledger(path)) as db:
             assert db.execute("PRAGMA user_version").fetchone()[0] == 1
     with closing(ledger.open_ledger(path)) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert db.execute("PRAGMA user_version").fetchone()[0] == ledger.SCHEMA_VERSION
         foreign_keys = db.execute("PRAGMA foreign_key_list(observation_clocks)").fetchall()
         assert {row[2] for row in foreign_keys} == {"ingested_events"}
         db.execute("INSERT INTO saves(id,source_ref) VALUES('s','synthetic')")
