@@ -166,6 +166,9 @@ def test_wrong_run_identity_and_untrusted_event_fields_fail(ledger, tmp_path):
     source.write_bytes(line({**envelope(), "observed_at": None}))
     with pytest.raises(IngestError, match="timestamp string"):
         ingest(ledger, [source])
+    source.write_bytes(line({**envelope(), "producer_extension": True}))
+    with pytest.raises(IngestError, match="producer_extension.*schema compatibility"):
+        ingest(ledger, [source])
 
 
 def test_event_budget_leaves_remainder_for_next_call(ledger, tmp_path):
@@ -386,3 +389,56 @@ def test_outer_transaction_rolls_back_event_fact_and_cursor(ledger, tmp_path):
     assert ledger.execute("SELECT count(*) FROM battles").fetchone()[0] == 0
     assert ledger.execute("SELECT count(*) FROM ingested_events").fetchone()[0] == 0
     assert ledger.execute("SELECT count(*) FROM ingest_sources").fetchone()[0] == 0
+
+
+def test_missing_summary_values_preserve_known_runtime_facts(ledger, tmp_path):
+    from pokegent.ledger_ingest import ingest_run
+
+    source = tmp_path / "events.jsonl"
+    source.write_bytes(line(envelope(kind="runtime.stopped")))
+    summary = tmp_path / "summary.json"
+    summary.write_text(
+        json.dumps(
+            {"run_id": "upstream", "verdict": "clear", "stop_reason": "done", "wall_seconds": 12.5}
+        )
+    )
+    with ledger:
+        ingest_run(
+            ledger,
+            save_id="save",
+            segment_id="segment",
+            run_id="upstream",
+            event_paths=[source],
+            summary_path=summary,
+        )
+    summary.write_text(
+        json.dumps(
+            {"run_id": "upstream", "verdict": None, "stop_reason": None, "wall_seconds": None}
+        )
+    )
+    with ledger:
+        ingest_run(
+            ledger,
+            save_id="save",
+            segment_id="segment",
+            run_id="upstream",
+            event_paths=[source],
+            summary_path=summary,
+        )
+    assert ledger.execute("SELECT verdict,exit_reason,wall_seconds FROM runs").fetchone() == (
+        "clear",
+        "done",
+        12.5,
+    )
+
+
+def test_event_ingest_allowlist_tracks_envelope_fields():
+    import ast
+    import inspect
+
+    from pokegent.events import EventEnvelope
+    from pokegent.ledger_ingest import _event
+
+    tree = ast.parse(inspect.getsource(_event))
+    allowed = next(n for n in ast.walk(tree) if isinstance(n, ast.Set))
+    assert {ast.literal_eval(x) for x in allowed.elts} == set(EventEnvelope.model_fields)

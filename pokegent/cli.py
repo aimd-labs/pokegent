@@ -684,6 +684,8 @@ def main(argv=None):
         action_p.add_argument("--db", default=None, metavar="FILE", help="ledger file")
         action_p.add_argument("--live-home", default=None, help="LIVE_HOME override")
         action_p.add_argument("--json", action="store_true", help="emit JSON")
+    from pokegent.ledger_ingest_cli import add_parser as add_ingest_parser
+    add_ingest_parser(ledger_sub)
     sql_p = ledger_sub.add_parser(
         "sql", help="Run a bounded read-only ledger query",
         description=("Run bounded, read-only SQL against the owned ledger. JSON BLOB values "
@@ -1001,6 +1003,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.command == "ledger":
+        if args.ledger_action == "ingest":
+            from pokegent.ledger_ingest_cli import run as run_ingest
+
+            return run_ingest(args)
         from pokegent.ledger_cli import run
 
         return run(args)

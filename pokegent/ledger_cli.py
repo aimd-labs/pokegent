@@ -130,7 +130,7 @@ def run(args) -> int:
             print(_text(args, result))
         return 0
     except KeyError:
-        print(f"ERROR: unknown save: {args.save}", file=sys.stderr)
+        print(f"ERROR: unknown save: {getattr(args, 'save', None)}", file=sys.stderr)
         return 2
     except FileNotFoundError:
         print(f"ERROR: ledger database not found: {_path(args)}", file=sys.stderr)
