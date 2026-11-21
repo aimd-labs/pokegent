@@ -457,6 +457,7 @@ class FieldBuilder:
         objective, resolved = self._objective(ctx)
         resolved, collect_sources = resolve_collect_navigation(snap, resolved, self.world)
         nav = N.Navigator(state)
+        search = nav.search()
         signature = capability_signature(snap)
         tiles = self._objective_tiles(resolved, map_key)
         if self.navigation is not None:
@@ -473,12 +474,27 @@ class FieldBuilder:
         # warps -- and the agent would seam-ping instead of crossing the city toward the goal
         # (issue #56, live-0030: Cerulean -> Route 5).  Emit intra-map walk-forward tiles from
         # the plan's walk edges on the current map so the map can actually be crossed.
-        if navigation_plan is not None and not tiles:
+        # A same-map point behind a script switch is not locally reachable yet. Preserve
+        # that target and expose only the existing walk prefix up to the first interaction.
+        needs_toggle_approach = bool(
+            tiles
+            and navigation_plan is not None
+            and navigation_plan.reachable
+            and navigation_plan.target.map_key == map_key
+            and next(
+                (edge.kind for edge in navigation_plan.route
+                 if edge.kind not in ("walk", "bike", "ledge", "forced")),
+                None,
+            ) == "toggle"
+            and all(T.plan_target(nav, search, T.tile_target(state, x, y)) is None
+                    for x, y in tiles)
+        )
+        if navigation_plan is not None and (not tiles or needs_toggle_approach):
             nav_tiles = self._in_map_forward_walk_tiles(
                 navigation_plan, map_key, resolved
             )
             if nav_tiles:
-                tiles = nav_tiles
+                tiles = tuple(dict.fromkeys((*tiles, *nav_tiles)))
         objective_target = (
             None if resolved is None else resolved.navigation_target or resolved.target
         )
@@ -515,7 +531,6 @@ class FieldBuilder:
             # outside the current camera window.  WorldAdapter then proves the mart from the
             # clerk script and the objective ranking can protect this direct interaction.
             required_npc = shop_target_clerk
-        search = nav.search()
         targets = T.enumerate_targets(
             state,
             nav,

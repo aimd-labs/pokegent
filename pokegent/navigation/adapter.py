@@ -673,6 +673,29 @@ class NavigationAdapter:
             return options, plan
         plan = self._drop_gate_under_player(snapshot, plan)
         semantic = next_semantic_edge(plan)
+        if (
+            local_step is None
+            and plan.reachable
+            and plan.start.map_key == plan.target.map_key
+            and plan.target.x is not None
+            and plan.target.y is not None
+            and semantic is not None
+            and semantic.kind == "toggle"
+            and not any(option.chooseable and self._matches(option, semantic, plan)
+                        for option in options)
+        ):
+            # An offcamera switch has no interaction option yet. Walk only the known
+            # prefix, using an already legal field option; never skip the switch itself.
+            for edge in plan.route:
+                if edge.kind not in ("walk", "bike", "ledge", "forced"):
+                    break
+                candidate = next((option for option in options
+                    if option.chooseable
+                    and option.facts.get("selection_reason") != "repeated_failure"
+                    and option.facts.get("target", {}).get("kind") == "tile"
+                    and self._matches_route_end(option, edge.destination)), None)
+                if candidate is not None:
+                    local_step = candidate
         route_keys = {self._option_key_for_edge(edge) for edge in plan.route}
 
         def has_explicit_toggle_option(edge: NavigationEdge) -> bool:
@@ -698,7 +721,7 @@ class NavigationAdapter:
         )
         route_candidates = (
             (first_nonwalk_edge,)
-            if first_nonwalk_edge is not None and first_nonwalk_edge.kind == "gate"
+            if first_nonwalk_edge is not None and first_nonwalk_edge.kind in ("gate", "toggle")
             else plan.route
         )
 
