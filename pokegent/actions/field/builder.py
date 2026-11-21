@@ -486,7 +486,7 @@ class FieldBuilder:
         )
         required_npc = (
             navigation_plan.target.local_id
-            if navigation_plan is not None
+            if navigation_plan is not None and navigation_plan.target.local_id is not None
             else objective_target.npc
             if objective_target is not None
             else None
@@ -516,6 +516,9 @@ class FieldBuilder:
             nav,
             tiles=tiles,
             required_npc=(required_npc if route_map == map_key else None),
+            exempt_required_npc_hidden=(
+                objective is not None and objective.kind != "talk"
+            ),
             training=(
                 objective is not None
                 and (
