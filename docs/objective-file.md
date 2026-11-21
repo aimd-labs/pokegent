@@ -472,7 +472,7 @@ requested quantity is `SATISFIABLE` without requiring a purchase event.
 
 The assessment accepts internal typed facts only; objective JSON cannot claim inventory
 completeness or provide proof booleans. Callers are responsible for binding facts to the same ROM
-and target map and supplying a fresh usable bag quantity; `item_price` is the price per requested
-item id. This contract has no ROM inventory
+and target map and supplying a fresh usable bag quantity; `query_item_id` binds `item_price` to
+the requested item id. This contract has no ROM inventory
 producer or objective-admission integration yet, so it makes no live rejection and does not claim
 that any item is globally unobtainable.

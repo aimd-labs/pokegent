@@ -11,6 +11,7 @@ from pokegent.goals.shop_feasibility import (
 def facts(**changes):
     values = dict(
         map_key="PewterMart",
+        query_item_id=1,
         coverage=InventoryCoverage.COMPLETE,
         item_ids=frozenset({1}),
         money=100,
@@ -92,3 +93,9 @@ def test_invalid_quantities_and_money_facts_stay_unknown():
     for money, price in ((-1, 1), (float("nan"), 1), (1, float("inf")), (True, 1)):
         req = ShopRequest("PewterMart", 1, 1, owned_quantity=0)
         assert assess_shop(req, facts(money=money, item_price=price)).verdict == Feasibility.UNKNOWN
+
+
+def test_stock_facts_cannot_be_reused_for_a_different_priced_item():
+    req = ShopRequest("PewterMart", 2, 1, owned_quantity=0)
+    item_one_facts = facts(item_ids=frozenset({1, 2}), query_item_id=1)
+    assert assess_shop(req, item_one_facts).verdict == Feasibility.UNKNOWN

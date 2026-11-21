@@ -39,9 +39,10 @@ class ShopRequest:
 
 @dataclass(frozen=True)
 class ShopFacts:
-    """Trusted facts for one merchant map; item_price is per requested item_id."""
+    """Trusted map facts; item_price is for query_item_id."""
 
     map_key: str
+    query_item_id: int
     coverage: InventoryCoverage
     item_ids: frozenset[int]
     money: int | None
@@ -93,6 +94,10 @@ def assess_shop(request: ShopRequest, facts: ShopFacts | None) -> Assessment:
         not _valid_count(item_id, positive=True) for item_id in facts.item_ids
     ):
         return Assessment(Feasibility.UNKNOWN, "merchant item facts are invalid")
+    if not _valid_count(facts.query_item_id, positive=True):
+        return Assessment(Feasibility.UNKNOWN, "priced item identity is invalid")
+    if facts.query_item_id != request.item_id:
+        return Assessment(Feasibility.UNKNOWN, "merchant facts price a different item")
     if request.item_id not in facts.item_ids:
         return Assessment(
             Feasibility.UNSATISFIABLE, "item is absent from proven merchant inventory"
