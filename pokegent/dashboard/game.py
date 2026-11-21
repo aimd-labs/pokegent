@@ -222,6 +222,7 @@ def state_block(snapshot: StateSnapshot, names: NameBook) -> dict[str, Any]:
             "badges": [],
             "party": [],
             "battle": {"in_battle": False, "is_trainer": False},
+            "observation": observation_block(snapshot),
         }
     player = snapshot.player
     map_info = map_block(snapshot)
@@ -249,6 +250,57 @@ def state_block(snapshot: StateSnapshot, names: NameBook) -> dict[str, Any]:
             "seen": snapshot.pokedex.seen_count if trainer_ready and snapshot.pokedex else None,
             "caught": snapshot.pokedex.owned_count if trainer_ready and snapshot.pokedex else None,
         },
+        "observation": observation_block(snapshot),
+    }
+
+
+def observation_block(snapshot: StateSnapshot) -> dict[str, Any]:
+    """Compact operator-only facts; absent RAM fields remain unknown (None)."""
+    player = snapshot.player if snapshot.usable else None
+    ready = bool(player and player.name.strip())
+    if not ready:
+        return {
+            "snapshot_seq": snapshot.snapshot_seq,
+            "rom_profile": snapshot.rom_profile,
+            "game_seconds": None,
+            "badges": None,
+            "key_items": None,
+            "hms": None,
+            "map": None,
+            "pokedex": None,
+            "flags": None,
+        }
+    assert player is not None
+    pockets = {p.pocket: p for p in snapshot.bag}
+    key_items = None
+    hms = None
+    if "key_items" in pockets:
+        key_items = sorted({i.item_id for i in pockets["key_items"].items if i.quantity > 0})
+    if "tms_hms" in pockets:
+        hms = sorted(
+            {
+                i.item_id
+                for i in pockets["tms_hms"].items
+                if 339 <= i.item_id <= 346 and i.quantity > 0
+            }
+        )
+    clock = player.play_time
+    return {
+        "snapshot_seq": snapshot.snapshot_seq,
+        "rom_profile": snapshot.rom_profile,
+        "game_seconds": (
+            clock.hours * 3600 + clock.minutes * 60 + clock.seconds if clock else None
+        ),
+        "badges": sorted(set(player.badges)),
+        "key_items": key_items,
+        "hms": hms,
+        "map": f"{player.map_group}:{player.map_num}",
+        "pokedex": (
+            {"seen": snapshot.pokedex.seen_count, "owned": snapshot.pokedex.owned_count}
+            if snapshot.pokedex
+            else None
+        ),
+        "flags": list(snapshot.flags.set_ids) if snapshot.flags else None,
     }
 
 
