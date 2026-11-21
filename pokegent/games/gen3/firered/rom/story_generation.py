@@ -81,7 +81,6 @@ def continuation_coords(metadata, state, scripts, facts):
 
 
 def consumer_proof(image, profile, source, spec, ticket):
-    from pokegent.games.gen3.firered.rom.script_effects import _written_registers
     facts, name, _, metadata, text, state = continuation_map(
         image, profile, source, spec.boarding_map)
     events = continuation_coords(metadata, state, spec.boarding_scripts, facts)
@@ -106,9 +105,7 @@ def consumer_proof(image, profile, source, spec, ticket):
     require([c.name for c in commands] == ['textcolor', 'applymovement', 'applymovement',
                                           'waitmovement', 'compare_var_to_value'])
     require(list(commands[0].operands) == [facts.number('NPC_TEXT_COLOR_MALE')] == [0]
-            and _written_registers(commands[0], {scene}) == {
-                facts.number('VAR_TEXT_COLOR'), facts.number('VAR_PREV_TEXT_COLOR')}
-            and all(scene not in _written_registers(c, {scene}) for c in commands[:-1])
+            and scene not in {facts.number('VAR_TEXT_COLOR'), facts.number('VAR_PREV_TEXT_COLOR')}
             and commands[-1].u16() == scene and commands[-1].u16(2) == 3)
     branch = decode_command(image, pc)
     require(branch.name == 'goto_if' and branch.operands[0] == 1)

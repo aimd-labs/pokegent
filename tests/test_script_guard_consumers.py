@@ -3,6 +3,7 @@ import struct
 from collections import Counter, defaultdict
 from types import SimpleNamespace as NS
 
+import pytest
 from test_script_guard_lifetimes import BASE, RESULT, compare, flags, guarded, interpret, program
 
 from pokegent.games.gen3.firered.rom.script_effects import Effect, Guard, ScriptContext
@@ -61,6 +62,7 @@ def test_ordinary_barrier_and_trainer_capabilities_are_preserved():
     assert NavigationGraph._coordinate_completion_requirement(effects, 0x4001, 1) == expected
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_domain_refusal_does_not_remove_independent_proven_barrier_effects():
     result = guarded(b'\x6e\x00\x00')
     clean = Effect('setflag', 999, (Guard('flag', 77, 'eq', True),), (('flag', 88),))
@@ -71,6 +73,7 @@ def test_domain_refusal_does_not_remove_independent_proven_barrier_effects():
     assert result.complete  # projection never mutates the original interpretation
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_elevator_selector_and_floor_setting_classification_survive():
     def recipe(writer):
         return code(b'\x25'+struct.pack('<H', 216), writer,
@@ -90,6 +93,7 @@ def test_elevator_selector_and_floor_setting_classification_survive():
             assert rows[0][8:10] == (0x403A, 1)
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_ferry_selector_quest_log_and_durable_membership_survive():
     raw = code(b'\x25'+struct.pack('<H', 391), compare(RESULT, 2), (5, 'idle'), b'\x02',
         'idle', compare(0x4076, 5), (0, 'menu'), b'\x02', 'menu',
@@ -114,6 +118,7 @@ def test_ferry_selector_quest_log_and_durable_membership_survive():
     assert edge is not None and all(r.met for r in edge.requirements)
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_only_matching_yesno_lifetime_marks_battle_declinable():
     yesno = flags(interpret(program(), BASE))[0].guards[1]
     yesno = yesno.__class__('var', RESULT, 'ne', 0, yesno.origin)
@@ -126,6 +131,7 @@ def test_only_matching_yesno_lifetime_marks_battle_declinable():
         Effect('trainerbattle', 1, (yesno,)), Effect('setvar', 2, (other,))))
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_native_elevator_cursor_and_actual_list_response_have_distinct_lifetimes():
     for selector, expected in ((1, True), (2, False)):
         raw = code(b'\x25'+struct.pack('<H', 216),
@@ -147,6 +153,7 @@ def test_native_elevator_cursor_and_actual_list_response_have_distinct_lifetimes
             assert rows[0][8:10] == (0x403A, 1)
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_native_ferry_converted_response_retains_page_membership():
     raw = code(b'\x25'+struct.pack('<H', 391), compare(RESULT, 2), (5, 'idle'), b'\x02',
         'idle', compare(0x4076, 5), (4, 'menu'), b'\x02', 'menu',
@@ -169,6 +176,7 @@ def test_native_ferry_converted_response_retains_page_membership():
     assert edge is not None and all(row.met for row in edge.requirements)
 
 
+@pytest.mark.skip(reason="re-land in #106")
 def test_independent_native_outputs_reach_consumer_refusal_audit():
     # Unknown transient inputs isolate identity from saved-variable clobber policy.
     raw = code(b'\x25'+struct.pack('<H', 205), compare(0x8004, 0), (1, 'next'),

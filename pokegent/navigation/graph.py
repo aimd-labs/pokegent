@@ -871,41 +871,10 @@ class NavigationGraph:
         )
 
     @staticmethod
-    def _entry_guard(guard: Guard) -> Guard | None:
-        """Project only source-proven entry facts, never a later dialog result."""
-        if guard.kind != "var":
-            return guard
-        if guard.origin is None:
-            return guard if 0x4000 <= guard.subject < 0x8000 else None
-        _, _, command, selector = guard.origin[:4]
-        if command == "entry" and 0x4000 <= selector < 0x8000:
-            return replace(guard, subject=selector, origin=None)
-        if command == "special" and selector == 391 and (
-            guard.operator == "ne" and guard.value == 2
-        ):
-            return replace(guard, subject=0x800D, origin=None)
-        return None
-
-    @staticmethod
-    def _menu_guard(guard: Guard) -> bool:
-        if guard.kind != "var" or guard.origin is None:
-            return False
-        return guard.origin[2] in {"multichoice", "multichoicedefault", "multichoicegrid"} or (
-            (guard.origin[2], guard.origin[3]) in {("special", 423), ("specialvar", 424)}
-        ) or (
-            guard.origin[2] == "list_menu" and guard.origin[3] == 1
-        )
-
-    @staticmethod
     def _requirement_from_guard(
         guard: Guard, capabilities: CapabilityState
     ) -> NavigationRequirement | None:
-        guard = NavigationGraph._entry_guard(guard)
-        if guard is None:
-            return None
         if guard.kind == "var":
-            if guard.subject != 0x800D and not capabilities.vars_known:
-                return None
             if guard.subject == 0x800D:
                 actual = capabilities.quest_log_state
                 if actual is None:
@@ -1492,7 +1461,7 @@ class NavigationGraph:
             collapsed.extend(
                 replace(
                     effects[0],
-                    guards=tuple(sorted(clause, key=lambda guard: guard.sort_key)),
+                    guards=tuple(sorted(clause, key=repr)),
                 )
                 for clause in clauses
             )
@@ -1530,28 +1499,8 @@ class NavigationGraph:
         site: tuple[int, int] | None = None,
     ) -> tuple[Effect, ...]:
         """Return facts only from complete interpretations and audit every omission."""
-        projected = ()
         if result.complete:
-            # Dialog selectors are action-domain evidence only at their existing consumers.
-            supported = []
-            for effect in result.effects:
-                safe = all(
-                    self._entry_guard(guard) is not None
-                    or (reader.startswith("ferries:") or reader == "elevators:bg")
-                    and self._menu_guard(guard)
-                    or reader == "script_obstacles:coord" and guard.origin is not None
-                    and guard.origin[2] == "yesnobox"
-                    or reader == "elevators:bg" and guard.origin is not None
-                    and (guard.origin[2] in {"special", "specialvar"})
-                    and (guard.origin[3], guard.subject) in {(216, 0x403A), (440, 0x8000)}
-                    for guard in effect.guards
-                )
-                supported.append(effect if safe else replace(
-                    effect, decoded=False, reason="historical variable has no proven capability"))
-            result = replace(result, effects=tuple(supported))
-            projected = tuple(effect for effect in result.effects if effect.decoded)
-            if result.complete:
-                return result.effects
+            return result.effects
         map_key = (state.identity.group, state.identity.number)
         audit_key = (reader, map_key, site, result.script_ptr)
         if audit_key not in self._script_incomplete_seen:
@@ -1574,11 +1523,11 @@ class NavigationGraph:
             self._script_unknown_sites[(map_key, site)].add(
                 f"script {result.script_ptr:#x}: {reason}"
             )
-        return projected
+        return ()
 
     @staticmethod
     def _opposite_guards(first: Guard, second: Guard) -> bool:
-        if first.identity != second.identity:
+        if (first.kind, first.subject) != (second.kind, second.subject):
             return False
         if (
             first.operator == second.operator == "eq"
@@ -1612,8 +1561,7 @@ class NavigationGraph:
             if additions - terms:
                 terms.update(additions)
                 changed = True
-        return tuple(sorted(terms, key=lambda term: (
-            len(term), tuple(sorted(guard.sort_key for guard in term)))))
+        return tuple(sorted(terms, key=lambda term: (len(term), repr(sorted(term, key=repr)))))
 
     def _map_effects(
         self, key: tuple[int, int], script_type: int, *, reader: str
@@ -1632,9 +1580,6 @@ class NavigationGraph:
         guard: Guard, *, inverse: bool = False, allow_var: bool = False
     ) -> str | None:
         """Translate a symbolic guard into the positive fact that clears a gate."""
-        guard = NavigationGraph._entry_guard(guard)
-        if guard is None:
-            return None
         positive = guard.value
         if guard.kind in {"flag", "badge"}:
             if guard.operator != "eq" or not isinstance(positive, bool):
@@ -1675,15 +1620,11 @@ class NavigationGraph:
 
     @classmethod
     def _positive_requirement(cls, guards: tuple[Guard, ...]) -> str | None:
-        if any(cls._entry_guard(guard) is None for guard in guards):
-            return None
         keys = {key for guard in guards if (key := cls._guard_requirement(guard)) is not None}
         return "&".join(sorted(keys)) if keys else None
 
     @classmethod
     def _clearing_requirement(cls, guards: tuple[Guard, ...]) -> str | None:
-        if any(cls._entry_guard(guard) is None for guard in guards):
-            return None
         keys = {
             key
             for guard in guards
@@ -1868,16 +1809,29 @@ class NavigationGraph:
 
     @staticmethod
     def _coordinate_battle_is_declinable(effects: tuple[Effect, ...]) -> bool:
-        """Both branches must refer to the same source-proven YES/NO response."""
-        responses = {
-            (guard.origin, guard.operator, effect.kind == "trainerbattle")
+        """Recognize the YES/NO split from its durable VAR_RESULT control flow."""
+        accepted = any(
+            effect.kind == "trainerbattle"
+            and any(
+                guard.kind == "var"
+                and guard.subject == 0x800D
+                and guard.operator == "ne"
+                and guard.value == 0
+                for guard in effect.guards
+            )
             for effect in effects
-            for guard in effect.guards
-            if guard.kind == "var" and guard.origin is not None
-            and guard.origin[2] == "yesnobox" and guard.value == 0
-        }
-        return any((origin, "eq", False) in responses or (origin, "eq", True) in responses
-                   for origin, operator, battle in responses if operator == "ne" and battle)
+        )
+        declined = any(
+            any(
+                guard.kind == "var"
+                and guard.subject == 0x800D
+                and guard.operator == "eq"
+                and guard.value == 0
+                for guard in effect.guards
+            )
+            for effect in effects
+        )
+        return accepted and declined
 
     def _effect_on_load_warp_flags(self) -> dict[tuple[tuple[int, int], int], int]:
         result: dict[tuple[tuple[int, int], int], int] = {}
@@ -2081,8 +2035,6 @@ class NavigationGraph:
                             if guard.kind == "var"
                             and guard.subject == 0x8000
                             and guard.operator == "eq"
-                            and self._menu_guard(guard)
-                            and any(row.source == guard.origin[1] for row in effects)
                         ),
                         None,
                     )
@@ -2409,8 +2361,6 @@ class NavigationGraph:
                     menu_id = menu_pc = None
                     menu_pcs: tuple[tuple[int, int], ...] = ()
                     if menu_index is not None:
-                        menu_sites = {guard.origin[1] for guard in effect.guards
-                                      if guard.subject == 0x8000 and self._menu_guard(guard)}
                         durable = frozenset(
                             guard
                             for guard in guards
@@ -2422,7 +2372,6 @@ class NavigationGraph:
                                 for candidate in effects
                                 if candidate.kind
                                 in {"multichoice", "multichoicedefault", "multichoicegrid"}
-                                and candidate.source in menu_sites
                                 and isinstance(candidate.value("menu_id"), int)
                                 and frozenset(
                                     guard
@@ -2436,8 +2385,6 @@ class NavigationGraph:
                         if menu_effect is not None:
                             menu_id = menu_effect.value("menu_id")
                             menu_pc = ROM_BASE + menu_effect.source + 5
-                        else:
-                            continue
                     elif any(
                         guard.kind == "var"
                         and guard.subject == 0x4076

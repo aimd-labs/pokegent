@@ -70,14 +70,22 @@ def test_actual_talk_target_offer_and_unknown_hidden_blocked_refusal():
 
 
 def test_actual_trigger_surface_offer_inactive_and_unknown_refusal():
-    from test_script_guard_consumers import graph_for
+    from collections import Counter, defaultdict
 
     from pokegent.games.gen3.firered.rom.script_effects import interpret
+    from pokegent.navigation.graph import NavigationGraph
     event = CoordEventInfo(index=0, x=1, y=1, elevation=0, var_id=0x4000,
         var_value=0, script_ptr=0x08000000, weather_only=False, active=True)
     state = invented_state().model_copy(update={'objects':(), 'coord_events':(event,)})
     result = interpret(b'\x16\x01\x40\x01\x00\x02', 0x08000000)
-    graph = graph_for(result)
+    graph = NavigationGraph.__new__(NavigationGraph)
+    graph._script_incomplete_seen = set()
+    graph.script_incomplete_counts = Counter()
+    graph._script_unknown_sites = defaultdict(set)
+    graph._script_interpretation = lambda *a, **k: result
+    graph._script_effects = lambda ptr, state, **kw: graph._complete_effects(
+        kw['reader'], result, state=state, site=kw.get('site'))
+    graph._profile = None
     graph.regions = None
     graph._script_gate_at = lambda *args: None
     graph.maps = {(0, 0):state}

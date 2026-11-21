@@ -164,6 +164,22 @@ def test_branch_correlations_include_decline_and_capacity_not_reachable_union():
             ] == [(0, 0), (0, 1), (1, 0), (1, 1)]
     assert proof['no_capacity_cannot_set_gift']
 
+def test_branch_correlations_refuse_unknown_gender_and_yesno_origins():
+    npc, computer = branch_results()
+    effects = tuple(replace(effect, guards=tuple(replace(guard, origin=None)
+        if guard.kind == 'var' else guard for guard in effect.guards)) for effect in npc.effects)
+    with pytest.raises(SetupError):
+        gen.branch_proofs(replace(npc, effects=effects), computer, PREMISE, 2, 40, 41, 17)
+
+def test_branch_correlations_refuse_unknown_gift_origin():
+    npc, computer = branch_results()
+    effects = tuple(replace(effect, guards=tuple(replace(guard, origin=None)
+        if guard.kind == 'var' else guard for guard in effect.guards))
+        if effect.kind == 'setflag' and effect.value('flag') == 41 else effect
+        for effect in npc.effects)
+    with pytest.raises(SetupError):
+        gen.branch_proofs(replace(npc, effects=effects), computer, PREMISE, 2, 40, 41, 17)
+
 
 @pytest.mark.parametrize('bad', ['decline', 'capacity', 'additem', 'helped_phase', 'premise'])
 def test_branch_correlations_refuse_missing_or_wrong_phase_evidence(bad):
