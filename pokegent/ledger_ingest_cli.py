@@ -308,6 +308,7 @@ def run(args):
     import urllib.error
 
     from pokegent.ledger import open_ledger
+    from pokegent.ledger_ingest import IngestError
 
     try:
         if not args.save.strip() or args.max_lines < 1 or args.max_lines > 10000:
@@ -334,7 +335,7 @@ def run(args):
             dirs = [args.run_dir.expanduser()]
         # Validate every identity before opening/creating the selected ledger.
 
-        valid_dirs, skipped = [], []
+        valid_dirs, skipped, failed = [], [], []
         for directory in dirs:
             if not directory.is_dir() or directory.is_symlink():
                 raise ValueError(f"run directory must be an explicit real directory: {directory}")
@@ -344,15 +345,25 @@ def run(args):
                 skipped.append(
                     {"directory": str(directory), "status": "unknown", "reason": str(exc)}
                 )
+            except IngestError as exc:
+                if args.run_dir:
+                    raise
+                failed.append(
+                    {"directory": str(directory), "status": "failed", "reason": str(exc)}
+                )
             else:
                 valid_dirs.append(directory)
         if not valid_dirs:
-            result = {"save": args.save, "runs": [], "skipped": skipped}
+            result = {"save": args.save, "runs": [], "skipped": skipped, "failed": failed}
             print(
                 json.dumps(result, sort_keys=True)
                 if args.json
                 else f"No runs ingested; {len(skipped)} run identities unavailable"
             )
+            if failed:
+                for item in failed:
+                    print(f"FAILED {item['directory']}: {item['reason']}", file=sys.stderr)
+                return 2
             return 0
         telemetry_doc, telemetry_error = None, None
         if args.telemetry_file or args.viewer_port is not None:
@@ -363,11 +374,17 @@ def run(args):
         path = _db_path(args)
         _safe_db(path)
         with closing(open_ledger(path)) as db:
-            results = [
-                _one(args, directory, db, telemetry_doc, telemetry_error)
-                for directory in valid_dirs
-            ]
-        result = {"save": args.save, "runs": results, "skipped": skipped}
+            results = []
+            for directory in valid_dirs:
+                try:
+                    results.append(_one(args, directory, db, telemetry_doc, telemetry_error))
+                except IngestError as exc:
+                    if args.run_dir:
+                        raise
+                    failed.append(
+                        {"directory": str(directory), "status": "failed", "reason": str(exc)}
+                    )
+        result = {"save": args.save, "runs": results, "skipped": skipped, "failed": failed}
         if args.json:
             print(json.dumps(result, sort_keys=True, ensure_ascii=True))
         else:
@@ -377,7 +394,9 @@ def run(args):
                     f"{item['complete_events_processed']} complete events "
                     f"(limit {item['limit']})"
                 )
-        return 0
+        for item in failed:
+            print(f"FAILED {item['directory']}: {item['reason']}", file=sys.stderr)
+        return 2 if valid_dirs and not results else 0
     except (OSError, ValueError, sqlite3.Error) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
