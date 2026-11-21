@@ -426,6 +426,15 @@ class ShopBuilder:
             return _missing(R.BUY_LIST, "this mart inventory is not present in the supported ROM")
         options: list[Option] = []
         objective_unmet_reason: str | None = None
+        if objective_item is not None and all(
+            offer.item_id != objective_item for offer in inventory
+        ):
+            target = self._item(objective_item)
+            item_name = target.name if target is not None else f"item {objective_item}"
+            objective_unmet_reason = (
+                f"{item_name} is not stocked at the current mart on map "
+                f"{snapshot.player.map_group}/{snapshot.player.map_num}"
+            )
         for index, offer in enumerate(inventory):
             item = self.tables.item(offer.item_id)
             facts = D.item_facts(
