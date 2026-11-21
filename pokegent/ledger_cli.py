@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import stat
 import sys
 from contextlib import closing
 from pathlib import Path
@@ -28,6 +30,15 @@ def _json_value(value):
 
 
 def _text(args, result) -> str:
+    if args.ledger_action == "splits":
+        return f"Splits for save {args.save}: " + json.dumps(
+            _json_value(result), indent=2, ensure_ascii=True, allow_nan=False
+        )
+    if args.ledger_action == "baseline":
+        return (
+            f"Configured comparison baseline for save {args.save}: "
+            f"{args.group} at {args.game_origin_seconds}s"
+        )
     if args.ledger_action == "sql":
         return json.dumps(_json_value(result), indent=2, ensure_ascii=True, allow_nan=False)
     if args.ledger_action == "incidents":
@@ -41,8 +52,8 @@ def _text(args, result) -> str:
             f"{len(result['runs'])} runs, {len(result['objectives'])} objectives, "
             f"{len(result['milestones'])} historical milestone observations"
         )
-    return title + "\n" + json.dumps(
-        _json_value(result), indent=2, ensure_ascii=True, allow_nan=False
+    return (
+        title + "\n" + json.dumps(_json_value(result), indent=2, ensure_ascii=True, allow_nan=False)
     )
 
 
@@ -50,22 +61,71 @@ def run(args) -> int:
     from pokegent.ledger_queries import incidents, milestones, open_readonly, query, status
 
     try:
-        with closing(open_readonly(_path(args))) as db:
-            if args.ledger_action == "sql":
-                result = query(db, args.sql)
-            else:
-                if not query(db, "SELECT 1 FROM saves WHERE id=?", (args.save,)):
-                    raise KeyError(args.save)
-                if args.ledger_action == "incidents":
-                    result = incidents(db, args.save)
-                elif args.ledger_action == "milestones":
-                    result = milestones(db, args.save)
+        path = _path(args)
+        if args.ledger_action == "baseline":
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("baseline requires an existing regular ledger file")
+            parent = path.parent
+            for directory in (parent, *parent.parents):
+                if directory.is_symlink():
+                    raise ValueError("ledger path cannot contain a symlinked directory")
+            info = parent.stat()
+            if (
+                not stat.S_ISDIR(info.st_mode)
+                or info.st_uid != os.getuid()
+                or info.st_mode & stat.S_IWOTH
+            ):
+                raise ValueError("ledger parent must be owned and non-world-writable")
+            from pokegent import ledger
+
+            with closing(ledger.open_ledger(path)) as db:
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    ledger.configure_comparison(
+                        db,
+                        args.save,
+                        comparison_group=args.group,
+                        game_origin_seconds=args.game_origin_seconds,
+                    )
+                    db.commit()
+                except BaseException:
+                    db.rollback()
+                    raise
+            result = {
+                "save": args.save,
+                "comparison_group": args.group,
+                "game_origin_seconds": args.game_origin_seconds,
+                "configured": True,
+            }
+        else:
+            with closing(open_readonly(path)) as db:
+                if args.ledger_action == "splits":
+                    from pokegent.ledger_splits import splits
+
+                    if not query(db, "SELECT 1 FROM saves WHERE id=?", (args.save,)):
+                        raise KeyError(args.save)
+                    result = splits(db, args.save)
+                elif args.ledger_action == "sql":
+                    result = query(db, args.sql)
                 else:
-                    result = status(db, args.save)
+                    if not query(db, "SELECT 1 FROM saves WHERE id=?", (args.save,)):
+                        raise KeyError(args.save)
+                    if args.ledger_action == "incidents":
+                        result = incidents(db, args.save)
+                    elif args.ledger_action == "milestones":
+                        result = milestones(db, args.save)
+                    else:
+                        result = status(db, args.save)
         if args.json:
-            print(json.dumps(
-                _json_value(result), indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
-            ))
+            print(
+                json.dumps(
+                    _json_value(result),
+                    indent=2,
+                    sort_keys=True,
+                    ensure_ascii=True,
+                    allow_nan=False,
+                )
+            )
         else:
             print(_text(args, result))
         return 0

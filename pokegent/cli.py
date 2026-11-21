@@ -676,7 +676,7 @@ def main(argv=None):
 
     sub = parser.add_subparsers(dest="command")
 
-    ledger_p = sub.add_parser("ledger", help="Query the local read-only run ledger")
+    ledger_p = sub.add_parser("ledger", help="Use the local run ledger")
     ledger_sub = ledger_p.add_subparsers(dest="ledger_action", required=True)
     for ledger_action in ("status", "incidents", "milestones"):
         action_p = ledger_sub.add_parser(ledger_action, help=f"Show ledger {ledger_action}")
@@ -693,6 +693,23 @@ def main(argv=None):
     sql_p.add_argument("--db", default=None, metavar="FILE", help="ledger file")
     sql_p.add_argument("--live-home", default=None, help="LIVE_HOME override")
     sql_p.add_argument("--json", action="store_true", help="emit JSON")
+
+    splits_p = ledger_sub.add_parser("splits", help="Compare observed milestones (read only)")
+    splits_p.add_argument("--save", required=True, help="save identity")
+    splits_p.add_argument("--db", default=None, metavar="FILE", help="ledger file")
+    splits_p.add_argument("--live-home", default=None, help="LIVE_HOME override")
+    splits_p.add_argument("--json", action="store_true", help="emit JSON")
+    baseline_p = ledger_sub.add_parser(
+        "baseline", help="Configure explicit comparison baseline (writes)"
+    )
+    baseline_p.add_argument("--save", required=True, help="save identity")
+    baseline_p.add_argument("--group", required=True, help="operator-asserted route group")
+    baseline_p.add_argument(
+        "--game-origin-seconds", required=True, type=int, help="known game clock origin"
+    )
+    baseline_p.add_argument("--db", default=None, metavar="FILE", help="ledger file")
+    baseline_p.add_argument("--live-home", default=None, help="LIVE_HOME override")
+    baseline_p.add_argument("--json", action="store_true", help="emit JSON")
 
     # --- info ---
     info_p = sub.add_parser("info", help="Show ROM information")
