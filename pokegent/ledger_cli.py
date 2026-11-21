@@ -29,7 +29,7 @@ def _json_value(value):
 
 def _text(args, result) -> str:
     if args.ledger_action == "sql":
-        return json.dumps(_json_value(result), indent=2, ensure_ascii=True)
+        return json.dumps(_json_value(result), indent=2, ensure_ascii=True, allow_nan=False)
     if args.ledger_action == "incidents":
         title = f"Incidents for save {args.save}: {len(result)}"
     elif args.ledger_action == "milestones":
@@ -41,7 +41,9 @@ def _text(args, result) -> str:
             f"{len(result['runs'])} runs, {len(result['objectives'])} objectives, "
             f"{len(result['milestones'])} historical milestone observations"
         )
-    return title + "\n" + json.dumps(_json_value(result), indent=2, ensure_ascii=True)
+    return title + "\n" + json.dumps(
+        _json_value(result), indent=2, ensure_ascii=True, allow_nan=False
+    )
 
 
 def run(args) -> int:
@@ -51,14 +53,19 @@ def run(args) -> int:
         with closing(open_readonly(_path(args))) as db:
             if args.ledger_action == "sql":
                 result = query(db, args.sql)
-            elif args.ledger_action == "incidents":
-                result = incidents(db, args.save)
-            elif args.ledger_action == "milestones":
-                result = milestones(db, args.save)
             else:
-                result = status(db, args.save)
+                if not query(db, "SELECT 1 FROM saves WHERE id=?", (args.save,)):
+                    raise KeyError(args.save)
+                if args.ledger_action == "incidents":
+                    result = incidents(db, args.save)
+                elif args.ledger_action == "milestones":
+                    result = milestones(db, args.save)
+                else:
+                    result = status(db, args.save)
         if args.json:
-            print(json.dumps(_json_value(result), indent=2, sort_keys=True, ensure_ascii=True))
+            print(json.dumps(
+                _json_value(result), indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
+            ))
         else:
             print(_text(args, result))
         return 0
