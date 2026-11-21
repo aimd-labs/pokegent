@@ -97,6 +97,16 @@ _MIGRATIONS = ((
         PRIMARY KEY(segment_id,event_id),
         FOREIGN KEY(source_id,segment_id) REFERENCES ingest_sources(id,segment_id)
     )""",
+), (
+    """CREATE TABLE observation_clocks (
+        segment_id TEXT NOT NULL, event_id TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        game_seconds INTEGER CHECK(game_seconds IS NULL OR
+            (typeof(game_seconds)='integer' AND game_seconds>=0)),
+        PRIMARY KEY(segment_id,event_id),
+        FOREIGN KEY(segment_id,event_id)
+            REFERENCES ingested_events(segment_id,event_id)
+    )""",
 ),)
 SCHEMA_VERSION = len(_MIGRATIONS)
 
