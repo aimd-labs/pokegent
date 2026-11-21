@@ -1985,7 +1985,9 @@ def run_offline(
                 graph = MapGraph.from_rom(rom_bytes, profile)
                 from pokegent.navigation import NavigationAdapter, NavigationGraph
 
-                navigation = NavigationAdapter(NavigationGraph.from_rom(rom_bytes, profile))
+                navigation = NavigationAdapter(
+                    NavigationGraph.from_rom(rom_bytes, profile), events=events
+                )
                 directory = None
                 if objective is not None:
                     from pokegent.goals.directory import RomMapDirectory

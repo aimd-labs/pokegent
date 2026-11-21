@@ -85,6 +85,7 @@ VECTOR: dict[str, tuple[int, int]] = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "
 OPPOSITE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 DIRECTIONS: tuple[Facing, ...] = ("N", "S", "W", "E")
 _ROM_GRAPH_CACHE: dict[tuple[str, str], "NavigationGraph"] = {}
+_PUZZLES_UNLOADED = object()
 
 
 @dataclass(frozen=True)
@@ -259,6 +260,11 @@ class NavigationGraph:
             provider = FireRedMapProvider()
         self.provider = provider
         self.maps = maps
+        self._puzzle_table: Any = _PUZZLES_UNLOADED
+        self._blocking_object_indexes: dict[
+            tuple[int, int],
+            tuple[tuple[MapObject, ...], dict[tuple[int, int], tuple[MapObject, ...]]],
+        ] = {}
         self.rom = rom
         self._profile = profile
         self._item_names = item_names or {}
@@ -2851,7 +2857,7 @@ class NavigationGraph:
             )
         if obstacle is None:
             return None
-        if obj.role == "boulder" and self.provider.puzzle_for(state) is not None:
+        if obj.role == "boulder" and self._puzzle_for(state) is not None:
             return None
         kind = "boulder_push" if obj.role == "boulder" else "field_move"
         needs = [requirement(obstacle.kind.requirement_key, capabilities)]
@@ -2891,7 +2897,7 @@ class NavigationGraph:
         now-open exit.
         """
         player = state.player
-        puzzle = self.provider.puzzle_for(state)
+        puzzle = self._puzzle_for(state)
         if (
             live is None
             or player is None
@@ -3019,17 +3025,51 @@ class NavigationGraph:
     def _blocking_object(
         self, state: MapState, x: int, y: int, capabilities: CapabilityState
     ) -> MapObject | None:
+        objects = self._blocking_object_tiles(state).get((x, y), ())
+        for obj in objects:
+            if obj.hidden_flag_id and obj.hidden_flag_id in capabilities.flags:
+                continue
+            return obj
+        return None
+
+    def _puzzle_for(self, state: MapState):
+        """Resolve puzzle data once per graph, outside repeated search expansions."""
+        table = getattr(self, "_puzzle_table", _PUZZLES_UNLOADED)
+        if table is _PUZZLES_UNLOADED:
+            load = getattr(self.provider, "puzzles", None)
+            if load is None:
+                return self.provider.puzzle_for(state)
+            table = load(allow_empty=True)
+            self._puzzle_table = table
+        if table is None:
+            return None
+        return table.get((state.identity.group, state.identity.number))
+
+    def _blocking_object_tiles(
+        self, state: MapState
+    ) -> dict[tuple[int, int], tuple[MapObject, ...]]:
+        map_key = state.identity.group, state.identity.number
+        cached = self._blocking_object_indexes.get(map_key)
+        if cached is not None and cached[0] is state.objects:
+            return cached[1]
+        index = self._build_blocking_object_index(state)
+        self._blocking_object_indexes[map_key] = state.objects, index
+        return index
+
+    def _build_blocking_object_index(
+        self, state: MapState
+    ) -> dict[tuple[int, int], tuple[MapObject, ...]]:
+        positions: dict[tuple[int, int], list[MapObject]] = {}
         for obj in state.objects:
             if not obj.blocks_navigation:
                 continue
-            if obj.hidden_flag_id and obj.hidden_flag_id in capabilities.flags:
-                continue
-            positions = {(obj.x, obj.y)}
+            occupied = {(obj.x, obj.y)}
             if obj.live is not None:
-                positions.add((obj.live.prev_x, obj.live.prev_y))
-            if (x, y) in positions:
-                return obj
-        return None
+                occupied.add((obj.live.prev_x, obj.live.prev_y))
+            for tile in occupied:
+                positions.setdefault(tile, []).append(obj)
+        index = {tile: tuple(objects) for tile, objects in positions.items()}
+        return index
 
     def _risks_at(self, state: MapState, x: int, y: int) -> tuple[str, ...]:
         risks: list[str] = []

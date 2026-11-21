@@ -69,6 +69,46 @@ def test_actual_talk_target_offer_and_unknown_hidden_blocked_refusal():
     assert not any(o.id == 'talk:1' and o.chooseable for o in talk_options(None))
 
 
+def test_field_builder_budget_exhaustion_keeps_local_options(monkeypatch):
+    import pokegent.navigation.planner as planner_module
+    from pokegent.navigation.adapter import NavigationAdapter
+    from pokegent.navigation.models import NavigationEdge, NavigationNode
+
+    monkeypatch.setattr(planner_module, 'OBJECTIVE_FRAME_PLAN_BUDGET', 1)
+    state = invented_state().model_copy(update={'objects': (
+        invented_state().objects[0].model_copy(update={'x': 2, 'y': 1}),)})
+    objective = Objective(objective_id='partial_acquisition', revision=1, kind='talk',
+        target={'map': 'DemoLab', 'npc': 1}, success_probes=[{'kind':'item','item':17}])
+    resolved = ResolvedObjective(objective, ResolvedTarget(group=0, number=0, npc=1), ())
+    class SearchGraph:
+        maps = {(0, 0): state}
+
+        def node(self, map_key, x, y):
+            return NavigationNode(*map_key, x, y)
+
+        def stateful_flags_toward(self, _start, _target):
+            return frozenset()
+
+        def edges_from(self, node, _capabilities=None, *, live=None, include_unmet=False):
+            start = NavigationNode(0, 0, 1, 2)
+            if node == start:
+                return (NavigationEdge('walk:1:3', start, NavigationNode(0, 0, 1, 3), 'walk', 1),)
+            return ()
+
+    class TestNavigationAdapter(NavigationAdapter):
+        @staticmethod
+        def annotate(options, _snapshot, _resolved, *, plan=None):
+            return options, plan
+
+    builder = FieldBuilder(field_menu=False, objectives=lambda _: resolved,
+        navigation=TestNavigationAdapter(SearchGraph()))
+    ctx = BuildContext(snapshot=snapshot().model_copy(update={'map': state}),
+        scene=SceneResult(scene_id='field.free', confidence=1, detector='test'),
+        goal_id=objective.objective_id)
+    actual = builder.build(ctx).options
+    assert actual == talk_options(state)
+
+
 def test_actual_trigger_surface_offer_inactive_and_unknown_refusal():
     from collections import Counter, defaultdict
 

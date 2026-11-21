@@ -97,14 +97,30 @@ def cache_root() -> Path:
 
 
 _ROM_SHA1_CACHE: dict[tuple[str, int, int, int], str] = {}
-_CACHE_PATH_VALIDATION: dict[tuple[str, str, int, int, str | None], bool] = {}
+_MapIndexIdentity = tuple[str, int, int, int, int, int]
+_CACHE_PATH_VALIDATION: dict[
+    tuple[str, str, int, int, str | None, _MapIndexIdentity | None], bool
+] = {}
 
 
-def _map_index_digest() -> str | None:
+def _map_index_identity() -> _MapIndexIdentity | None:
     from pokegent.local_data import local_path
 
     path = local_path('pret_map_groups.json')
-    return hashlib.sha256(path.read_bytes()).hexdigest() if path is not None else None
+    if path is None:
+        return None
+    stat = path.stat()
+    return (str(path), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+@lru_cache(maxsize=8)
+def _map_index_digest_for(identity: _MapIndexIdentity) -> str:
+    return hashlib.sha256(Path(identity[0]).read_bytes()).hexdigest()
+
+
+def _map_index_digest() -> str | None:
+    identity = _map_index_identity()
+    return _map_index_digest_for(identity) if identity is not None else None
 
 
 def _rom_sha1(path: str) -> str:
@@ -140,10 +156,13 @@ def existing_cache_path(rom: str | os.PathLike[str] | None = None) -> Path | Non
     except OSError:
         return None
     try:
-        index_digest = _map_index_digest()
+        index_identity = _map_index_identity()
+        index_digest = (
+            _map_index_digest_for(index_identity) if index_identity is not None else None
+        )
     except OSError:
         return None
-    key = (str(target), sha1, stat.st_mtime_ns, stat.st_size, index_digest)
+    key = (str(target), sha1, stat.st_mtime_ns, stat.st_size, index_digest, index_identity)
     valid = _CACHE_PATH_VALIDATION.get(key)
     if valid is None:
         valid = _valid_cache(target, sha1)

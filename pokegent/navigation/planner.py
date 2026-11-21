@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import heapq
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from itertools import count
 
+from pokegent.events import EventSink, EventType
 from pokegent.games.gen3.firered.maps.map_schema import MapState
 from pokegent.navigation.graph import NavigationGraph
 from pokegent.navigation.models import (
@@ -17,6 +20,45 @@ from pokegent.navigation.models import (
     NavigationPlan,
     NavigationTarget,
 )
+
+OBJECTIVE_FRAME_PLAN_BUDGET = 75_000
+_objective_work: ContextVar[list[int] | None] = ContextVar("objective_work", default=None)
+
+
+@contextmanager
+def objective_frame_budget(events, limit):
+    work = [0, 0, limit]  # expansions used, exhausted, allowance
+    token = _objective_work.set(work)
+    try:
+        yield work
+    finally:
+        _objective_work.reset(token)
+
+
+def _take_objective_expansion(events) -> bool:
+    work = _objective_work.get()
+    if work is None:
+        return True
+    if work[0] >= work[2]:
+        if not work[1]:
+            work[1] = 1
+            if events is not None:
+                events.emit(EventType.PLAN_BUDGET_EXCEEDED, public_visibility=True,
+                            details={"scope": "objective", "explored": work[0],
+                                     "limit": work[2],
+                                     "reason": "expansion_limit"})
+        return False
+    work[0] += 1
+    return True
+
+
+def objective_frame_budget_state():
+    return _objective_work.get()
+
+
+def objective_frame_budget_exhausted() -> bool:
+    work = _objective_work.get()
+    return work is not None and bool(work[1])
 
 
 def _choice_step(route: tuple[NavigationEdge, ...]) -> str | None:
@@ -49,8 +91,9 @@ class _SearchResult:
 
 
 class NavigationPlanner:
-    def __init__(self, graph: NavigationGraph) -> None:
+    def __init__(self, graph: NavigationGraph, *, events: EventSink | None = None) -> None:
         self.graph = graph
+        self.events = events
 
     def plan(
         self,
@@ -72,10 +115,17 @@ class NavigationPlanner:
                 available.route,
                 explored=available.explored,
             )
+        work = _objective_work.get()
+        if work is not None and (available.exhausted or work[1]):
+            return NavigationPlan(start, target, None, explored=work[0],
+                                  blocked_route_fact="objective route search budget exhausted")
         blocked = self._search(
             start, target, capabilities, live=live, include_unmet=True, limit=limit
         )
         exhausted = available if available.exhausted else blocked if blocked.exhausted else None
+        if _objective_work.get() is not None and exhausted is not None:
+            return NavigationPlan(start, target, None, explored=_objective_work.get()[0],
+                                  blocked_route_fact="objective route search budget exhausted")
         budget_fact = self._budget_fact(exhausted, limit) if exhausted is not None else None
         if blocked.route is None:
             choice = self._choice_frontier(
@@ -150,6 +200,8 @@ class NavigationPlanner:
             cost, _order, node = heapq.heappop(heap)
             if cost != distance.get(node):
                 continue
+            if not _take_objective_expansion(self.events):
+                return None
             explored += 1
             for edge in self.graph.edges_from(
                 node,
@@ -228,6 +280,8 @@ class NavigationPlanner:
             cost, node = heapq.heappop(heap)
             if cost != distance.get(node):
                 continue
+            if not _take_objective_expansion(self.events):
+                return None
             explored += 1
             if node.map_key in map_keys:
                 return NavigationPlan(
@@ -273,6 +327,8 @@ class NavigationPlanner:
             cost, node = heapq.heappop(heap)
             if cost != distance.get(node):
                 continue
+            if not _take_objective_expansion(self.events):
+                return None
             explored += 1
             if node.map_key == map_key and (node.x, node.y) in tiles:
                 return NavigationPlan(
@@ -341,6 +397,8 @@ class NavigationPlanner:
             node, stateful_flags = search_state
             if cost != distance.get(search_state):
                 continue
+            if not _take_objective_expansion(self.events):
+                return None
             explored += 1
             effective = self._capabilities_for_state(capabilities, stateful_flags, tracked_flags)
             for edge in self.graph.edges_from(
@@ -415,7 +473,19 @@ class NavigationPlanner:
             node, stateful_flags = search_state
             if cost != distance.get(search_state):
                 continue
-            if explored >= limit:
+            if explored >= limit or not _take_objective_expansion(self.events):
+                if self.events is not None:
+                    if _objective_work.get() is None:
+                        self.events.emit(
+                        EventType.PLAN_BUDGET_EXCEEDED,
+                        public_visibility=True,
+                        details={
+                            "limit": limit,
+                            "expanded": explored,
+                            "phase": "blocked" if include_unmet else "available",
+                            "reason": "expansion_limit",
+                        },
+                        )
                 return _SearchResult(None, None, explored, exhausted=True, last=node)
             explored += 1
             last = node

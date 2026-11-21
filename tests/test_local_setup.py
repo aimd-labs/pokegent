@@ -3,10 +3,12 @@
 import hashlib
 import io
 import json
+import os
 import re
 import struct
 import subprocess
 import tarfile
+from pathlib import Path
 
 import pytest
 
@@ -75,6 +77,90 @@ def test_cache_rejects_changed_named_index(tmp_path, monkeypatch):
     assert rom_cache._valid_cache(target, 'invented-rom')
     index.write_text('{"group_order":["Demo"],"groups":{"Demo":["OtherRoom"]}}')
     assert not rom_cache._valid_cache(target, 'invented-rom')
+
+
+def test_puzzle_lookup_memoizes_index_and_refuses_changed_inputs(
+    setup_inputs, tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from pokegent.games.gen3.firered.maps import map_boulders
+
+    rom, out, decomp, cache, profile, docs = setup_inputs
+    setup.setup(rom, out, decomp=decomp, cache_root=cache, profile=profile,
+                ensure_cache=lambda *args: None)
+    index = tmp_path / 'index.json'
+    original = b'{"group_order":["Demo"],"groups":{"Demo":["Room"]}}'
+    index.write_bytes(original)
+    monkeypatch.setenv('POKEGENT_LOCAL_DATA_DIR', str(out))
+    monkeypatch.setenv('POKEGENT_MAP_GROUPS', str(index))
+    monkeypatch.setenv('POKEGENT_ROM_DATA_CACHE', str(cache))
+    monkeypatch.setenv('FIRERED_ROM_PATH', str(rom))
+    monkeypatch.setattr(rom_cache, '_generator_fingerprint', lambda: 'invented-generator')
+
+    target = rom_cache.rom_cache_dir(rom)
+    target.mkdir(parents=True)
+    for name in rom_cache.CACHE_FILES:
+        content = 'schema: boulders/1\nmaps: {}\n' if name == 'boulders.yaml' else 'invented'
+        (target / name).write_text(content)
+    manifest = {
+        'sha1': target.name,
+        'format_version': rom_cache.CACHE_FORMAT_VERSION,
+        'generator_sha256': 'invented-generator',
+        'artifacts': list(rom_cache.CACHE_FILES),
+        'sha256': rom_cache._artifact_digests(target),
+        'map_index_sha256': hashlib.sha256(original).hexdigest(),
+    }
+    (target / 'manifest.json').write_text(json.dumps(manifest))
+    rom_cache._map_index_digest_for.cache_clear()
+
+    index_reads = []
+    read_bytes = Path.read_bytes
+
+    def counted_read(path):
+        if path.resolve() in {index.resolve(), alternate.resolve()}:
+            index_reads.append(path.resolve())
+        return read_bytes(path)
+
+    alternate = tmp_path / 'alternate.json'
+    monkeypatch.setattr(Path, 'read_bytes', counted_read)
+    validations = []
+    valid_cache = rom_cache._valid_cache
+
+    def counted_validation(directory, sha1):
+        validations.append((directory, sha1))
+        return valid_cache(directory, sha1)
+
+    monkeypatch.setattr(rom_cache, '_valid_cache', counted_validation)
+    state = SimpleNamespace(identity=SimpleNamespace(group=0, number=0))
+    for _ in range(4):
+        assert map_boulders.puzzle_for(state) is None
+    assert index_reads == [index.resolve()]
+    assert len(validations) == 1
+
+    stat = index.stat()
+    os.utime(index, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    assert map_boulders.puzzle_for(state) is None
+    assert index_reads == [index.resolve(), index.resolve()]
+    assert len(validations) == 2
+
+    index.write_bytes(original.replace(b'Room', b'Other'))
+    assert rom_cache.existing_cache_path(rom) is None
+
+    def refuse_rebuild():
+        raise rom_cache.RomDataError('changed map index')
+
+    monkeypatch.setattr(rom_cache, 'ensure', refuse_rebuild)
+    assert map_boulders.puzzle_for(state) is None
+    assert index_reads == [index.resolve()] * 3
+    assert len(validations) == 3
+
+    alternate.write_bytes(original.replace(b'Room', b'Other'))
+    monkeypatch.setenv('POKEGENT_MAP_GROUPS', str(alternate))
+    assert rom_cache.existing_cache_path(rom) is None
+    assert map_boulders.puzzle_for(state) is None
+    assert index_reads == [index.resolve()] * 3 + [alternate.resolve()]
+    assert len(validations) == 4
 
 
 def test_setup_cli_registered():
