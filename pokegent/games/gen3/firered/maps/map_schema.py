@@ -356,6 +356,12 @@ class MapGrid(_Frozen):
     def attribute_map(self) -> dict[int, int]:
         return dict(self.attributes)
 
+    def model_copy(self, *, update=None, deep=False):
+        copied = super().model_copy(update=update, deep=deep)
+        if update and "attributes" in update:
+            copied.__dict__.pop("attribute_map", None)
+        return copied
+
 
 class MapState(_Frozen):
     schema_version: Literal["1.0"] = MAP_SCHEMA_VERSION  # type: ignore[assignment]
@@ -379,11 +385,27 @@ class MapState(_Frozen):
     def in_grid(self, x: int, y: int) -> bool:
         return 0 <= x + K.MAP_OFFSET < self.grid.columns and 0 <= y + K.MAP_OFFSET < self.grid.rows
 
+    @cached_property
+    def _tile_cache(self) -> dict[tuple[int, int], tuple[int, int, int | None]]:
+        return {}
+
+    def model_copy(self, *, update=None, deep=False):
+        copied = super().model_copy(update=update, deep=deep)
+        if update and ("grid" in update or "layout" in update):
+            copied.__dict__.pop("_tile_cache", None)
+        return copied
+
     def raw_block(self, x: int, y: int) -> int:
         """``GetMapGridBlockAt``: the grid block, or the border block (collision forced) outside."""
-        if self.in_grid(x, y):
-            return self.grid.blocks[(y + K.MAP_OFFSET) * self.grid.columns + x + K.MAP_OFFSET]
-        return self._border_block(x, y)
+        cache = self._tile_cache
+        key = (x, y)
+        if key not in cache:
+            if self.in_grid(x, y):
+                block = self.grid.blocks[(y + K.MAP_OFFSET) * self.grid.columns + x + K.MAP_OFFSET]
+            else:
+                block = self._border_block(x, y)
+            cache[key] = (block, -1, None)
+        return cache[key][0]
 
     def _border_block(self, x: int, y: int) -> int:
         lay = self.layout
@@ -392,10 +414,17 @@ class MapState(_Frozen):
         return lay.border[bx + by * lay.border_width] | K.MAPGRID_COLLISION_MASK
 
     def metatile_id(self, x: int, y: int) -> int:
-        block = self.raw_block(x, y)
-        if block == K.MAPGRID_UNDEFINED:
-            return self._border_block(x, y) & K.MAPGRID_METATILE_ID_MASK
-        return block & K.MAPGRID_METATILE_ID_MASK
+        key = (x, y)
+        entry = self._tile_cache.get(key)
+        if entry is None:
+            self.raw_block(x, y)
+            entry = self._tile_cache[key]
+        block, mid, attrs = entry
+        if mid < 0:
+            mid = (self._border_block(x, y) if block == K.MAPGRID_UNDEFINED else block)
+            mid &= K.MAPGRID_METATILE_ID_MASK
+            self._tile_cache[key] = (block, mid, attrs)
+        return mid
 
     def collision(self, x: int, y: int) -> int:
         """``MapGridGetCollisionAt``: undefined blocks are impassable (3)."""
@@ -413,15 +442,23 @@ class MapState(_Frozen):
 
     def attributes(self, x: int, y: int) -> int:
         """u32 metatile attributes of the tile; ``0xFF`` behavior for ids >= 1024 (game rule)."""
-        mid = self.metatile_id(x, y)
-        if mid >= K.NUM_METATILES_TOTAL:
-            return K.ATTR_UNKNOWN_BEHAVIOR
-        return self.grid.attribute_map.get(mid, 0)
+        key = (x, y)
+        entry = self._tile_cache.get(key)
+        if entry is None:
+            self.raw_block(x, y)
+            entry = self._tile_cache[key]
+        block, mid, attrs = entry
+        if attrs is None:
+            if mid < 0:
+                mid = (self._border_block(x, y) if block == K.MAPGRID_UNDEFINED else block)
+                mid &= K.MAPGRID_METATILE_ID_MASK
+            attrs = (K.ATTR_UNKNOWN_BEHAVIOR if mid >= K.NUM_METATILES_TOTAL
+                     else self.grid.attribute_map.get(mid, 0))
+            self._tile_cache[key] = (block, mid, attrs)
+        return attrs
 
     def behavior(self, x: int, y: int) -> int:
         """``MapGridGetMetatileBehaviorAt``."""
-        if self.metatile_id(x, y) >= K.NUM_METATILES_TOTAL:
-            return K.ATTR_UNKNOWN_BEHAVIOR
         return self.attributes(x, y) & K.ATTR_BEHAVIOR_MASK
 
     @cached_property

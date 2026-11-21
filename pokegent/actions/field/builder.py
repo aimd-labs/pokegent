@@ -459,9 +459,14 @@ class FieldBuilder:
         nav = N.Navigator(state)
         signature = capability_signature(snap)
         tiles = self._objective_tiles(resolved, map_key)
-        navigation_plan = (
-            self.navigation.plan(snap, resolved) if self.navigation is not None else None
-        )
+        if self.navigation is not None:
+            from pokegent.navigation.planner import OBJECTIVE_FRAME_PLAN_BUDGET
+
+            navigation_plan = self.navigation.plan(
+                snap, resolved, objective_budget=OBJECTIVE_FRAME_PLAN_BUDGET
+            )
+        else:
+            navigation_plan = None
         # A reach/map-arrival objective whose target lies on ANOTHER map crosses the current
         # map on foot first.  ``_objective_tiles`` returns () for an off-map target, so in a
         # city/interior there would be NO walk option at all -- only border edges and building

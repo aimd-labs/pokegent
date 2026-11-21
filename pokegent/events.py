@@ -32,10 +32,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pokegent.frozen import FrozenMap, freeze
 
 SCHEMA_REV = 1
-TYPE_RE = re.compile(r"^[a-z][a-z_]*(\.[a-z][a-z_]*)+$")
+TYPE_RE = re.compile(r"^(?:[a-z][a-z_]*(?:\.[a-z][a-z_]*)+|plan_budget_exceeded)$")
 
 
 class EventType(str, Enum):
+    PLAN_BUDGET_EXCEEDED = "plan_budget_exceeded"
     RUNTIME_STARTED = "runtime.started"
     RUNTIME_PAUSED = "runtime.paused"
     RUNTIME_RESUMED = "runtime.resumed"

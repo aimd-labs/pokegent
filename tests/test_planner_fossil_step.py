@@ -1,7 +1,9 @@
 """A route blocked only by the Mt Moon fossil choice is a decision step, not a dead end."""
 
+import json
 from types import SimpleNamespace
 
+from pokegent.events import EventLog
 from pokegent.goals.models import Objective, Target
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
 from pokegent.navigation.adapter import NavigationAdapter
@@ -13,7 +15,10 @@ from pokegent.navigation.models import (
     NavigationRequirement,
     NavigationTarget,
 )
-from pokegent.navigation.planner import NavigationPlanner, next_semantic_edge
+from pokegent.navigation.planner import (
+    NavigationPlanner,
+    next_semantic_edge,
+)
 from pokegent.options.models import Legality, Option, Risk
 
 FOSSIL_REQUIREMENT = NavigationRequirement("fossil", "fossil", False, "rom")
@@ -362,3 +367,69 @@ def test_fully_explored_unrelated_target_names_the_decision_without_claiming_it(
     assert facts["fossil:2"]["blocked_choice"] == "fossil:2"
     assert "serves_goal" not in facts["fossil:2"]
     assert "on_route" not in facts["fossil:2"]
+
+
+def test_real_search_counter_stops_at_expansion_limit(tmp_path):
+    events = EventLog(tmp_path, "budget-test")
+    planner = NavigationPlanner(_FakeGraph(_route()), events=events)
+    calls = []
+    original_frontier = planner._choice_frontier
+
+    def record_frontier(*args, **kwargs):
+        calls.append(True)
+        return original_frontier(*args, **kwargs)
+
+    planner._choice_frontier = record_frontier
+    try:
+        plan = planner.plan(START, TARGET, limit=1)
+    finally:
+        events.close()
+
+    assert plan.cost is None and plan.route == () and not plan.reachable
+    assert plan.explored == 1 and plan.blocked_choice_step is None
+    assert "search budget exhausted after 1 states" in plan.blocked_route_fact
+    assert calls == [True]  # preserve the original choice-frontier fallback
+    records = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert records and all(row["type"] == "plan_budget_exceeded" for row in records)
+    assert all(row["public_visibility"] for row in records)
+    assert {row["details"]["phase"] for row in records} == {"available", "blocked"}
+    assert all(row["details"]["expanded"] == row["details"]["limit"] == 1 for row in records)
+
+
+def test_objective_budget_abandons_route_and_does_not_change_general_default(tmp_path):
+    graph = _FakeGraph(_route(blocked=False))
+    events = EventLog(tmp_path, "objective-budget-test")
+    adapter = NavigationAdapter(graph, events=events)
+    bounded = adapter.plan(_snapshot(), _resolved(), objective_budget=1)
+    assert bounded is None
+    record = json.loads((tmp_path / "events.jsonl").read_text().splitlines()[-1])
+    assert record["type"] == "plan_budget_exceeded"
+    assert record["public_visibility"] is True
+    assert record["details"]["scope"] == "objective"
+    assert record["details"]["explored"] == 1
+    ordinary = adapter.plan(_snapshot(), _resolved())
+    assert ordinary is not None
+    assert ordinary.cost == 10_012 and len(ordinary.route) == 3
+    assert ordinary.unmet == ("Cut and Cascade Badge",)
+    events.close()
+
+
+def test_adapter_plan_cache_separates_bounded_and_general_calls(monkeypatch):
+    from test_probe_primitives import snapshot
+    from test_story_continuation import invented_state
+
+    adapter = NavigationAdapter(_FakeGraph())
+    state = invented_state()
+    snap = snapshot().model_copy(update={"map": state})
+    calls = []
+
+    def plan(start, target, *_args, **_kwargs):
+        calls.append(True)
+        return NavigationPlan(start, target, None, blocked_route_fact="synthetic")
+
+    monkeypatch.setattr(adapter.planner, "plan", plan)
+    adapter.plan(snap, _resolved())
+    adapter.plan(snap, _resolved(), objective_budget=75_000)
+    adapter.plan(snap, _resolved())
+    assert calls == [True, True]
+    assert len(adapter._plan_cache) == 2

@@ -6,6 +6,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from pokegent.events import EventSink
 from pokegent.games.gen3.firered.maps.map_names import map_name
 from pokegent.games.gen3.firered.maps.obstacles import option_key
 from pokegent.games.gen3.firered.reader.capabilities import field_capability
@@ -19,7 +20,13 @@ from pokegent.navigation.models import (
     NavigationPlan,
     NavigationTarget,
 )
-from pokegent.navigation.planner import NavigationPlanner, next_semantic_edge
+from pokegent.navigation.planner import (
+    NavigationPlanner,
+    next_semantic_edge,
+    objective_frame_budget,
+    objective_frame_budget_exhausted,
+    objective_frame_budget_state,
+)
 from pokegent.navigation.trigger_matching import executable_route, first_planned_gate_at
 from pokegent.options.models import Legality, Option
 
@@ -61,16 +68,28 @@ class NavigationAdapter:
         *,
         visited: Any = None,
         plan_cache_size: int = 64,
+        events: EventSink | None = None,
     ) -> None:
         self.graph = graph
-        self.planner = NavigationPlanner(graph)
+        self.planner = NavigationPlanner(graph, events=events)
         self.visited = visited if visited is not None else _Visited()
         self._plan_cache_size = max(0, plan_cache_size)
         self._plan_cache: OrderedDict[tuple[object, ...], NavigationPlan | None] = OrderedDict()
         self._closed_warp_cache: dict[tuple[object, ...], bool] = {}
         self._closed_warp_cache_map: tuple[int, int] | None = None
 
-    def plan(self, snapshot, resolved: ResolvedObjective | None) -> NavigationPlan | None:
+    def plan(
+        self, snapshot, resolved: ResolvedObjective | None, *, objective_budget: int | None = None
+    ) -> NavigationPlan | None:
+        if objective_budget is None:
+            return self._plan(snapshot, resolved, None)
+        with objective_frame_budget(self.planner.events, objective_budget) as work:
+            plan = self._plan(snapshot, resolved, objective_budget)
+        return None if work[1] else plan
+
+    def _plan(
+        self, snapshot, resolved: ResolvedObjective | None, objective_budget: int | None
+    ) -> NavigationPlan | None:
         state = snapshot.map
         if state is None or state.player is None or resolved is None:
             return None
@@ -96,6 +115,8 @@ class NavigationAdapter:
         # moves, bag items, flags, vars and visited Fly destinations; its non-comparing
         # ``live_objects`` field is covered by MapState.
         cache_key = (
+            "objective-frame-budget",
+            objective_budget,
             start,
             getattr(state.player, "facing", None),
             getattr(state.player, "surfing", False),
@@ -128,11 +149,15 @@ class NavigationAdapter:
                 state,
                 resolved,
             )
+            if objective_frame_budget_exhausted():
+                return None
         wild_maps = getattr(resolved, "navigation_map_keys", frozenset())
         if wild_maps:
             plan = self.planner.plan_to_maps(
                 start, wild_maps, capabilities, live=state
             )
+            if objective_frame_budget_exhausted():
+                return None
             if plan is not None:
                 target = plan.target
             else:
@@ -151,6 +176,8 @@ class NavigationAdapter:
                 decision = self.planner.plan_next_decision(
                     start, target, capabilities, live=state
                 )
+                if objective_frame_budget_exhausted():
+                    return None
                 if decision is not None:
                     plan = NavigationPlan(
                         start,
@@ -163,11 +190,17 @@ class NavigationAdapter:
                     )
         elif target is not None:
             plan = train_plan or self.planner.plan(start, target, capabilities, live=state)
+            if objective_frame_budget_exhausted():
+                return None
         else:
             plan = None
         if plan is not None:
             plan = self._route_to_corridor_frontier(plan, target, capabilities, state)
+            if objective_frame_budget_exhausted():
+                return None
             plan = self._route_to_boulder_prerequisite(plan, target, capabilities, state)
+            if objective_frame_budget_exhausted():
+                return None
             plan = self._stage_boulder_action(plan, target)
             # A target NPC is a destination *within* the target map.  The live map can
             # temporarily make its adjacent tile unwalkable (another event object may be
@@ -180,6 +213,8 @@ class NavigationAdapter:
                     capabilities,
                     live=state,
                 )
+                if objective_frame_budget_exhausted():
+                    return None
                 plan = NavigationPlan(
                     map_plan.start,
                     target,
@@ -249,6 +284,9 @@ class NavigationAdapter:
         )
 
     def _remember_plan(self, key: tuple[object, ...] | None, plan: NavigationPlan | None) -> None:
+        work = objective_frame_budget_state()
+        if work is not None and work[1]:
+            return
         if key is None or self._plan_cache_size == 0:
             return
         self._plan_cache[key] = plan
@@ -289,6 +327,8 @@ class NavigationAdapter:
             capabilities,
             live=live,
         )
+        if objective_frame_budget_exhausted():
+            return target, None
         if selected is not None:
             return selected.target, selected
         map_name = destination.identity.name or resolved.target.map_name or str(target.map_key)
@@ -301,6 +341,8 @@ class NavigationAdapter:
         decision = self.planner.plan_next_decision(
             start, target, capabilities, live=live
         )
+        if objective_frame_budget_exhausted():
+            return target, None
         if decision is not None:
             plan = NavigationPlan(
                 start,
@@ -400,6 +442,8 @@ class NavigationAdapter:
 
         candidates = []
         for source, _hole in dependencies:
+            if objective_frame_budget_exhausted():
+                return plan
             candidate = self.planner.plan_to_maps(
                 plan.start,
                 frozenset({(source.group, source.number)}),
@@ -441,6 +485,8 @@ class NavigationAdapter:
         candidates = []
         descriptions: list[str] = []
         for order, trainer in enumerate(trainers):
+            if objective_frame_budget_exhausted():
+                return plan
             state = self.graph.state(trainer.map_key)
             map_name = state.identity.name if state is not None else str(trainer.map_key)
             target = NavigationTarget(*trainer.map_key, local_id=trainer.local_id)
