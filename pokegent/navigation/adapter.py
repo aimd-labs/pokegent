@@ -921,6 +921,7 @@ class NavigationAdapter:
                     edge
                     for edge in plan.route
                     if (edge.kind == "field_move" and self._option_key_for_edge(edge) == key)
+                    or (edge is semantic and edge.kind == "toggle" and semantic_match)
                     or (
                         edge.kind == "surf"
                         and not edge.stable_key.startswith("edge:")
@@ -1899,6 +1900,13 @@ class NavigationAdapter:
         if edge.kind == "toggle":
             target = edge.target_dict()
             option_target = option.facts.get("target")
+            local_id = target.get("local_id", 0)
+            # Object local IDs and background event indexes are separate ROM namespaces.
+            if local_id and isinstance(option_target, dict):
+                return (
+                    option_target.get("kind") == "npc"
+                    and option_target.get("local_id") == local_id
+                )
             if (
                 isinstance(option_target, dict)
                 and option_target.get("kind") == "sign"
