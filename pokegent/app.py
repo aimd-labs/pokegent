@@ -1083,9 +1083,7 @@ def build_decider(
                 system1,
                 port=external_port,
                 external_timeout=external_timeout,
-                agent_handoff_timeout_s=float(
-                    settings.get("agent_handoff_timeout_s", 300.0)
-                ),
+                agent_handoff_timeout_s=settings.get("agent_handoff_timeout_s", 300.0),
                 autoplay=autoplay or "off",
                 escalate_below_confidence=settings.get("escalate_below_confidence", 0.35),
                 override_window_s=float(settings.get("override_window_s", 0.0)),
