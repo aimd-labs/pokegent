@@ -222,6 +222,11 @@ class HybridDecider:
                     wait_timeout=self.agent_handoff_timeout_s,
                     interruptible_wait=True,
                     handoff_timeout=True,
+                    handoff={
+                        "ownership": "recovery_window",
+                        "escalation_reason": reason,
+                        "timeout_s": self.agent_handoff_timeout_s,
+                    },
                 )
             except AgentHandoffTimeout as exc:
                 self._emit_handoff_expired(frame, reason, "recovery_window", exc)
@@ -341,15 +346,23 @@ class HybridDecider:
             "escalated": escalate,
             "escalation_reason": metadata["escalation_reason"],
         }
+        offer_kwargs: dict[str, Any] = {
+            "metadata": metadata,
+            "default": served if not escalate else None,
+            "wait_timeout": (
+                self.agent_handoff_timeout_s if escalate else self.override_window_s
+            ),
+            "interruptible_wait": escalate,
+            "handoff_timeout": escalate,
+        }
+        if escalate:
+            offer_kwargs["handoff"] = {
+                "ownership": "escalated",
+                "escalation_reason": metadata["escalation_reason"],
+                "timeout_s": self.agent_handoff_timeout_s,
+            }
         try:
-            result = self.external.offer(
-                frame,
-                metadata=metadata,
-                default=served if not escalate else None,
-                wait_timeout=self.agent_handoff_timeout_s if escalate else self.override_window_s,
-                interruptible_wait=escalate,
-                handoff_timeout=escalate,
-            )
+            result = self.external.offer(frame, **offer_kwargs)
         except AgentHandoffTimeout as exc:
             self._emit_handoff_expired(
                 frame, metadata["escalation_reason"], "escalated", exc

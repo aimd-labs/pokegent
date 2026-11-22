@@ -162,6 +162,11 @@ the agent, as `decision.systemone.completed` with `details.accepted == false` (i
 and `escalation_reason`. Provider failures and timeouts use the same hand-off sequence with a null
 choice/confidence; the later accepted agent choice is `decision.agent.completed`. The agent-requested
 event is emitted immediately after the frame is published, so a client may observe the frame first.
+Bounded hybrid escalations also carry an agent-only top-level `handoff` record (`handoff/1`) on
+the served frame; it is not metadata and never enters the System One payload. Its
+`objective.revision` is captured with the frame at build time (null when unknown), and
+`deadline.remaining_s` is derived from the existing private monotonic deadline, never a wall
+clock.
 Unknown types raise at `emit` (a programming error); readers accept any well-formed type.
 
 Hybrid adaptive routing may bypass System One after consecutive executed choices of the same

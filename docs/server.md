@@ -38,6 +38,36 @@ On expiry the runner emits `decision.agent.expired`, stops waiting, and pauses w
 Hybrid falls back to the plain agent decider when System One is disabled or unconfigured; that
 fallback keeps the unchanged agent-mode wait and is not bounded by this key.
 `/status` reports `waiting_for_choice` while it waits.
+
+Each bounded hybrid handoff carries an agent-only top-level `handoff` record on the served
+frame. It is not metadata and never enters the System One payload:
+
+```json
+"handoff": {
+  "schema": "handoff/1",
+  "controller": "AGENT_PENDING",
+  "ownership": "escalated",
+  "decision_id": "dec-...",
+  "frame_id": "external-...",
+  "snapshot": {"seq": 123, "fingerprint": "sha256:..."},
+  "objective": {"id": "...", "revision": 4},
+  "option_set_hash": "sha256:...",
+  "option_scope": "selectable_union",
+  "escalation_reason": "low_confidence",
+  "deadline": {"policy": "safe_pause", "timeout_s": 300.0, "remaining_s": 299.7}
+}
+```
+
+`ownership` is informational (`escalated` or the runner's `recovery_window`); it grants no
+objective authority. `option_set_hash` is a canonical digest of the option ids and rendered
+criteria in both the normal view and the `?all=1` extended view, so it identifies the full
+selectable union and is independent of option order. `objective.revision` is `null` when the
+frame was built without a known revision, and `objective.id` is `null` when goal-less.
+`deadline.remaining_s` is generated from the one private monotonic deadline; a refresh rebuilds
+the record with the new `frame_id`, objective revision, option hash and remaining time without
+extending the wait, and a choice posted with the previous token returns HTTP 409. On expiry the
+`decision.agent.expired` event stays keyed to the decision id and reason; it does not restate
+snapshot/objective identity, so use the record on the last served frame for token identity.
 Use `POST /interrupt` to request interruption of an active macro or interruptible wait.
 
 `GET /frame` long-polls for the next frame for up to 30 seconds by default. Clients must set their
@@ -108,8 +138,8 @@ Low confidence, a System One error/breaker, the runner's stuck detector, or a
 missing System One confidence always escalates the frame to the agent.
 A choice posted before execution wins. An override is possible only on an
 escalated frame, unless `override_window_s > 0` enables a temporary override
-window for otherwise non-escalated frames. An escalation waits indefinitely for
-the agent's choice; the existing System One suggestion is never applied because
+window for otherwise non-escalated frames. A bounded hybrid escalation waits up to
+`hybrid.agent_handoff_timeout_s`; the existing System One suggestion is never applied because
 the agent was slow.
 When a non-escalated override window expires, the decision is recorded as
 `decided_by: system1`. Completion events identify `system1` or `agent`.

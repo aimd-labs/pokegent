@@ -227,6 +227,7 @@ class BuilderRegistry:
             scene_confidence=ctx.scene.confidence,
             state_fingerprint=draft.state_fingerprint,
             goal_id=ctx.goal_id,
+            goal_revision=ctx.goal_revision,
             deadline_ms=draft.deadline_ms,
             context=context,
             all_options=all_options,

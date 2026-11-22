@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import logging
 import threading
 import time
+from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlsplit
@@ -65,6 +67,65 @@ def _filtered_reason(option: Any) -> str:
 
 MAX_OBJECTIVE_BODY = 16 * 1024
 BODY_READ_TIMEOUT = 5.0
+
+HANDOFF_SCHEMA = "handoff/1"
+HANDOFF_OPTION_SCOPE = "selectable_union"
+
+
+def _option_set_hash(served_frame: Mapping[str, Any]) -> str:
+    """Identity of everything an agent may choose from on the served frame.
+
+    The digest covers the normal options and the ``?all=1`` extended set by option id and the
+    rendered criterion the agent actually sees. Order is canonicalised, so a rebuild that only
+    reorders options keeps its identity, while a changed description or option set changes it.
+    Executor references, arguments and internal identity are deliberately absent.
+    """
+    rendered = sorted(
+        (
+            [item["id"], item["criterion"]]
+            for item in (*served_frame.get("options", ()), *served_frame.get("all_options", ()))
+        ),
+        key=lambda entry: entry[0],
+    )
+    canonical = json.dumps(
+        {"scope": HANDOFF_OPTION_SCOPE, "options": rendered},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest()
+
+
+def _handoff_record(
+    served_frame: Mapping[str, Any],
+    frame: DecisionFrame,
+    context: Mapping[str, Any],
+    deadline: float | None,
+    now: float,
+) -> dict[str, Any]:
+    """Agent-only sidecar for one bounded hybrid handoff; never part of the provider payload.
+
+    ``remaining_s`` is generated from the one private monotonic deadline, so a refreshed record
+    can be told apart from a new wait without publishing an absolute wall clock.
+    """
+    remaining = None if deadline is None else max(0.0, deadline - now)
+    return {
+        "schema": HANDOFF_SCHEMA,
+        "controller": "AGENT_PENDING",
+        "ownership": context.get("ownership"),
+        "decision_id": frame.decision_id,
+        "frame_id": served_frame["frame_id"],
+        "snapshot": {"seq": frame.snapshot_seq, "fingerprint": frame.state_fingerprint},
+        "objective": {"id": frame.goal_id, "revision": frame.goal_revision},
+        "option_set_hash": _option_set_hash(served_frame),
+        "option_scope": HANDOFF_OPTION_SCOPE,
+        "escalation_reason": context.get("escalation_reason"),
+        "deadline": {
+            "policy": "safe_pause",
+            "timeout_s": context.get("timeout_s"),
+            "remaining_s": None if remaining is None else round(remaining, 3),
+        },
+    }
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -410,6 +471,7 @@ class ExternalDecider:
         wait_timeout: float | None | object = _DEFAULT_WAIT,
         interruptible_wait: bool = False,
         handoff_timeout: bool = False,
+        handoff: Mapping[str, Any] | None = None,
     ) -> ChoiceResult:
         payload = to_system_one_payload(frame)
         assert_payload_clean(payload, frame)
@@ -476,6 +538,17 @@ class ExternalDecider:
                     "_hybrid_metadata": metadata,
                 }
                 assert_payload_clean(metadata_payload, frame)
+            deadline = (
+                time.monotonic() + self.timeout
+                if wait_timeout is _DEFAULT_WAIT
+                else None
+                if wait_timeout is None
+                else time.monotonic() + wait_timeout
+            )
+            if handoff is not None:
+                served_frame["handoff"] = _handoff_record(
+                    served_frame, frame, handoff, deadline, time.monotonic()
+                )
             self._frame = served_frame
             self._interrupt_requested.clear()
             self._macro_running = False
@@ -492,13 +565,6 @@ class ExternalDecider:
                     self._notify_agent_request(observer, frame_id, frame)
                 finally:
                     self._condition.acquire()
-            deadline = (
-                time.monotonic() + self.timeout
-                if wait_timeout is _DEFAULT_WAIT
-                else None
-                if wait_timeout is None
-                else time.monotonic() + wait_timeout
-            )
             while self._choice is None:
                 if self._stale_decision or (
                     self._decision_valid is not None and not self._decision_valid()
@@ -597,6 +663,12 @@ class ExternalDecider:
                             self._frame.pop("all_options", None)
                         else:
                             self._frame["all_options"] = updated_all_options
+                        if handoff is not None:
+                            # Rebuild identity from this refreshed frame under the same token
+                            # update; the private deadline is never extended by a refresh.
+                            self._frame["handoff"] = _handoff_record(
+                                self._frame, frame, handoff, deadline, time.monotonic()
+                            )
                         self._condition.notify_all()
                         new_frame_id = self._frame["frame_id"]
                         self._condition.release()
@@ -752,6 +824,7 @@ class ExternalDecider:
         wait_timeout: float | None | object = _DEFAULT_WAIT,
         interruptible_wait: bool = False,
         handoff_timeout: bool = False,
+        handoff: Mapping[str, Any] | None = None,
     ) -> ChoiceResult:
         """Expose a frame to an agent, optionally returning a local default on timeout."""
         return self._wait_for_choice(
@@ -761,6 +834,7 @@ class ExternalDecider:
             wait_timeout=wait_timeout,
             interruptible_wait=interruptible_wait,
             handoff_timeout=handoff_timeout,
+            handoff=handoff,
         )
 
     def frame_response(
