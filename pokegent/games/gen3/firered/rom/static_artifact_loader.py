@@ -12,8 +12,9 @@ identity, so this loader only format-checks and binds it through
 Receipt is read first (16 KiB bound); the immutable content-addressed payload
 opens only after receipt validation (16 MiB bound) and is hashed before parse.
 Both documents get strict UTF-8, lexical nesting/token/number bounds before
-``json.loads``; duplicate keys, floats, NaN and Infinity refuse.  Receipt and
-payload symlinks, non-regular/other-owned/group-world-writable files refuse.
+``json.loads``; duplicate keys, floats, NaN and Infinity refuse.  The artifact
+directory must not be a symlink and must be current-owner and non-group/world
+writable; receipt and payload must be symlink-free, regular and likewise safe.
 """
 
 from __future__ import annotations
@@ -360,13 +361,22 @@ def load_verified_document(directory: os.PathLike[str] | str, expected_identity:
         raise ArtifactLoadError("directory basename is not the supplied identity digest")
     try:
         directory_fd = os.open(
-            directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+            directory,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
         )
     except OSError as exc:
-        raise ArtifactLoadError("artifact directory cannot be opened") from exc
+        raise ArtifactLoadError("artifact directory cannot be opened safely") from exc
     try:
-        if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+        info = os.fstat(directory_fd)
+        if not stat.S_ISDIR(info.st_mode):
             raise ArtifactLoadError("artifact path is not a directory")
+        if info.st_uid != os.getuid():
+            raise ArtifactLoadError("artifact directory is not owned by the current user")
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise ArtifactLoadError("artifact directory is group/world writable")
         receipt_raw = _read_bounded(directory_fd, "receipt.json", RECEIPT_MAX_BYTES, "receipt")
         receipt = _validate_receipt(_parse_json(receipt_raw, "receipt"), expected, expected_digest)
         payload_raw = _read_bounded(
