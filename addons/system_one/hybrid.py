@@ -19,7 +19,7 @@ from pokegent.options.models import (
 )
 from pokegent.server import ExternalDecider
 
-from .provider import ProviderConfigurationError
+from .provider import CircuitOpen, ProviderConfigurationError
 
 #: Escalation reason used when more than one option claims the next route step.
 ROUTE_STEP_ESCALATION = "multiple_route_steps"
@@ -250,14 +250,10 @@ class HybridDecider:
         confidence = system_claim.confidence if system_claim is not None else None
         # Confidence is not evidence about an irreversible action; the post-veto choice decides.
         irreversible = self._irreversible_choice(frame, served)
-        health = getattr(self.system1, "health", None)
-        circuit_open = False
-        if callable(health):
-            try:
-                state = health().state
-                circuit_open = state == "open"
-            except Exception:
-                circuit_open = True
+        # The decision's own exception is the availability evidence; no health probe. Only a
+        # breaker-open failure is circuit-open: an unavailable provider (connection/429/5xx) is
+        # an outage, not a breaker. ``SyncDecider.health()`` stays for status calls only.
+        circuit_open = isinstance(system_error, CircuitOpen)
         stuck = self._stuck
         self._stuck = False
         threshold = self._thresholds.get(frame.scene_id, self._thresholds["default"])
@@ -291,10 +287,10 @@ class HybridDecider:
                 if force_agent
                 else "stuck"
                 if stuck
-                else "system1_error"
-                if system_error
                 else "circuit_open"
                 if circuit_open
+                else "system1_error"
+                if system_error
                 else IRREVERSIBLE_ESCALATION
                 if irreversible
                 else veto_reason
@@ -313,7 +309,9 @@ class HybridDecider:
                 "confidence": confidence,
             }
         if system_claim is None and system_error is not None:
-            metadata["escalation_reason"] = "system1_unavailable"
+            metadata["escalation_reason"] = (
+                "circuit_open" if circuit_open else "system1_unavailable"
+            )
         if escalate and not force_agent and self._events is not None:
             self._events.emit(
                 EventType.DECISION_SYSTEMONE_COMPLETED,
