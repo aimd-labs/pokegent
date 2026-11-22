@@ -19,9 +19,13 @@ from pokegent.games.gen3.firered.maps.map_schema import (
     WarpInfo,
 )
 from pokegent.games.gen3.firered.maps.obstacles import script_gate
+from pokegent.games.gen3.firered.rom import static_artifact_loader as loader
 from pokegent.games.gen3.firered.rom import static_graph_admission as admission
-from pokegent.games.gen3.firered.rom.script_effects import Effect
-from pokegent.games.gen3.firered.rom.static_artifact_loader import MAX_MAPS
+from pokegent.games.gen3.firered.rom.script_effects import Effect, Interpretation
+from pokegent.games.gen3.firered.rom.static_artifact_loader import (
+    MAX_INTERPRETATIONS,
+    MAX_MAPS,
+)
 from pokegent.games.gen3.firered.rom.static_audit_codec import AuditCall, encode_audit_calls
 from pokegent.games.gen3.firered.rom.static_effect_index_codec import (
     StaticEffectFacts,
@@ -31,10 +35,17 @@ from pokegent.games.gen3.firered.rom.static_index_codec import (
     StaticIndexFacts,
     encode_index_facts,
 )
-from pokegent.games.gen3.firered.rom.static_map_codec import encode_static_map
+from pokegent.games.gen3.firered.rom.static_map_codec import (
+    encode_interpretation_key,
+    encode_static_map,
+)
 from pokegent.games.gen3.firered.rom.static_route_index_codec import (
     StaticRouteFacts,
     encode_route_facts,
+)
+from pokegent.games.gen3.firered.rom.static_symbolic_codec import (
+    MAX_CONTAINER_LENGTH,
+    encode_interpretation,
 )
 from pokegent.games.gen3.firered.rom.static_transport_codec import (
     StaticTransportFacts,
@@ -44,7 +55,12 @@ from pokegent.games.gen3.firered.rom.static_transport_codec import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _map(group: int, number: int, indexes: tuple[int, ...] = (0, 1)) -> MapState:
+def _map(
+    group: int,
+    number: int,
+    indexes: tuple[int, ...] = (0, 1),
+    attributes: tuple[tuple[int, int], ...] = ((1, 0),),
+) -> MapState:
     warps = tuple(
         WarpInfo(
             index=index,
@@ -91,7 +107,7 @@ def _map(group: int, number: int, indexes: tuple[int, ...] = (0, 1)) -> MapState
             secondary_tileset=0x08000001,
             layout_ptr=0x08000002,
         ),
-        grid=MapGrid(columns=16, rows=16, blocks=(1,) * 256, attributes=((1, 0),)),
+        grid=MapGrid(columns=16, rows=16, blocks=(1,) * 256, attributes=attributes),
         warps=warps,
     )
 
@@ -179,10 +195,13 @@ def _clone(wire: dict) -> dict:
     return json.loads(json.dumps(wire))
 
 
-def test_private_surface_has_no_complete_admission_api() -> None:
-    assert admission.__all__ == ()
-    assert not hasattr(admission, "AdmittedStaticGraph")
-    assert not hasattr(admission, "admit_static_graph")
+def test_public_surface_exports_only_complete_admission() -> None:
+    assert set(admission.__all__) == {
+        "AdmissionError",
+        "AdmittedStaticGraph",
+        "admit_static_graph",
+    }
+    assert not hasattr(admission, "admit_sections")
 
 
 def test_decode_sections_roundtrips_every_merged_family() -> None:
@@ -467,7 +486,9 @@ def test_memory_error_and_system_exit_propagate(monkeypatch, error) -> None:
 
 def test_importing_admission_does_not_import_navigation() -> None:
     code = (
-        "import sys; import pokegent.games.gen3.firered.rom.static_graph_admission; "
+        "import sys; "
+        "import pokegent.games.gen3.firered.rom.static_graph_admission; "
+        "import pokegent.games.gen3.firered.rom.static_corpus_codec; "
         "print(any(name == 'pokegent.navigation' or name.startswith('pokegent.navigation.') "
         "for name in sys.modules))"
     )
@@ -481,3 +502,290 @@ def test_importing_admission_does_not_import_navigation() -> None:
         check=True,
     )
     assert result.stdout.strip() == "False"
+
+
+# -- C4b corpus and complete mandatory-v1 admission -------------------------------------------
+
+
+def _identity(**changes) -> dict:
+    identity = {
+        "schema_version": 1,
+        "rom_sha1": "0" * 40,
+        "rom_sha256": "1" * 64,
+        "profile_sha256": "2" * 64,
+        "profile_id": "firered",
+        "generator_sha256": "3" * 64,
+        "map_index_sha256": "4" * 64,
+        "group_order": ["group"],
+        "group_sizes": [2],
+        "grouping_sha256": "5" * 64,
+        "puzzle_sha256": None,
+    }
+    identity.update(changes)
+    return identity
+
+
+def _key(
+    pointer: int = 0x800000,
+    map_key: tuple[int, int] = (0, 0),
+    *,
+    initial: tuple[tuple[int, int], ...] = (),
+    player_xy: tuple[int, int] | None = None,
+    minimize: bool = True,
+    guards: tuple = (),
+    ferry: bool = False,
+) -> tuple:
+    return (pointer, map_key, initial, player_xy, minimize, guards, ferry)
+
+
+def _setmetatile(metatile: int = 1, behavior: int | None = 0) -> Effect:
+    return Effect(
+        kind="setmetatile",
+        source=1,
+        guards=(),
+        values=(("x", 1), ("y", 2), ("metatile", metatile), ("behavior", behavior)),
+    )
+
+
+def _interpretation(
+    pointer: int = 0x800000,
+    *,
+    effects: tuple[Effect, ...] = (),
+    unknown: tuple[str, ...] = (),
+    commands: int = 0,
+) -> Interpretation:
+    return Interpretation(script_ptr=pointer, effects=effects, unknown=unknown, commands=commands)
+
+
+def _row(key: tuple, result: Interpretation, reads: list) -> dict:
+    return {
+        "key": encode_interpretation_key(key),
+        "result": encode_interpretation(result),
+        "behavior_reads": reads,
+    }
+
+
+def _valid_rows() -> list[dict]:
+    key = _key()
+    return [_row(key, _interpretation(effects=(_setmetatile(1, 0),)), [[1, 0]])]
+
+
+def _corpus(rows: list[dict]) -> dict:
+    return {"version": 1, "type": "script_corpus", "rows": rows}
+
+
+def _payload(
+    rows: list[dict] | None = None,
+    *,
+    corpus: dict | None = None,
+    maps: list[MapState] | None = None,
+    counts: dict | None = None,
+    identity_digest: str | None = None,
+) -> dict:
+    sections = _sections()
+    if maps is not None:
+        sections["maps"] = [encode_static_map(state) for state in maps]
+    if corpus is None:
+        corpus = _corpus([] if rows is None else rows)
+    payload = {
+        "version": 1,
+        "type": "static_graph",
+        **sections,
+        "corpus": corpus,
+        "identity_sha256": (
+            loader._identity_digest(_identity()) if identity_digest is None else identity_digest
+        ),
+    }
+    if counts is None:
+        counts = dict(_counts_wire())
+        raw_rows = corpus.get("rows")
+        counts["corpus_calls"] = len(raw_rows) if type(raw_rows) is list else 0
+    payload["counts"] = counts
+    return payload
+
+
+def _admit(payload: dict, **changes) -> admission.AdmittedStaticGraph:
+    return admission.admit_static_graph(payload, identity=_identity(**changes))
+
+
+def test_complete_empty_corpus_envelope_is_admitted() -> None:
+    graph = _admit(_payload())
+    assert type(graph) is admission.AdmittedStaticGraph
+    assert graph.corpus == ()
+    assert graph.identity_sha256 == loader._identity_digest(_identity())
+    assert dict(graph.counts)["corpus_calls"] == 0
+    assert graph.map_for((1, 1)).identity.number == 1
+    with pytest.raises(KeyError):
+        graph.map_for((9, 9))
+    with pytest.raises(TypeError):
+        graph.counts["maps"] = 9
+
+
+def test_one_valid_and_one_incomplete_corpus_row_are_admitted() -> None:
+    rows = _valid_rows()
+    rows.append(
+        _row(_key(0x800004), _interpretation(0x800004, unknown=("opaque",), commands=3), [])
+    )
+    graph = _admit(_payload(rows=rows))
+    assert graph.corpus[0].key[0] == 0x800000
+    assert graph.corpus[0].result.effects[0].value("behavior") == 0
+    assert graph.corpus[1].result.unknown == ("opaque",)
+    assert graph.corpus[1].result.complete is False
+    assert graph.counts["corpus_calls"] == 2
+
+
+def test_corpus_rows_preserve_read_order_and_duplicates() -> None:
+    rows = [_row(_key(), _interpretation(effects=(_setmetatile(1, 0),)), [[1, 0], [1, 0]])]
+    graph = _admit(_payload(rows=rows))
+    assert graph.corpus[0].behavior_reads == ((1, 0), (1, 0))
+
+
+_CORPUS_FRAME_MUTATORS = {
+    "top-missing-corpus": lambda p: p.pop("corpus"),
+    "top-extra-key": lambda p: p.update({"schema": 2}),
+    "top-version": lambda p: p.update({"version": 2}),
+    "top-bool-version": lambda p: p.update({"version": True}),
+    "top-type": lambda p: p.update({"type": "Static_Graph"}),
+    "corpus-version": lambda p: p["corpus"].update({"version": 2}),
+    "corpus-bool-version": lambda p: p["corpus"].update({"version": True}),
+    "corpus-type": lambda p: p["corpus"].update({"type": "interpretations"}),
+    "corpus-extra": lambda p: p["corpus"].update({"complete": True}),
+    "rows-not-list": lambda p: p["corpus"].update({"rows": tuple(p["corpus"]["rows"])}),
+    "row-extra": lambda p: p["corpus"]["rows"][0].update({"complete": True}),
+    "row-missing-reads": lambda p: p["corpus"]["rows"][0].pop("behavior_reads"),
+    "missing-corpus-key": lambda p: p["corpus"]["rows"][0].pop("key"),
+}
+
+
+@pytest.mark.parametrize("label", sorted(_CORPUS_FRAME_MUTATORS))
+def test_corpus_frames_refuse_missing_extra_and_wrong_tags(label: str) -> None:
+    payload = _payload(rows=_valid_rows())
+    _CORPUS_FRAME_MUTATORS[label](payload)
+    with pytest.raises(admission.AdmissionError):
+        _admit(payload)
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "0" * 64,
+        _identity(schema_version=True),
+        _identity(rom_sha256="A" * 64),
+        {key: value for key, value in _identity().items() if key != "puzzle_sha256"},
+        _identity(group_order=["a", "a"], group_sizes=[1, 1]),
+    ],
+)
+def test_identity_is_eleven_keys_not_a_bare_digest_or_self_confirmation(identity) -> None:
+    with pytest.raises(admission.AdmissionError, match="identity"):
+        admission.admit_static_graph(_payload(), identity=identity)
+
+
+def test_a_different_valid_identity_or_payload_digest_refuses() -> None:
+    with pytest.raises(admission.AdmissionError, match="identity"):
+        _admit(_payload(), rom_sha256="9" * 64)
+    with pytest.raises(admission.AdmissionError, match="identity"):
+        _admit(_payload(identity_digest="0" * 64))
+
+
+def test_pointer_must_equal_the_exact_key_pointer() -> None:
+    rows = [_row(_key(0x800004), _interpretation(0x800000), [])]
+    with pytest.raises(admission.AdmissionError, match="pointer"):
+        _admit(_payload(rows=rows))
+
+
+def test_corpus_key_map_must_exist_and_keys_must_be_unique() -> None:
+    rows = [_row(_key(map_key=(9, 9)), _interpretation(0x800000), [])]
+    with pytest.raises(admission.AdmissionError, match="map"):
+        _admit(_payload(rows=rows))
+    duplicate = _valid_rows() * 2
+    with pytest.raises(admission.AdmissionError, match="duplicate"):
+        _admit(_payload(rows=duplicate))
+
+
+@pytest.mark.parametrize("reads", [[[True, 0]], [[1, True]], [[1, 0, 0]], [1, 0]])
+def test_read_pairs_are_exact_two_element_int_arrays(reads) -> None:
+    rows = [_row(_key(), _interpretation(effects=(_setmetatile(1, 0),)), reads)]
+    with pytest.raises(admission.AdmissionError):
+        _admit(_payload(rows=rows))
+
+
+def test_reads_must_match_raw_attributes_and_absent_metatiles_are_null() -> None:
+    wrong = [_row(_key(), _interpretation(effects=(_setmetatile(1, 0),)), [[1, 1]])]
+    with pytest.raises(admission.AdmissionError, match="attributes"):
+        _admit(_payload(rows=wrong))
+    absent = [_row(_key(), _interpretation(effects=(_setmetatile(2, None),)), [[2, None]])]
+    assert _admit(_payload(rows=absent)).corpus[0].behavior_reads == ((2, None),)
+
+
+def test_behavior_reads_use_raw_attributes_not_the_cached_dict(monkeypatch) -> None:
+    states = {
+        (0, 0): _map(0, 0, attributes=((1, 0),)),
+        (1, 1): _map(1, 1, (0,)),
+    }
+    states[(0, 0)].grid.__dict__["attribute_map"] = {1: 0xFF}
+
+    def decode(wire):
+        identity = wire["map"]["identity"]
+        return states[(identity["group"], identity["number"])]
+
+    monkeypatch.setattr(admission, "decode_static_map", decode)
+    graph = _admit(_payload(maps=list(states.values()), rows=_valid_rows()))
+    assert graph.corpus[0].behavior_reads == ((1, 0),)
+
+
+def test_non_null_setmetatile_behavior_requires_its_exact_tile_read() -> None:
+    no_read = [_row(_key(), _interpretation(effects=(_setmetatile(1, 0),)), [])]
+    with pytest.raises(admission.AdmissionError, match="read"):
+        _admit(_payload(rows=no_read))
+    maps = [_map(0, 0, attributes=((1, 0), (2, 0))), _map(1, 1, (0,))]
+    other_tile = [_row(_key(), _interpretation(effects=(_setmetatile(1, 0),)), [[2, 0]])]
+    with pytest.raises(admission.AdmissionError, match="read"):
+        _admit(_payload(rows=other_tile, maps=maps))
+    wrong_behavior = [_row(_key(), _interpretation(effects=(_setmetatile(1, 7),)), [[1, 0]])]
+    with pytest.raises(admission.AdmissionError, match="read"):
+        _admit(_payload(rows=wrong_behavior))
+
+
+def test_counts_come_from_the_verified_corpus_length() -> None:
+    rows = _valid_rows()
+    payload = _payload(rows=rows)
+    payload["counts"]["corpus_calls"] = 0
+    with pytest.raises(admission.AdmissionError, match="corpus_calls"):
+        _admit(payload)
+    payload = _payload(rows=rows)
+    payload["counts"]["corpus_calls"] = 2
+    with pytest.raises(admission.AdmissionError, match="corpus_calls"):
+        _admit(payload)
+
+
+def test_corpus_row_and_read_ceilings_refuse_without_truncation() -> None:
+    row = _valid_rows()[0]
+    oversized_rows = _payload(corpus=_corpus([row] * (MAX_INTERPRETATIONS + 1)))
+    with pytest.raises(admission.AdmissionError, match="corpus"):
+        _admit(oversized_rows)
+    reads = [[1, 0]] * (MAX_CONTAINER_LENGTH + 1)
+    oversized_reads = _payload(
+        rows=[_row(_key(), _interpretation(effects=(_setmetatile(1, 0),)), reads)]
+    )
+    with pytest.raises(admission.AdmissionError, match="corpus"):
+        _admit(oversized_reads)
+
+
+def test_admission_never_calls_the_interpreter_reader_or_rom_tables(monkeypatch) -> None:
+    import pokegent.games.gen3.firered.maps.map_data as map_data
+    import pokegent.games.gen3.firered.rom.rom_tables as rom_tables
+    import pokegent.games.gen3.firered.rom.script_effects as script_effects
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("admission must not read, interpret or build ROM tables")
+
+    monkeypatch.setattr(script_effects, "interpret", boom)
+    monkeypatch.setattr(map_data.MapReader, "read_static", boom)
+    monkeypatch.setattr(rom_tables.GameTables, "from_rom_image", classmethod(boom))
+    graph = _admit(_payload(rows=_valid_rows()))
+    assert len(graph.corpus) == 1
+
+
+def test_public_docstrings_state_the_bounded_loader_precondition() -> None:
+    assert "load_verified_document" in admission.__doc__
+    assert "load_verified_document" in admission.admit_static_graph.__doc__

@@ -1,38 +1,45 @@
-"""Unused private section, reference and recount helpers for static-graph admission.
+"""Unused complete admission boundary for the static-graph document v1.
 
-This module is the C4a preparation seam only.  It decodes the already-merged
-static sections through their public codecs, checks the producer's outer-key and
-deduplicated-subrow uniqueness, checks source-map/warp/floor references and
-recomputes the exact eight diagnostic counters.  It deliberately exports no
-``AdmittedStaticGraph`` and no complete ``admit_static_graph`` API, holds no
-corpus section and builds no graph or runtime value.
+The private helpers decode the merged static sections through their public
+codecs, check outer-key/subrow uniqueness, source references and the eight
+counters.  :func:`admit_static_graph` adds the mandatory script corpus and the
+independently bound eleven-key identity and returns
+:class:`AdmittedStaticGraph`.  The runtime does not use this module yet.
 
-Uniqueness has two levels.  Outer container keys are unique because the owning
-producers assign or ``setdefault`` them.  Sequential subrows stay ordered and
-are required duplicate-free only where the producer itself collapses them with
-``dict.fromkeys`` (gates, toggles, obstacles, elevators, ferries, warp flags and
-the per-map metatile pair set).  Trainer, landing, Seagallop and audit rows are
-ordered source rows; duplicates are preserved rather than invented as errors.
-Seagallop selectors are unique because the source range generates them.
+The complete v1 envelope is mandatory: no corpus-absent variant, partial value
+or degraded success exists.  ``payload`` must be the bounded integrity-verified
+document from ``load_verified_document``; duplicate JSON keys and parse limits
+are loader preconditions a decoded dict cannot re-prove.  ``identity`` is the
+caller-owned eleven-key identity from ``derive_identity``, never a bare digest.
 
-Reference checks are source-side only: every source map key must exist, the
-warp-indexed families must name an actual source warp, and an elevator floor key
-must exist because its producer already filters unknown floors.  Seagallop,
-ferry and warp destinations (and ``opened_flag``) are deliberately not checked
-for map/flag existence; they stay rows and are refused later at traversal.
+Outer keys are unique; subrows stay ordered and refuse duplicates only in the
+producer's ``dict.fromkeys`` families (gates, toggles, obstacles, elevators,
+ferries, warp flags, metatiles).  Trainer, landing, Seagallop and audit rows are
+ordered; Seagallop selectors are unique because the range generates them.
 
-No navigation module is imported: ``navigation/__init__.py`` eagerly loads the
-graph.  Ordinary invalid input becomes :class:`AdmissionError`; ``MemoryError``
-and ``SystemExit`` are not intercepted.  Input mutation after decode cannot
-change the decoded owning facts.
+References are source-side only: every source map key exists, warp-indexed
+families name an actual source warp, and elevator floors exist (their producer
+filters unknown floors).  Seagallop/ferry/warp destinations and ``opened_flag``
+are not existence-checked; they stay rows and are refused at traversal.
+
+The value is shallow-frozen facts: tuples and frozen owning models are authored,
+but ``MapGrid.attribute_map`` and ``MapState._tile_cache`` are mutable
+non-authoritative caches excluded from equality/roundtrip claims.  C6 must
+reconstruct fresh owning objects rather than share this value or its caches.
+
+No navigation module is imported.  Ordinary invalid input becomes
+:class:`AdmissionError`; ``MemoryError`` and ``SystemExit`` propagate.  Input
+mutation after decode cannot change the decoded owning facts.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from types import MappingProxyType
+from typing import Any, Iterable, Mapping
 
 from pokegent.games.gen3.firered.maps.map_schema import MapState
+from pokegent.games.gen3.firered.rom import static_artifact_loader as _loader
 from pokegent.games.gen3.firered.rom.static_artifact_loader import (
     MAX_COUNT_VALUE,
     MAX_INTERPRETATIONS,
@@ -42,6 +49,7 @@ from pokegent.games.gen3.firered.rom.static_audit_codec import (
     AuditCall,
     decode_audit_calls,
 )
+from pokegent.games.gen3.firered.rom.static_corpus_codec import CorpusRow, decode_corpus
 from pokegent.games.gen3.firered.rom.static_effect_index_codec import (
     StaticEffectFacts,
     decode_effect_facts,
@@ -61,8 +69,23 @@ from pokegent.games.gen3.firered.rom.static_transport_codec import (
     decode_transport_facts,
 )
 
-__all__: tuple[str, ...] = ()
+__all__ = ("AdmissionError", "AdmittedStaticGraph", "admit_static_graph")
 
+_ADMITTED_KEYS = frozenset(
+    {
+        "version",
+        "type",
+        "identity_sha256",
+        "counts",
+        "maps",
+        "index",
+        "route",
+        "effect",
+        "transport",
+        "audit",
+        "corpus",
+    }
+)
 _SECTION_KEYS = frozenset({"maps", "index", "route", "effect", "transport", "audit"})
 _COUNT_FIELDS = (
     "maps",
@@ -332,3 +355,95 @@ def _admit_sections(wire: Any) -> _SectionFacts:
     _check_unique_keys(facts)
     _check_references(facts)
     return facts
+
+
+@dataclass(frozen=True)
+class AdmittedStaticGraph:
+    """Frozen decoded facts of one complete mandatory-v1 static graph.
+
+    The authored fields are tuples and frozen owning models from the section
+    codecs.  ``counts`` is a read-only mapping view of the eight recomputed
+    counters.  The mutable ``MapGrid.attribute_map`` and ``MapState._tile_cache``
+    caches are non-authoritative and may be populated by consumers; this value
+    makes no deep-immutability or caller-isolation claim.  C6 reconstructs fresh
+    owning objects rather than sharing these instances.
+    """
+
+    identity_sha256: str
+    maps: tuple[MapState, ...]
+    index: StaticIndexFacts
+    route: StaticRouteFacts
+    effect: StaticEffectFacts
+    transport: StaticTransportFacts
+    audit: tuple[AuditCall, ...]
+    corpus: tuple[CorpusRow, ...]
+    counts: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        if type(self.identity_sha256) is not str:
+            raise AdmissionError("admitted identity digest must be exact str")
+        _SectionFacts(self.maps, self.index, self.route, self.effect, self.transport, self.audit)
+        if type(self.corpus) is not tuple:
+            raise AdmissionError("admitted corpus must be an exact tuple")
+        for row in self.corpus:
+            if type(row) is not CorpusRow:
+                raise AdmissionError("admitted corpus must hold exact CorpusRow values")
+        if type(self.counts) is not MappingProxyType:
+            raise AdmissionError("admitted counts must be a read-only mapping view")
+        if set(self.counts) != set(_COUNT_FIELDS):
+            raise AdmissionError("admitted counts keys mismatch")
+        _AdmissionCounts(**dict(self.counts))
+
+    def map_for(self, key: Any) -> MapState:
+        """Return the decoded map for an exact ``(group, number)`` key, uncached."""
+        if type(key) is tuple and len(key) == 2:
+            if all(type(value) is int for value in key):
+                for state in self.maps:
+                    if (state.identity.group, state.identity.number) == key:
+                        return state
+        raise KeyError(key)
+
+
+def admit_static_graph(payload: Any, *, identity: Any) -> AdmittedStaticGraph:
+    """Admit the complete mandatory-v1 static-graph document.
+
+    ``payload`` must be the bounded, integrity-verified document returned by
+    ``load_verified_document``; duplicate JSON keys and the byte/depth/token
+    parse limits are loader preconditions and cannot be re-proven here.
+    ``identity`` is the caller-owned independently derived eleven-key portable
+    identity.  It is re-validated and canonically hashed locally; a bare digest,
+    a receipt identity or the payload digest is never accepted as authority.
+    Ordinary invalid input raises :class:`AdmissionError`; no partial value
+    escapes and no interpreter, reader or owning graph is constructed.
+    """
+    _exact_keys(payload, _ADMITTED_KEYS, "static graph")
+    if type(payload["version"]) is not int or payload["version"] != 1:
+        raise AdmissionError("static graph version must be exact int 1")
+    if type(payload["type"]) is not str or payload["type"] != "static_graph":
+        raise AdmissionError('static graph type must be exact str "static_graph"')
+    try:
+        validated = _loader._validate_identity(identity)
+    except _loader.ArtifactLoadError as exc:
+        raise AdmissionError(f"static graph identity refused: {exc}") from None
+    digest = _loader._identity_digest(validated)
+    if type(payload["identity_sha256"]) is not str or payload["identity_sha256"] != digest:
+        raise AdmissionError("static graph identity_sha256 does not match the supplied identity")
+    facts = _admit_sections({name: payload[name] for name in _SECTION_KEYS})
+    try:
+        corpus = decode_corpus(payload["corpus"], facts.maps)
+    except CodecError as exc:
+        raise AdmissionError(f"script corpus refused: {exc}") from None
+    expected = _recount(facts, corpus_calls=len(corpus))
+    supplied = _decode_counts(payload["counts"])
+    _compare_counts(expected, supplied)
+    return AdmittedStaticGraph(
+        identity_sha256=digest,
+        maps=facts.maps,
+        index=facts.index,
+        route=facts.route,
+        effect=facts.effect,
+        transport=facts.transport,
+        audit=facts.audit,
+        corpus=corpus,
+        counts=MappingProxyType({name: getattr(expected, name) for name in _COUNT_FIELDS}),
+    )
