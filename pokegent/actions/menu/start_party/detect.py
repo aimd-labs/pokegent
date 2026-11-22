@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from pokegent.actions.menu.dialog.evidence import (
+    party_close_message_waiting,
     party_exit_yes_no_open,
     party_learning_yes_no_task,
 )
@@ -27,7 +28,8 @@ class StartPartyDetector:
         ui = snapshot.ui
         if ui is None or not ui.valid or ui.main.in_battle is not False:
             return None
-        if party_exit_yes_no_open(ui) or party_learning_yes_no_task(ui) is not None:
+        if (party_exit_yes_no_open(ui) or party_learning_yes_no_task(ui) is not None
+                or party_close_message_waiting(ui)):
             return None  # The modal dialog owns the input; do not add a busy party claim.
         task_names = _tasks(ui)
         start = ui.menu.start_menu

@@ -901,6 +901,11 @@ profiles:
         source: "pret pokefirered 037335f4 src/party_menu.c:4575; pokefirered.sym Task_HandleReplaceMoveYesNoInput"
         verified_by:
           - "FireRed USA rev0 source-bound symbol: pokefirered.sym 08125dbc, size 0x5e; Menu_ProcessInputNoWrapClearOnChoose owns YES/NO after text completes"
+      Task_ClosePartyMenuAfterText:
+        address: 0x081255BC
+        source: "pret pokefirered 037335f4 src/party_menu.c Task_ClosePartyMenuAfterText; pokefirered.sym 081255bc, size 0x34"
+        verified_by:
+          - "FireRed USA rev0 read-only ROM binding: handler calls IsPartyMenuTextPrinterActive and Task_ClosePartyMenu; gText_MoveNotLearned waits for input before automatic close"
       Task_HandleStopLearningMoveYesNoInput:
         address: 0x08126170
         source: "pret pokefirered 037335f4 src/party_menu.c:4688; pokefirered.sym Task_HandleStopLearningMoveYesNoInput"
