@@ -32,6 +32,7 @@ from pokegent.games.gen3.firered.rom.script_effects import (
     interpret,
 )
 from pokegent.games.gen3.firered.rom.script_scan import ROM_BASE, decode_stream, reachable
+from pokegent.games.gen3.firered.rom.static_audit_codec import AuditCall
 from pokegent.navigation.capabilities import requirement
 from pokegent.navigation.models import (
     CapabilityState,
@@ -297,7 +298,10 @@ class NavigationGraph:
         provider: Any = None,
         item_names: dict[int, str] | None = None,
         profile: Any = None,
+        _materialize: bool = False,
     ) -> None:
+        if type(_materialize) is not bool:
+            raise TypeError("_materialize must be an exact bool")
         if provider is None:
             from pokegent.games.gen3.firered.maps.map_provider import FireRedMapProvider
 
@@ -312,6 +316,10 @@ class NavigationGraph:
         self.rom = rom
         self._profile = profile
         self._item_names = item_names or {}
+        self._materialized: (
+            dict[tuple[Any, ...], tuple[Interpretation, tuple[tuple[int, int | None], ...]]] | None
+        ) = {} if _materialize else None
+        self._materialized_audit: list[AuditCall] | None = [] if _materialize else None
         self._seagallop_warps = self._read_seagallop_warps()
         self._effect_cache: dict[tuple[Any, ...], Interpretation] = {}
         self._water_body_ids: dict[tuple[tuple[int, int], int, int], tuple[int, int]] = {}
@@ -1483,6 +1491,23 @@ class NavigationGraph:
         std_scripts = (
             self._profile.symbol("gStdScripts").address if self._profile is not None else None
         )
+        capture = getattr(self, "_materialized", None)
+
+        def _behavior(metatile: int) -> int | None:
+            if metatile in state.grid.attribute_map:
+                return state.grid.attribute_map.get(metatile, 0) & K.ATTR_BEHAVIOR_MASK
+            return None
+
+        reads: list[tuple[int, int | None]] | None = None
+        if capture is not None:
+            reads = []
+
+            def metatile_behavior(metatile: int) -> int | None:
+                value = _behavior(metatile)
+                reads.append((metatile, value))
+                return value
+        else:
+            metatile_behavior = _behavior
         result = interpret(
             self.rom,
             pointer,
@@ -1493,16 +1518,14 @@ class NavigationGraph:
                 seagallop_warps=self._seagallop_warps,
                 preserve_seagallop_special_vars=ferry_mode,
                 initial_guards=guards,
-                metatile_behavior=lambda metatile: (
-                    state.grid.attribute_map.get(metatile, 0) & K.ATTR_BEHAVIOR_MASK
-                    if metatile in state.grid.attribute_map
-                    else None
-                ),
+                metatile_behavior=metatile_behavior,
             ),
         )
         if not minimize_guards:
             self._effect_cache[key] = result
             self.script_trace_stats.add(result)
+            if capture is not None and reads is not None:
+                capture[key] = (result, tuple(reads))
             return result
         grouped: dict[tuple[Any, ...], list[Effect]] = defaultdict(list)
         for effect in result.effects:
@@ -1527,6 +1550,8 @@ class NavigationGraph:
         answer = replace(result, effects=tuple(collapsed))
         self._effect_cache[key] = answer
         self.script_trace_stats.add(answer)
+        if capture is not None and reads is not None:
+            capture[key] = (answer, tuple(reads))
         return answer
 
     def _script_effects(
@@ -1577,6 +1602,9 @@ class NavigationGraph:
                 )
             )
         )
+        audit = getattr(self, "_materialized_audit", None)
+        if audit is not None:
+            audit.append(AuditCall(reader, map_key, site, result.script_ptr, reasons))
         if site is not None:
             reason = "; ".join(reasons) or "incomplete interpretation"
             self._script_unknown_sites[(map_key, site)].add(
