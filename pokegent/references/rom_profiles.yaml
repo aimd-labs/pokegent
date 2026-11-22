@@ -896,6 +896,16 @@ profiles:
         source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_CHOOSE_MON_INPUT (claims pret pokefirered.sym 338ec9d95); decomp: void Task_HandleChooseMonInput (src/party_menu.c)"
         verified_by:
           - "ui_survey: historical local validation over 1279 raw mGBA states of this ROM in local RAM fixtures (RAM images), 2026-10-08: seen as an active task in 15 states"
+      Task_HandleReplaceMoveYesNoInput:
+        address: 0x08125DBC
+        source: "pret pokefirered 037335f4 src/party_menu.c:4575; pokefirered.sym Task_HandleReplaceMoveYesNoInput"
+        verified_by:
+          - "FireRed USA rev0 source-bound symbol: pokefirered.sym 08125dbc, size 0x5e; Menu_ProcessInputNoWrapClearOnChoose owns YES/NO after text completes"
+      Task_HandleStopLearningMoveYesNoInput:
+        address: 0x08126170
+        source: "pret pokefirered 037335f4 src/party_menu.c:4688; pokefirered.sym Task_HandleStopLearningMoveYesNoInput"
+        verified_by:
+          - "FireRed USA rev0 source-bound symbol: pokefirered.sym 08126170, size 0x11c; YES stops learning and NO returns to replacement prompt"
       Task_TryCreateSelectionWindow:
         address: 0x08122C30
         source: "earlier AIMD Labs runtime reference: live pokemon-agent b49c8d9 firered/symbols.py TASK_PARTY_SELECTION_WINDOW (claims pret pokefirered.sym 338ec9d95); decomp: static void Task_TryCreateSelectionWindow (src/party_menu.c)"
