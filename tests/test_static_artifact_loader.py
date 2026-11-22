@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -142,6 +144,7 @@ def test_supplied_identity_must_match_receipt_identity(
         lambda value: value.update(group_order=["Group_000", "Group_000"]),
         lambda value: value.update(grouping_sha256="f" * 63),
         lambda value: value.update(puzzle_sha256=""),
+        lambda value: (value.pop("group_order"), value.update({1: ["Group_000"]})),
     ],
 )
 def test_malformed_expected_identity_refuses(tmp_path: Path, mutation) -> None:
@@ -330,6 +333,39 @@ def test_nonregular_file_refuses(tmp_path: Path, target: str) -> None:
     path.mkdir()
     with pytest.raises(ArtifactLoadError):
         load(directory)
+
+
+def test_fifo_receipt_refuses_without_blocking(tmp_path: Path) -> None:
+    directory, _ = artifact(tmp_path)
+    receipt = directory / "receipt.json"
+    receipt.unlink()
+    os.mkfifo(receipt, 0o644)
+    repo = Path(__file__).resolve().parents[1]
+    code = """
+import json, sys
+from pathlib import Path
+from pokegent.games.gen3.firered.rom.static_artifact_loader import (
+    ArtifactLoadError,
+    load_verified_document,
+)
+try:
+    load_verified_document(Path(sys.argv[1]), json.loads(sys.argv[2]))
+except ArtifactLoadError:
+    print("refused")
+else:
+    raise SystemExit("admitted a fifo receipt")
+"""
+    env = {**os.environ, "PYTHONPATH": str(repo)}
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(directory), json.dumps(identity())],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "refused"
 
 
 def test_group_or_world_writable_file_refuses(tmp_path: Path) -> None:

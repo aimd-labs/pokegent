@@ -127,11 +127,18 @@ def _text(value: Any, label: str, *, maximum: int = 128, allow_empty: bool = Fal
     return value
 
 
+def _exact_keys(mapping: dict[Any, Any], expected: frozenset[str], label: str) -> None:
+    if len(mapping) != len(expected):
+        raise ArtifactLoadError(f"{label} keys mismatch")
+    for key in mapping:
+        if type(key) is not str or key not in expected:
+            raise ArtifactLoadError(f"{label} keys mismatch")
+
+
 def _validate_identity(identity: Any) -> dict[str, Any]:
     if type(identity) is not dict:
         raise ArtifactLoadError("portable identity must be an exact mapping")
-    if set(identity) != _IDENTITY_KEYS or any(type(key) is not str for key in identity):
-        raise ArtifactLoadError("portable identity keys mismatch")
+    _exact_keys(identity, _IDENTITY_KEYS, "portable identity")
     _exact_int(identity["schema_version"], minimum=1, maximum=1, label="identity schema_version")
     _hash(identity["rom_sha1"], _HEX40, "rom_sha1")
     for field in (
@@ -270,7 +277,12 @@ def _parse_json(raw: bytes, label: str) -> Any:
 
 
 def _read_bounded(directory_fd: int, name: str, limit: int, label: str) -> bytes:
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     try:
         fd = os.open(name, flags, dir_fd=directory_fd)
     except OSError as exc:
@@ -308,8 +320,7 @@ def _validate_receipt(
 ) -> dict[str, Any]:
     if type(receipt) is not dict:
         raise ArtifactLoadError("receipt must be an exact mapping")
-    if set(receipt) != _RECEIPT_KEYS or any(type(key) is not str for key in receipt):
-        raise ArtifactLoadError("receipt keys mismatch")
+    _exact_keys(receipt, _RECEIPT_KEYS, "receipt")
     _exact_int(receipt["schema_version"], minimum=1, maximum=1, label="receipt schema_version")
     if receipt["sealed"] is not True:
         raise ArtifactLoadError("receipt must be sealed with exact True")
