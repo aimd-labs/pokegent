@@ -88,6 +88,7 @@ def artifact(
     name = digest_for(ident) if directory_name is None else directory_name
     directory = tmp_path / name
     directory.mkdir(parents=True)
+    os.chmod(directory, 0o700)
     receipt = receipt_for(ident, payload_bytes, overrides=receipt_overrides)
     (directory / receipt["payload_name"]).write_bytes(payload_bytes)
     (directory / "receipt.json").write_bytes(
@@ -372,6 +373,31 @@ def test_group_or_world_writable_file_refuses(tmp_path: Path) -> None:
     directory, _ = artifact(tmp_path)
     os.chmod(directory / "receipt.json", 0o666)
     with pytest.raises(ArtifactLoadError):
+        load(directory)
+
+
+def test_symlink_artifact_directory_refuses(tmp_path: Path) -> None:
+    directory, _ = artifact(tmp_path / "real")
+    link = tmp_path / directory.name
+    link.symlink_to(directory, target_is_directory=True)
+    with pytest.raises(ArtifactLoadError, match="opened safely"):
+        load(link)
+
+
+def test_group_or_world_writable_directory_refuses(tmp_path: Path) -> None:
+    directory, _ = artifact(tmp_path)
+    os.chmod(directory, 0o770)
+    with pytest.raises(ArtifactLoadError, match="group/world writable"):
+        load(directory)
+
+
+def test_directory_not_owned_by_current_user_refuses(tmp_path: Path, monkeypatch) -> None:
+    directory, _ = artifact(tmp_path)
+    import pokegent.games.gen3.firered.rom.static_artifact_loader as module
+
+    real_uid = os.getuid()
+    monkeypatch.setattr(module.os, "getuid", lambda: real_uid + 1)
+    with pytest.raises(ArtifactLoadError, match="not owned"):
         load(directory)
 
 

@@ -144,17 +144,12 @@ def default_puzzles_path() -> Path:
     )
 
 
-@lru_cache(maxsize=4)
-def _load(path: str) -> dict[tuple[int, int], PuzzleData]:
-    if not Path(path).is_file() and not os.environ.get("FIRERED_ROM_PATH"):
-        _LOG.error(
-            "ROM-derived boulder data is unavailable at %s; set FIRERED_ROM_PATH and build the cache",  # noqa: E501
-            path,
-        )
-        return {}
-    doc = yaml.safe_load(Path(path).read_text())
+def parse_puzzle_document(doc: object, *, source: str) -> dict[tuple[int, int], PuzzleData]:
+    """Decode one already-loaded ``boulders/1`` document with the owner semantics."""
+    if not isinstance(doc, Mapping):
+        raise ValueError(f"{source}: puzzle document must be a mapping")
     if doc.get("schema") != "boulders/1":
-        raise ValueError(f"{path}: unknown schema {doc.get('schema')!r}")
+        raise ValueError(f"{source}: unknown schema {doc.get('schema')!r}")
     out: dict[tuple[int, int], PuzzleData] = {}
     for name, m in doc["maps"].items():
         switches = tuple(
@@ -187,6 +182,26 @@ def _load(path: str) -> dict[tuple[int, int], PuzzleData]:
             name, m["group"], m["number"], boulders, switches, holes, closed
         )
     return out
+
+
+def parse_puzzle_bytes(raw: bytes, *, source: str) -> dict[tuple[int, int], PuzzleData]:
+    """Decode exact captured puzzle bytes; never re-open ``source``."""
+    try:
+        doc = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{source}: invalid puzzle YAML") from exc
+    return parse_puzzle_document(doc, source=source)
+
+
+@lru_cache(maxsize=4)
+def _load(path: str) -> dict[tuple[int, int], PuzzleData]:
+    if not Path(path).is_file() and not os.environ.get("FIRERED_ROM_PATH"):
+        _LOG.error(
+            "ROM-derived boulder data is unavailable at %s; set FIRERED_ROM_PATH and build the cache",  # noqa: E501
+            path,
+        )
+        return {}
+    return parse_puzzle_bytes(Path(path).read_bytes(), source=path)
 
 
 def puzzles(
