@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from pokegent.goals.models import Objective
+from pokegent.goals.shop_admission import ShopObservation
 from pokegent.goals.validate import (
     MapDirectory,
     Reason,
@@ -136,6 +137,7 @@ class ObjectiveStore:
     _warned: int = 0
     _revision_floor: int = 0
     _committed_completions: set[tuple[str, int]] = field(default_factory=set)
+    _observation: Callable[[], ShopObservation | None] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
@@ -258,7 +260,7 @@ class ObjectiveStore:
         if not isinstance(data, dict):
             self._warn("schema_invalid", "the file must hold one JSON object")
             return
-        verdict = validate(data, now=self.clock(), directory=self.directory)
+        verdict = self.validate(data)
         if not verdict.ok or verdict.objective is None or verdict.resolved is None:
             candidate = verdict.objective
             if (candidate is not None and candidate.revision >= self._revision_floor
@@ -369,8 +371,19 @@ class ObjectiveStore:
 
     # -- validation / proposals -----------------------------------------------------------------
 
+    def bind_observation(
+        self, observation: Callable[[], ShopObservation | None] | None
+    ) -> None:
+        """Bind the live fresh-core observation used only for SHOP admission facts."""
+        self._observation = observation
+
     def validate(self, data: Mapping[str, Any] | Objective) -> Validation:
-        return validate(data, now=self.clock(), directory=self.directory)
+        return validate(
+            data,
+            now=self.clock(),
+            directory=self.directory,
+            observation=self._observation,
+        )
 
     def _warn_forbid_drop(self, active: Objective | None, new: Objective) -> None:
         """Warn when a replacement omits hard policy before ownership rules reject or accept it."""

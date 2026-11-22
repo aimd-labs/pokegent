@@ -680,6 +680,23 @@ def build_runner(
     so give the file explicitly.
     """
     config = config or AppConfig()
+    shop_observation: Callable[[], Any] | None = None
+    if actor is not None and profile is not None:
+        from pokegent.games.gen3.firered.reader.live import LiveReader
+        from pokegent.goals.shop_admission import ShopObservation
+
+        observation_reader = LiveReader(actor, profile, run_id=config.run_id)
+
+        def shop_observation() -> ShopObservation | None:
+            """Fresh core-only read from the same actor; never a cached decision snapshot."""
+            try:
+                snapshot = observation_reader.read().snapshot
+            except Exception:  # an optional admission fact read stays UNKNOWN
+                return None
+            if not snapshot.usable or snapshot.rom_profile != profile.profile_id:
+                return None
+            return ShopObservation.from_snapshot(snapshot, rom_sha1=profile.rom.sha1)
+
     session = make_objective_session(
         objectives,
         objective_plan,
@@ -689,6 +706,7 @@ def build_runner(
         story_path=config.story_path,
         rom_path=rom_path,
         stuck_after=config.objective_stuck_after,
+        shop_observation=shop_observation,
     )
     bind_planning = getattr(decider, "bind_planning", None)
     if callable(bind_planning) and session is not None:
@@ -854,6 +872,7 @@ def make_objective_session(
     story_path: str | os.PathLike[str] | None = None,
     rom_path: str | os.PathLike[str] | None = None,
     stuck_after: int = 120,
+    shop_observation: Callable[[], Any] | None = None,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
     if dex_fallback and story_fallback:
@@ -874,6 +893,10 @@ def make_objective_session(
             else ObjectiveStore(Path(objectives).expanduser(), directory=directory)
         )
         session = None
+    if store.directory is None and directory is not None:
+        store.directory = directory
+    if shop_observation is not None:
+        store.bind_observation(shop_observation)
     if not store.path.parent.is_dir():
         raise AppError(f"the objective file's directory does not exist: {store.path.parent}")
     script = None
