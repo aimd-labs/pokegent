@@ -43,8 +43,10 @@ autopilot = ["requests>=2.28"]
 dev = [
     "ruff>=0.1.0",
 ]
+# `rom` and `firered` are aliases for the binding-only `mgba` extra.
 rom = ["pokegent[mgba]"]
-all = ["pokegent[pyboy,stream,dashboard,system1,autopilot]"]
+firered = ["pokegent[mgba]"]
+all = ["pokegent[pyboy,mgba,stream,dashboard,system1,autopilot]"]
 
 [project.urls]
 Homepage = "https://github.com/aimd-labs/pokegent"
