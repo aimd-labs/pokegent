@@ -298,6 +298,85 @@ def test_decoder_refuses_bad_framing(wire: object) -> None:
         codec.decode_static_map(wire)
 
 
+class StringSubclass(str):
+    pass
+
+
+@pytest.mark.parametrize("record", ["map", "key"])
+def test_framing_refuses_string_subclass_keys(static_state: MapState, record: str) -> None:
+    if record == "map":
+        wire = codec.encode_static_map(static_state)
+        decode = codec.decode_static_map
+    else:
+        wire = codec.encode_interpretation_key(sample_key())
+        decode = codec.decode_interpretation_key
+    bad = {StringSubclass(key): value for key, value in wire.items()}
+    with pytest.raises(CodecError):
+        decode(bad)
+
+
+@pytest.mark.parametrize(
+    "case", ["seen_tiles", "floor_bool", "warp_index_bool", "object_elev_float", "layout_width_str"]
+)
+def test_encoder_refuses_owning_field_type_coercion(static_state: MapState, case: str) -> None:
+    state = static_state
+    if case == "seen_tiles":
+        bad = state.model_copy(update={"seen_tiles": False})
+    elif case == "floor_bool":
+        identity = state.identity.model_copy(update={"floor_num": True})
+        bad = state.model_copy(update={"identity": identity})
+    elif case == "warp_index_bool":
+        warps = (state.warps[0].model_copy(update={"index": False}),) + state.warps[1:]
+        bad = state.model_copy(update={"warps": warps})
+    elif case == "object_elev_float":
+        objects = (state.objects[0].model_copy(update={"elevation": 1.0}),) + state.objects[1:]
+        bad = state.model_copy(update={"objects": objects})
+    else:
+        layout = state.layout.model_copy(update={"width": "2"})
+        bad = state.model_copy(update={"layout": layout})
+    with pytest.raises(CodecError):
+        codec.encode_static_map(bad)
+
+
+def test_encoded_byte_bound_is_enforced_before_dumps(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+    real = codec._dumps
+    monkeypatch.setattr(codec, "PAYLOAD_MAX_BYTES", 1000)
+
+    def spy(value: object) -> str:
+        calls.append(value)
+        return real(value)
+
+    monkeypatch.setattr(codec, "_dumps", spy)
+    with pytest.raises(CodecError):
+        codec._serialize({"v": "\x01" * 200})  # 200 raw bytes, ~1202 encoded bytes
+    assert calls == []
+    with pytest.raises(CodecError):
+        codec._serialize({"v": [10**60] * 50})
+    assert calls == []
+    assert json.loads(codec._serialize({"v": [1, 2]})) == {"v": [1, 2]}
+    assert calls and calls[-1] == {"v": [1, 2]}
+
+
+def test_decoder_encoded_byte_bound_precedes_json_serialization(
+    static_state: MapState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wire = json.loads(json.dumps(codec.encode_static_map(static_state)))
+    wire["map"]["identity"]["name"] = "\x01" * 20_000  # 20k raw, 120k encoded
+    calls: list[object] = []
+    real = codec._dumps
+    monkeypatch.setattr(codec, "PAYLOAD_MAX_BYTES", 50_000)
+
+    def spy(value: object) -> str:
+        calls.append(value)
+        return real(value)
+
+    monkeypatch.setattr(codec, "_dumps", spy)
+    with pytest.raises(CodecError):
+        codec.decode_static_map(wire)
+    assert calls == []
+
+
 @pytest.mark.parametrize("bad", [1.5, object(), {1: "non-str-key"}, ("tuple",)])
 def test_decoder_refuses_values_outside_the_wire_algebra(
     static_state: MapState, bad: object

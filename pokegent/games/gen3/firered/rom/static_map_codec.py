@@ -71,11 +71,12 @@ _KEY_KEYS = frozenset(
 
 
 class _Budget:
-    __slots__ = ("nodes", "text_bytes")
+    __slots__ = ("nodes", "text_bytes", "encoded_bytes")
 
     def __init__(self) -> None:
         self.nodes = 0
         self.text_bytes = 0
+        self.encoded_bytes = 0
 
     def node(self, depth: int) -> None:
         if depth > MAX_JSON_DEPTH:
@@ -83,6 +84,11 @@ class _Budget:
         self.nodes += 1
         if self.nodes > MAX_JSON_TOKENS:
             raise CodecError("wire node count exceeds its bound")
+
+    def encoded(self, size: int) -> None:
+        self.encoded_bytes += size
+        if self.encoded_bytes > PAYLOAD_MAX_BYTES:
+            raise CodecError("wire encoded bytes exceed their bound")
 
     def text(self, value: str) -> None:
         if len(value) > MAX_STRING_BYTES:
@@ -112,32 +118,46 @@ def _bool(value: Any, *, label: str = "bool") -> bool:
     return value
 
 
+def _encoded_string(value: str) -> int:
+    """Exact JSON-encoded size of a string, including quotes and escapes."""
+    return len(json.dumps(value))
+
+
 def _preflight_wire(value: Any, depth: int = 0, budget: _Budget | None = None) -> None:
-    """Bound the Python wire algebra before json.dumps or a model parse."""
+    """Bound the Python wire algebra and encoded bytes before json.dumps or a model parse."""
     budget = budget if budget is not None else _Budget()
     budget.node(depth)
     kind = type(value)
-    if value is None or kind is bool:
+    if value is None:
+        budget.encoded(4)
+        return
+    if kind is bool:
+        budget.encoded(5)
         return
     if kind is int:
         _int(value, label="wire int")
+        budget.encoded(len(str(value)))
         return
     if kind is str:
         budget.text(value)
+        budget.encoded(_encoded_string(value))
         return
     if kind is list:
         if len(value) > MAX_CONTAINER_LENGTH:
             raise CodecError("wire array exceeds its length bound")
+        budget.encoded(2 + max(0, len(value) - 1))
         for item in value:
             _preflight_wire(item, depth + 1, budget)
         return
     if kind is dict:
         if len(value) > MAX_CONTAINER_LENGTH:
             raise CodecError("wire object exceeds its key bound")
+        budget.encoded(2 + max(0, len(value) - 1))
         for key, item in value.items():
             if type(key) is not str:
                 raise CodecError("wire object keys must be exact str")
             budget.text(key)
+            budget.encoded(_encoded_string(key) + 1)
             _preflight_wire(item, depth + 1, budget)
         return
     raise CodecError("wire value must be None/str/int/bool/list/dict")
@@ -180,12 +200,26 @@ def _exact_equal(left: Any, right: Any) -> bool:
 def _framing(wire: Any, kind: str, keys: frozenset[str]) -> None:
     if type(wire) is not dict:
         raise CodecError("record must be an exact mapping")
-    if wire.keys() != keys:
+    if len(wire) != len(keys):
         raise CodecError("record keys mismatch")
+    for key in wire:
+        if type(key) is not str or key not in keys:
+            raise CodecError("record keys mismatch")
     if type(wire["version"]) is not int or wire["version"] != CODEC_VERSION:
         raise CodecError("unsupported codec version")
     if type(wire["type"]) is not str or wire["type"] != kind:
         raise CodecError("record type mismatch")
+
+
+def _owning_state(state: Any) -> MapState:
+    """Re-validate the owning model natively before JSON-mode normalisation."""
+    if type(state) is not MapState:
+        raise CodecError("expected an exact MapState")
+    try:
+        dumped = state.model_dump(mode="python", warnings="error")
+        return MapState.model_validate(dumped, strict=True)
+    except (ValidationError, ValueError) as exc:
+        raise CodecError(f"static map is not a valid owning MapState: {exc}") from None
 
 
 def _require_static(state: Any) -> MapState:
@@ -193,7 +227,7 @@ def _require_static(state: Any) -> MapState:
         raise CodecError("expected an exact MapState")
     if state.player is not None:
         raise CodecError("static map must not carry a player")
-    if state.seen_tiles != 0:
+    if type(state.seen_tiles) is not int or state.seen_tiles != 0:
         raise CodecError("static map must not carry seen tiles")
     if state.view != ViewWindow():
         raise CodecError("static map must use the default view")
@@ -217,6 +251,7 @@ def _require_static(state: Any) -> MapState:
 
 def encode_static_map(state: MapState) -> dict[str, Any]:
     """Encode one exact static owning MapState; no cache/runtime state is persisted."""
+    state = _owning_state(state)
     _require_static(state)
     payload = state.model_dump(mode="json")
     _serialize(payload)
