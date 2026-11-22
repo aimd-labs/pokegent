@@ -354,7 +354,7 @@ def test_irreversible_route_step_escalates_instead_of_being_applied(
 
     assert len(external.offers) == 1
     offer = external.offers[0]
-    assert offer["wait_timeout"] is None
+    assert offer["wait_timeout"] == 300.0
     assert offer["interruptible_wait"] is True
     assert offer["default"] is None
     assert offer["metadata"]["escalation_reason"] == IRREVERSIBLE_ESCALATION
@@ -429,7 +429,7 @@ def test_decide_escalates_an_ambiguous_route_step_to_the_agent(
 
     assert len(external.offers) == 1
     offer = external.offers[0]
-    assert offer["wait_timeout"] is None
+    assert offer["wait_timeout"] == 300.0
     assert offer["interruptible_wait"] is True
     assert offer["default"] is None
     assert offer["metadata"]["escalated"] is True

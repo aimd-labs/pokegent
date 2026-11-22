@@ -66,6 +66,7 @@ class EventType(str, Enum):
     DECISION_AGENT_REQUESTED = "decision.agent.requested"
     DECISION_AGENT_COMPLETED = "decision.agent.completed"
     DECISION_AGENT_REJECTED = "decision.agent.rejected"
+    DECISION_AGENT_EXPIRED = "decision.agent.expired"
     LIVE_TURN = "pokegent.live_turn"
     LIVE_TURN_LEGACY = "pokejev.live_turn"
     # Deprecated wire aliases retained for one release. New events use ``agent``.

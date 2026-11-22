@@ -13,7 +13,9 @@ The main keys are `rom_path`, `decider` (`agent`, `system1`, `hybrid`, `first`, 
 `system1.model`, `system1.request_model` and `system1.timeouts`, `external.port` (19700–19799) and
 and `hybrid.escalate_below_confidence` (default `0.35`, or a mapping of `scene_id` to thresholds
 with optional `default`; unknown scenes use `default`, or `0.35` when omitted),
-`hybrid.override_window_s` (default `0`), and `hybrid.force_agent_after_repeats` (positive integer,
+`hybrid.override_window_s` (default `0`), `hybrid.agent_handoff_timeout_s` (positive finite
+seconds, default `300`; bounds every escalated hybrid agent handoff, including unknown-scene and
+no-progress recovery, and pauses safely on expiry), and `hybrid.force_agent_after_repeats` (positive integer,
 default `2`). After that many consecutive executed System One choices of the same option on the
 same scene and state fingerprint without verified state change, the next decision bypasses System
 One and waits for the agent (`decision.agent.requested`, reason `repeated_option`). A new state or

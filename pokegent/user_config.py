@@ -26,7 +26,7 @@ _CONSUMED_KEYS = {
     }),
     "hybrid": frozenset({"escalate_below_confidence", "override_window_s",
                           "escalate_on_no_progress", "escalate_unknown_scene",
-                          "force_agent_after_repeats"}),
+                          "force_agent_after_repeats", "agent_handoff_timeout_s"}),
     "battle": frozenset({"opponent_knowledge"}),
     "field": frozenset({"menus"}),
     "output": frozenset({"run_dir"}),
@@ -66,6 +66,7 @@ DEFAULTS: dict[str, Any] = {
         "escalate_on_no_progress": True,
         "escalate_unknown_scene": True,
         "force_agent_after_repeats": 2,
+        "agent_handoff_timeout_s": 300.0,
     },
     "battle": {"opponent_knowledge": "guide"},
     "field": {"menus": True},
@@ -105,6 +106,7 @@ def _env(environ: Mapping[str, str]) -> dict[str, Any]:
         "POKEGENT_EXTERNAL_WALK_STEP_LIMIT": ("external.walk_step_limit", int),
         "POKEGENT_HYBRID_ESCALATE_BELOW_CONFIDENCE": ("hybrid.escalate_below_confidence", float),
         "POKEGENT_HYBRID_OVERRIDE_WINDOW_S": ("hybrid.override_window_s", float),
+        "POKEGENT_HYBRID_AGENT_HANDOFF_TIMEOUT_S": ("hybrid.agent_handoff_timeout_s", float),
     }
     for name, (path, cast) in simple.items():
         value = (
@@ -275,6 +277,14 @@ def load_user_config(
         raise ValueError("hybrid.force_agent_after_repeats must be a positive integer")
     if hybrid["override_window_s"] < 0:
         raise ValueError("hybrid.override_window_s must be non-negative")
+    handoff_timeout = hybrid["agent_handoff_timeout_s"]
+    if (
+        isinstance(handoff_timeout, bool)
+        or not isinstance(handoff_timeout, (int, float))
+        or not math.isfinite(float(handoff_timeout))
+        or handoff_timeout <= 0
+    ):
+        raise ValueError("hybrid.agent_handoff_timeout_s must be a positive finite number")
     if result["battle"]["opponent_knowledge"] not in {"guide", "fair_play"}:
         raise ValueError("battle.opponent_knowledge must be guide|fair_play")
     return result

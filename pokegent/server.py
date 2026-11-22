@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 from pokegent.dashboard.stream.frames import FrameHub
 from pokegent.options.models import (
     OBJECTIVE_RELATION_NOT_SERVING,
+    AgentHandoffTimeout,
     ChoiceResult,
     DeciderTimeout,
     DecisionFrame,
@@ -408,6 +409,7 @@ class ExternalDecider:
         default: ChoiceResult | None = None,
         wait_timeout: float | None | object = _DEFAULT_WAIT,
         interruptible_wait: bool = False,
+        handoff_timeout: bool = False,
     ) -> ChoiceResult:
         payload = to_system_one_payload(frame)
         assert_payload_clean(payload, frame)
@@ -530,6 +532,8 @@ class ExternalDecider:
                     self._frame = None
                     self._interruptible_wait = False
                     self._condition.notify_all()
+                    if handoff_timeout:
+                        raise AgentHandoffTimeout(self._stop_reason)
                     raise DeciderTimeout(self._stop_reason)
                 refresh = self._pending_frame_refresh
                 served_frame_id = self._frame["frame_id"] if self._frame is not None else None
@@ -747,6 +751,7 @@ class ExternalDecider:
         default: ChoiceResult | None = None,
         wait_timeout: float | None | object = _DEFAULT_WAIT,
         interruptible_wait: bool = False,
+        handoff_timeout: bool = False,
     ) -> ChoiceResult:
         """Expose a frame to an agent, optionally returning a local default on timeout."""
         return self._wait_for_choice(
@@ -755,6 +760,7 @@ class ExternalDecider:
             default=default,
             wait_timeout=wait_timeout,
             interruptible_wait=interruptible_wait,
+            handoff_timeout=handoff_timeout,
         )
 
     def frame_response(
