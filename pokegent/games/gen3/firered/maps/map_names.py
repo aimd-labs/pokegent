@@ -28,6 +28,11 @@ def _load(path: str | Path | None) -> tuple[tuple[str, ...], tuple[tuple[str, ..
     return order, groups
 
 
+def loaded_groups() -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]:
+    """Return the group order and member names already loaded for this process."""
+    return _load(default_map_groups_path())
+
+
 def group_names() -> tuple[str, ...]:
     return _load(default_map_groups_path())[0]
 

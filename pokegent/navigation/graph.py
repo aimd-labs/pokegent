@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -84,8 +85,51 @@ _SCRIPT_EFFECT_READERS = (
 VECTOR: dict[str, tuple[int, int]] = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 OPPOSITE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 DIRECTIONS: tuple[Facing, ...] = ("N", "S", "W", "E")
-_ROM_GRAPH_CACHE: dict[tuple[str, str], "NavigationGraph"] = {}
+_ROM_GRAPH_CACHE_MAX_ENTRIES = 2
+_ROM_GRAPH_CACHE: dict[tuple[str, str, str, str], "NavigationGraph"] = {}
 _PUZZLES_UNLOADED = object()
+
+
+def _rom_graph_cache_identity(
+    rom: bytes, profile: Any, group_sizes: tuple[int, ...]
+) -> tuple[str, str, str, str] | None:
+    """Return the process cache identity for an implicitly provided standard graph.
+
+    ``group_sizes`` must be the grouping already loaded for the build, and the key
+    names the full loaded group order and member names that the provider consumes.
+    The generator source fingerprint is fixed for the process, so replacing
+    shipped Python sources takes effect after a process restart.  Any unavailable
+    or inconsistent identity returns ``None``; unknown identities must bypass the
+    cache, never alias another graph.
+    """
+    try:
+        from pokegent.games.gen3.firered.maps.map_names import loaded_groups
+        from pokegent.games.gen3.firered.rom.rom_cache import _generator_fingerprint
+
+        order, groups = loaded_groups()
+        if tuple(len(names) for names in groups) != tuple(group_sizes):
+            return None
+        grouping = json.dumps(
+            [list(order), [list(names) for names in groups]], separators=(",", ":")
+        )
+        canonical_profile = json.dumps(
+            profile.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        )
+        return (
+            hashlib.sha256(rom).hexdigest(),
+            hashlib.sha256(canonical_profile.encode("utf-8")).hexdigest(),
+            _generator_fingerprint(),
+            hashlib.sha256(grouping.encode("utf-8")).hexdigest(),
+        )
+    except Exception:
+        return None
+
+
+def _admit_rom_graph(key: tuple[str, str, str, str], graph: "NavigationGraph") -> None:
+    """Admit a successfully built graph, keeping the two most recent keys (FIFO)."""
+    while len(_ROM_GRAPH_CACHE) >= _ROM_GRAPH_CACHE_MAX_ENTRIES:
+        _ROM_GRAPH_CACHE.pop(next(iter(_ROM_GRAPH_CACHE)))
+    _ROM_GRAPH_CACHE[key] = graph
 
 
 @dataclass(frozen=True)
@@ -342,17 +386,26 @@ class NavigationGraph:
 
     @classmethod
     def from_rom(cls, rom: bytes, profile, *, provider: Any = None) -> NavigationGraph:
-        if provider is None:
-            key = (hashlib.sha1(rom).hexdigest(), profile.profile_id)
-            cached = _ROM_GRAPH_CACHE.get(key)
-            if cached is not None:
-                return cached
+        # Only an implicit standard provider on this exact class may reuse a cached
+        # graph.  Explicit providers, provider subclasses and graph subclasses carry
+        # behaviour the cache key cannot identify, so they bypass lookup and admission.
+        # A hit returns the same mutable graph object; this cache makes no audit,
+        # immutability or session-isolation promise.
+        cacheable = provider is None and cls is NavigationGraph
         if provider is None:
             from pokegent.games.gen3.firered.maps.map_provider import FireRedMapProvider
 
             provider = FireRedMapProvider()
+        group_sizes = tuple(provider.group_sizes())
+        key = (
+            _rom_graph_cache_identity(rom, profile, group_sizes) if cacheable else None
+        )
+        if key is not None:
+            cached = _ROM_GRAPH_CACHE.get(key)
+            if cached is not None:
+                return cached
         maps: dict[tuple[int, int], Any] = {}
-        for group, size in enumerate(provider.group_sizes()):
+        for group, size in enumerate(group_sizes):
             for number in range(size):
                 result = provider.read_static(rom, profile, group, number)
                 if result.usable and result.state is not None:
@@ -368,8 +421,8 @@ class NavigationGraph:
             item_names=item_names,
             profile=profile,
         )
-        if provider.__class__.__module__ == "pokegent.games.gen3.firered.maps.map_provider":
-            _ROM_GRAPH_CACHE[key] = graph
+        if key is not None:
+            _admit_rom_graph(key, graph)
         return graph
 
     def state(self, map_key: tuple[int, int], live: MapState | None = None) -> MapState | None:
