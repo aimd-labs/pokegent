@@ -352,10 +352,16 @@ def _field_free_after_bag_failure(actor, perceiver, _ctx) -> None:
         button = None
         callback = ui.main.callback2.name if ui.main.callback2 is not None else None
         task_names = {task.func.name for task in ui.tasks.active}
-        # The move summary and the two party-owned yes/no prompts need different exits.  These
+        # The move summary and the party-owned yes/no prompts need different exits.  These
         # task/callback names are the RAM owners from party_menu.c; a raw allocated window is not
         # sufficient because sYesNoWindowId remains stale after some prompts close.
-        if (
+        # The "Learn <move>?" prompt (Task_HandleChooseMonInput -> sYesNoWindowId) also exits on
+        # B: a raw A (or A from the text-box fallback below) confirms the teach, then the follow-up
+        # "Stop learning <move>?" prompt re-opens and this loop never restores field control.
+        # Live incident: live-0113 external-461 -> E_WAIT_TIMEOUT_FRAMES + E_BUSY_STUCK (issue 161).
+        if "Task_HandleChooseMonInput" in task_names:
+            button = "b"
+        elif (
             callback in {"CB2_SetUpPSS", "obs_cb2_pokemon_summary_screen"}
             and ui.menu.summary_screen_open
         ):
