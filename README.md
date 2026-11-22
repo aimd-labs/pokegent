@@ -1,6 +1,6 @@
 # Pokegent
 
-**Status: alpha. Full emulator runs need local data generated from your own supported ROM and a native mGBA installation.**
+**Status: alpha. The checks below need no ROM or emulator. Full emulator runs need local data generated from your own supported ROM and a native mGBA installation.**
 
 Pokegent is an LLM agent that plays Pokémon FireRed through mGBA. It reads current RAM,
 presents typed legal actions, executes one action at a time, and checks the result against RAM.
@@ -8,17 +8,25 @@ The optional System One provider supports `agent`, `hybrid` (default), and `syst
 
 ## Requirements
 
-- Python 3.11 and a Python environment manager such as uv.
-- mGBA Python bindings and the native `libmgba` library for emulator runs. mGBA is external;
-  it is not bundled in this repository. See the [bounded native setup](docs/native-install.md)
-  for the tested Ubuntu 24.04 amd64 / Python 3.11 path.
-- Bring your own legally obtained supported FireRed ROM, kept outside the checkout.
-  No ROM, save, extracted game tables, map index, sprites, or gameplay recordings are included.
+For the ROM-free setup and checks:
 
-## Setup and checks
+- Python 3.11 (`>=3.11,<3.12`), git, and an environment manager such as uv.
+- No ROM, emulator, credentials or game services.
+
+For local emulator runs, in addition:
+
+- mGBA Python bindings and the native `libmgba` library. mGBA is external; it is not bundled
+  in this repository. See the [bounded native setup](docs/native-install.md) for the tested
+  Ubuntu 24.04 amd64 / Python 3.11 path.
+- Your own legally obtained supported FireRed ROM, kept outside the checkout. No ROM, save,
+  extracted game tables, map index, sprites or gameplay recordings are included.
+
+## Quick start: install and run the ROM-free checks
 
 ```sh
-uv venv --python 3.11
+git clone https://github.com/aimd-labs/pokegent.git
+cd pokegent
+uv venv --python 3.11 --seed
 . .venv/bin/activate
 uv pip install -e '.[dev,stream]' pytest
 ruff check .
@@ -28,23 +36,39 @@ python -m pytest -q
 python tools/check_rom_data.py
 ```
 
-These checks need no ROM or emulator. Generate the local data and private ROM cache with
-[`pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR"`](docs/local-data.md#explicit-local-setup).
-The [clean-start recipe](docs/clean-start.md) covers native prerequisites, a fresh game and
-agent choices. Local acceptance reached the first field and three RAM-verified movements on
-the documented Ubuntu 24.04 host; setup success alone is not that gameplay proof.
-Set `POKEGENT_LOCAL_DATA_DIR` before startup. Optional features stay disabled if their files are
-absent; see [local data requirements](docs/local-data.md) for filenames and schemas.
-The main `ubuntu-latest` CI job uses Ubuntu 26.04, where the six native-helper tests skip.
-The separate `native-helper` job runs all six on Ubuntu 24.04 and rejects skips or an empty suite.
-These synthetic checks use neither native binaries nor a ROM.
+`--seed` also installs `pip` in the virtualenv; the wheel-building tests invoke it.
+All five checks should pass and need neither a ROM nor a native emulator. They use
+synthetic memory and data. `check_rom_data.py` rejects committed game data.
+Installation and the packaging tests may download Python packages through pip build
+isolation, so use a package index or a warm cache. They need no credentials, game
+services or ROM. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and review path.
 
-For later emulator setup, install `.[firered,dashboard]` (`firered` and `rom` are aliases for
-`mgba`) and configure `FIRERED_ROM_PATH` with an absolute path outside the checkout. The extra
-installs the Python binding only; the separate native `libmgba` and the [bounded native
-setup](docs/native-install.md) preflight still apply on the tested Ubuntu 24.04 amd64, CPython
-3.11, `mgba==0.10.2` boundary. `POKEGENT_LOCAL_DATA_DIR` supplies the local game-data files;
-`POKEGENT_MAP_GROUPS` optionally overrides the map index.
+## Tested combinations
+
+| Scope | Documented as tested | Not verified |
+| --- | --- | --- |
+| ROM-free checks | CPython 3.11 on GitHub Actions `ubuntu-latest` (Ubuntu 26.04) and the six native-helper tests on Ubuntu 24.04 | macOS, Windows, other Python versions |
+| Native/emulator path | Ubuntu 24.04 amd64, CPython 3.11, `mgba==0.10.2`, `libmgba0.10t64=0.10.2+dfsg-1.1build3` | Other systems, architectures and minimal images |
+| Game data | FireRed USA Rev 0; local setup reached the first field and three RAM-verified movements | Other ROM revisions, full-game coverage |
+
+The [native setup](docs/native-install.md) and [clean-start](docs/clean-start.md) guides
+carry the source pins and limits behind these rows. Setup success alone is not gameplay proof,
+and synthetic checks do not establish the full compatibility matrix.
+
+## Optional: emulator play with your own ROM
+
+The quick start does not install or exercise the emulator. For an emulator run:
+
+1. Complete the [native mGBA setup](docs/native-install.md).
+2. Generate the local data and private ROM cache with
+   [`pokegent rom-data setup --rom "$FIRERED_ROM_PATH" --out-dir "$POKEGENT_LOCAL_DATA_DIR"`](docs/local-data.md#explicit-local-setup).
+3. Export `POKEGENT_LOCAL_DATA_DIR` and an absolute `FIRERED_ROM_PATH` before startup.
+4. Follow the [clean-start recipe](docs/clean-start.md) for a fresh game and agent choices.
+
+Install `.[firered,dashboard]` for later emulator setup (`firered` and `rom` are aliases for
+`mgba`). The extra installs the Python binding only; the separate native `libmgba` and the
+[bounded native setup](docs/native-install.md) preflight still apply. `POKEGENT_LOCAL_DATA_DIR`
+supplies the local game-data files; `POKEGENT_MAP_GROUPS` optionally overrides the map index.
 Keep generated data outside the repository. Unknown ROM revisions fail closed.
 
 The local dashboard listens on `http://127.0.0.1:19701`.
@@ -62,7 +86,9 @@ Maintainers review and merge accepted changes; the agent bot never merges its ow
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and the required maintainer review.
+New contributors can run the checks above, then comment on an
+[open issue](https://github.com/aimd-labs/pokegent/issues) to confirm scope before a larger
+change. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and the required maintainer review.
 Report vulnerabilities privately through GitHub Security Advisories; see [SECURITY.md](SECURITY.md).
 The [Code of Conduct](CODE_OF_CONDUCT.md) applies to project spaces.
 
