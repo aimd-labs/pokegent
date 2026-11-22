@@ -88,9 +88,8 @@ configuration or objective relevance. `POKEGENT_FIELD_MENU` still controls non-t
 options. Teaching verifies the learned move and consumes an ordinary TM while retaining an HM.
 When several party members are compatible, choosing the teaching target is an operator strategy
 choice: for a field move such as HM04-Strength, teach a strong member that will remain in the
-party. The move stays learned by that member after other party swaps, and a member holding an
-HM cannot be deposited or released. Teach required HMs before entering boulder content such as
-Victory Road.
+party. The move stays learned by that member after other party swaps. Teach required HMs before
+entering boulder content such as Victory Road.
 
 `hybrid.escalation_timeout_s` and `POKEGENT_HYBRID_ESCALATION_TIMEOUT_S` were removed;
 `external.timeout`, `POKEGENT_EXTERNAL_TIMEOUT`, and `--external-timeout` were removed because
