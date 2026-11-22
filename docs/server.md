@@ -35,6 +35,8 @@ option on its own. In `hybrid` mode each escalated agent handoff (including unkn
 no-progress recovery) is bounded by `hybrid.agent_handoff_timeout_s` (default 300 seconds).
 On expiry the runner emits `decision.agent.expired`, stops waiting, and pauses with
 `SAFE_PAUSE`; it does not reuse the rejected System One choice or start another handoff.
+Hybrid falls back to the plain agent decider when System One is disabled or unconfigured; that
+fallback keeps the unchanged agent-mode wait and is not bounded by this key.
 `/status` reports `waiting_for_choice` while it waits.
 Use `POST /interrupt` to request interruption of an active macro or interruptible wait.
 
