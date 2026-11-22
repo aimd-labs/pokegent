@@ -17,10 +17,11 @@ ROM_SIZE = 0x2000
 STD_TABLE = 0x40
 FIRST_SCRIPT = 0x100
 ITEM_COUNT = 300
+QUESTLOG_SHA1 = "41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc"
 
 
-def build(scripts, *, std=(), std_table=True):
-    rom = bytearray(ROM_SIZE)
+def build(scripts, *, std=(), std_table=True, sha1="0" * 40, size=ROM_SIZE):
+    rom = bytearray(size)
     profile = load_profiles().get("firered-us-rev0")
     symbols = dict(profile.symbols)
     if std_table:
@@ -34,7 +35,7 @@ def build(scripts, *, std=(), std_table=True):
     profile = profile.model_copy(
         update={
             "symbols": symbols,
-            "rom": profile.rom.model_copy(update={"sha1": "0" * 40}),
+            "rom": profile.rom.model_copy(update={"sha1": sha1}),
         }
     )
     for offset, data in scripts.items():
@@ -67,6 +68,14 @@ def goto_if(target, cond=1):
 
 def callstd(index):
     return b"\x09" + bytes([index])
+
+
+def special(index):
+    return b"\x25" + struct.pack("<H", index)
+
+
+def specialvar(index):
+    return b"\x26" + struct.pack("<HH", 0x800D, index)
 
 
 def items(*ids):
@@ -196,6 +205,93 @@ def test_hidden_second_merchant_behind_conditional_branch_is_kept_separate():
     assert result.possible_item_ids == frozenset({1, 2})
     assert len(result.vendors) == 2
     assert {vendor.local_id for vendor in result.vendors} == {9}
+
+
+def test_plain_questlog_special_read_keeps_both_guarded_arms_closed():
+    rom, profile = build(
+        {
+            FIRST_SCRIPT: script(
+                special(391),
+                b"\x21" + struct.pack("<HH", 0x800D, 2),  # compare VAR_RESULT, 2
+                goto_if(0x180, 1),
+                pokemart(0x300),
+                END,
+            ),
+            0x180: script(pokemart(0x310), END),
+            0x300: items(1),
+            0x310: items(2),
+        },
+        sha1=QUESTLOG_SHA1,
+    )
+    result = facts(rom, profile, objects=(obj(3, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.POSSIBLE_CLOSED
+    assert result.possible_item_ids == frozenset({1, 2})
+    assert len(result.vendors) == 2
+    assert result.effective_inventory is False
+
+
+@pytest.mark.parametrize("index", [390, 392])
+def test_other_plain_specials_stay_unknown(index):
+    rom, profile = build(
+        {FIRST_SCRIPT: script(special(index), pokemart(0x300), END), 0x300: items(1)},
+        sha1=QUESTLOG_SHA1,
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.UNKNOWN
+    assert result.possible_item_ids == frozenset()
+
+
+def test_specialvar_questlog_stays_unknown():
+    rom, profile = build(
+        {FIRST_SCRIPT: script(specialvar(391), pokemart(0x300), END), 0x300: items(1)},
+        sha1=QUESTLOG_SHA1,
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.UNKNOWN
+
+
+@pytest.mark.parametrize("sha1", ["0" * 40, "f" * 40])
+def test_questlog_special_with_wrong_declared_rom_hash_stays_unknown(sha1):
+    rom, profile = build(
+        {FIRST_SCRIPT: script(special(391), pokemart(0x300), END), 0x300: items(1)},
+        sha1=sha1,
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.UNKNOWN
+
+
+def test_questlog_special_with_wrong_profile_stays_unknown():
+    rom, profile = build(
+        {FIRST_SCRIPT: script(special(391), pokemart(0x300), END), 0x300: items(1)},
+        sha1=QUESTLOG_SHA1,
+    )
+    profile = profile.model_copy(update={"profile_id": "firered-jp-rev0"})
+    result = facts(rom, profile, objects=(obj(1, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.UNKNOWN
+
+
+def test_questlog_special_in_repeated_standard_call_is_bounded_and_closed():
+    rom, profile = build(
+        {
+            FIRST_SCRIPT: script(callstd(0), callstd(0), END),
+            0x180: script(special(391), pokemart(0x300), END),
+            0x300: items(5),
+        },
+        std=(BASE + 0x180,),
+        sha1=QUESTLOG_SHA1,
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.POSSIBLE_CLOSED
+    assert result.possible_item_ids == frozenset({5})
+    assert len(result.vendors) == 1
+
+
+def test_questlog_special_allowance_does_not_bypass_command_limit():
+    rom, profile = build(
+        {FIRST_SCRIPT: special(391) * 8193 + END}, sha1=QUESTLOG_SHA1, size=0x8000
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + FIRST_SCRIPT),))
+    assert result.coverage is StockCoverage.UNKNOWN
 
 
 def test_frame_only_map_with_zero_npcs_reads_on_frame_table():

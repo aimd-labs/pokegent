@@ -107,6 +107,24 @@ _UNSUPPORTED = frozenset(
 _BRANCH = frozenset({"goto", "call", "goto_if", "call_if"})
 _STD_CALL = frozenset({"callstd", "gotostd", "callstd_if", "gotostd_if"})
 
+# Stock-coverage classification, not execution permission: pret/pokefirered
+# 037335f4c725d7c9aecdac87066f2002b4bd7e14 data/specials.inc binds special 391 to
+# GetQuestLogState, whose src/quest_log.c body only writes gSpecialVar_Result from
+# gQuestLogState (no callees, shop, inventory or callback).  Its unknown RESULT value
+# therefore cannot hide a merchant list; both caller arms are still walked.
+_QUESTLOG_STATE_SPECIAL = 391
+_QUESTLOG_PROFILE_ID = "firered-us-rev0"
+_QUESTLOG_ROM_SHA1 = "41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc"
+
+
+def _questlog_state_read(profile, cmd: Cmd) -> bool:
+    return (
+        cmd.name == "special"
+        and cmd.u16() == _QUESTLOG_STATE_SPECIAL
+        and profile.profile_id == _QUESTLOG_PROFILE_ID
+        and profile.rom.sha1 == _QUESTLOG_ROM_SHA1
+    )
+
 
 class _Unsupported(Exception):
     pass
@@ -168,7 +186,7 @@ def _walk(rom: bytes, profile, pointer: int) -> tuple[Cmd, ...]:
             out.append(cmd)
             if len(out) > MAX_COMMANDS:
                 raise _Unsupported(f"more than {MAX_COMMANDS} commands")
-            if cmd.name in _UNSUPPORTED:
+            if cmd.name in _UNSUPPORTED and not _questlog_state_read(profile, cmd):
                 raise _Unsupported(f"unsupported command {cmd.name}")
             if cmd.name in _STD_CALL:
                 index = cmd.operands[0] if cmd.name in ("callstd", "gotostd") else cmd.operands[1]
