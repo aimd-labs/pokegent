@@ -165,6 +165,10 @@ class DecisionFrame(_Frozen):
     scene_confidence: float = Field(ge=0.0, le=1.0)
     state_fingerprint: str
     goal_id: str | None = None
+    #: The objective revision this frame was built under (``None`` when unknown). Captured at
+    #: the same build seam as ``goal_id``; it is internal identity and is never included in the
+    #: System One payload.
+    goal_revision: int | None = Field(default=None, ge=0)
     decision_type: Literal["choice"] = "choice"
     deadline_ms: int = Field(default=1500, gt=0, le=600_000)
     context: FrozenMap = Field(default_factory=dict)
