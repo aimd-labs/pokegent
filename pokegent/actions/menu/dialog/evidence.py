@@ -39,6 +39,8 @@ ADVANCE = "dialog.advance"
 END = "dialog.end"
 YES_NO = "dialog.yes_no"
 PARTY_EXIT_TASK = "Task_HandleFieldMoveExitAreaYesNoInput"
+PARTY_REPLACE_TASK = "Task_HandleReplaceMoveYesNoInput"
+PARTY_STOP_TASK = "Task_HandleStopLearningMoveYesNoInput"
 MULTICHOICE = "dialog.multichoice"
 GRID_CHOICE = "dialog.grid_choice"
 LIST = "dialog.list"
@@ -163,6 +165,18 @@ def pc_storage_yes_no_open(ui: UiEvidence) -> bool:
 
 def party_exit_yes_no_open(ui: UiEvidence) -> bool:
     """Dig/Teleport's input task owns this menu, not the field-script yes/no task."""
+    return _party_yes_no_open(ui, PARTY_EXIT_TASK)
+
+
+def party_learning_yes_no_task(ui: UiEvidence) -> str | None:
+    """Return the source-bound learning prompt owner, only with a live input menu."""
+    for task in (PARTY_REPLACE_TASK, PARTY_STOP_TASK):
+        if _party_yes_no_open(ui, task):
+            return task
+    return None
+
+
+def _party_yes_no_open(ui: UiEvidence, task_name: str) -> bool:
     yn, sm, party = ui.menu.yes_no, ui.menu.menu, ui.menu.party
     return bool(
         ui.valid and ui.main.valid and ui.main.in_battle is False
@@ -170,7 +184,7 @@ def party_exit_yes_no_open(ui: UiEvidence) -> bool:
         and callback_name(ui) == "CB2_UpdatePartyMenu"
         and ui.field.valid and ui.field.fade_active is False
         and party is not None and party.active_hint is True and party.menu_type == 0
-        and any(t.func.name == PARTY_EXIT_TASK and t.func.verified for t in ui.tasks.active)
+        and any(t.func.name == task_name and t.func.verified for t in ui.tasks.active)
         and yn is not None and yn.window_in_use
         and sm is not None and sm.window_in_use and sm.consistent
         and sm.window_id == yn.window_id
@@ -350,6 +364,14 @@ def classify(snapshot: StateSnapshot, text: DialogText | None = None) -> Verdict
         return Verdict(
             YES_NO, 0.95, False,
             {"callback": cb, "mechanism": "party_exit_yes_no", "source_task": PARTY_EXIT_TASK},
+        )
+
+    learning_task = party_learning_yes_no_task(ui)
+    if learning_task is not None:
+        return Verdict(
+            YES_NO, 0.95, False,
+            {"callback": cb, "mechanism": "party_learning_yes_no",
+             "source_task": learning_task},
         )
 
     if cb == "CB2_WhiteOut":

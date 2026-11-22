@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pokegent.actions.menu.dialog.evidence import party_exit_yes_no_open
+from pokegent.actions.menu.dialog.evidence import (
+    party_exit_yes_no_open,
+    party_learning_yes_no_task,
+)
 from pokegent.actions.menu.start_party import refs as R
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.state.scenes import PriorityClass, SceneResult
@@ -24,7 +27,7 @@ class StartPartyDetector:
         ui = snapshot.ui
         if ui is None or not ui.valid or ui.main.in_battle is not False:
             return None
-        if party_exit_yes_no_open(ui):
+        if party_exit_yes_no_open(ui) or party_learning_yes_no_task(ui) is not None:
             return None  # The modal dialog owns the input; do not add a busy party claim.
         task_names = _tasks(ui)
         start = ui.menu.start_menu

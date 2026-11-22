@@ -259,8 +259,11 @@ class DialogBuilder:
 
     def _yes_no(self, ctx, snapshot, ui, text) -> FrameDraft:
         scene = ctx.scene.scene_id
+        learning_task = E.party_learning_yes_no_task(ui)
         mechanism = (
-            "party_exit_yes_no"
+            "party_learning_yes_no"
+            if learning_task is not None
+            else "party_exit_yes_no"
             if E.party_exit_yes_no_open(ui)
             else "pc_storage_yes_no"
             if E.pc_storage_yes_no_open(ui)
@@ -279,12 +282,19 @@ class DialogBuilder:
             text = DialogText(
                 ("Use the selected field move to leave this area?",), source="party_exit_task"
             )
+        if learning_task is not None:
+            text = DialogText(
+                ("Choose a move to forget?" if learning_task == E.PARTY_REPLACE_TASK
+                 else "Stop learning the new move?",), source="party_learning_task"
+            )
         info = classify_prompt(text)
         heal = scene == E.HEAL_OFFER
         if heal and info.kind is not PromptKind.HEAL:
             return self._missing(scene, "heal offer without the heal question text")
         source_task = (
-            E.PARTY_EXIT_TASK
+            learning_task
+            if learning_task is not None
+            else E.PARTY_EXIT_TASK
             if mechanism == "party_exit_yes_no"
             else TASK_MULTICHOICE
             if mechanism == "multichoice_yes_no"
@@ -304,6 +314,17 @@ class DialogBuilder:
             yes_effect = "Uses the already selected Dig or Teleport field move to leave this area."
             no_effect = "Cancels leaving this area and returns to choosing a party member."
             yes_facts = {"prompt_kind": "party_exit", "effect_known": True}
+        if learning_task is not None:
+            # A resumed objective does not authorize replacing a move. Offer only the
+            # source-proven escape: decline replacement, then confirm stopping learning.
+            stopping = learning_task == E.PARTY_STOP_TASK
+            yes_leg = Legality.LEGAL if stopping else Legality.UNAVAILABLE
+            no_leg = Legality.UNAVAILABLE if stopping else Legality.LEGAL
+            yes_effect = ("Stops learning without changing any existing move." if stopping
+                          else "Opens the move replacement picker; not authorized on resume.")
+            no_effect = ("Returns to the replacement question; not offered during recovery."
+                         if stopping else "Declines replacement and asks whether to stop learning.")
+            yes_facts = {"prompt_kind": "party_learning", "effect_known": True}
         # Every yes/no adapter option participates in the common affirmative-first
         # ordering contract, including prompts that are not START-menu prompts.
         yes_facts = {**yes_facts, "affirmative": True}
@@ -398,6 +419,7 @@ class DialogBuilder:
         fp = fingerprint(
             scene,
             mechanism=mechanism,
+            **({"source_task": learning_task} if learning_task is not None else {}),
             window=sm.window_id,
             kind=info.kind.value,
             prompt=info.digest or "unreadable",

@@ -66,6 +66,13 @@ def _prompt_closed(v: VerifyContext) -> bool:
     ui = v.after.ui
     if ui is None or not ui.valid:
         return False
+    learning_task = E.party_learning_yes_no_task(v.before.ui) if v.before.ui else None
+    if learning_task is not None:
+        # Consecutive prompts may reuse the same window. The original owner must leave,
+        # even if its cursor/window becomes unreadable while that input task remains.
+        return bool(ui.tasks.valid and not any(
+            task.func.name == learning_task for task in ui.tasks.active
+        ))
     if (E.yes_no_open(ui) or E.pc_storage_yes_no_open(ui)
             or E.party_exit_yes_no_open(ui) or E.multichoice_open(ui)):
         return False
