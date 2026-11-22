@@ -278,9 +278,10 @@ def validate(
         found.append(Reason("expired", "expires_at", "the objective is already expired"))
     if found:
         return Validation(False, tuple(found), None, objective)
-    admission = _shop_admission_reason(target, directory, observation)
-    if admission is not None:
-        return Validation(False, (admission,), None, objective)
+    if objective.kind == "shop":
+        admission = _shop_admission_reason(target, directory, observation)
+        if admission is not None:
+            return Validation(False, (admission,), None, objective)
     navigation_target: ResolvedTarget | None = None
     navigation_reason: str | None = None
     badge = next(

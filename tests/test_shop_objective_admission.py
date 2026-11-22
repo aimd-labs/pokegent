@@ -304,3 +304,28 @@ def test_build_runner_constructs_a_fresh_core_provider_not_the_decision_source(
     assert store.propose(shop(2)).accepted
     assert reads == [1]
     assert decision_reads == []
+
+
+def test_collect_with_map_and_item_is_not_rejected_by_shop_admission(tmp_path):
+    directory = Directory(stock())
+    store = ObjectiveStore(tmp_path / "objective.json", directory=directory)
+    calls: list[int] = []
+
+    def observation():
+        calls.append(1)
+        return observed((1, 0))
+
+    store.bind_observation(observation)
+
+    result = store.propose(
+        {
+            "objective_id": "collect1",
+            "revision": 1,
+            "kind": "collect",
+            "target": {"map": MAP, "item": 1, "quantity": 2},
+        }
+    )
+
+    assert result.accepted
+    assert calls == []
+    assert directory.calls == []
