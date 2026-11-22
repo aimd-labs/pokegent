@@ -14,9 +14,11 @@ python -m pytest -q
 python tools/check_rom_data.py
 ```
 
-All these checks run without a ROM, native emulator, credentials or network services.
-Use synthetic memory and data in tests. Keep ROMs, saves, extracted tables, screenshots of game
-content, credentials and machine-specific files outside the repository.
+All these checks run without a ROM, native emulator, credentials or game services.
+The packaging tests may download build dependencies through pip build isolation, so use a
+package index or a warm cache. Use synthetic memory and data in tests. Keep ROMs, saves,
+extracted tables, screenshots of game content, credentials and machine-specific files
+outside the repository.
 
 `uv venv --seed` installs `pip`, which the wheel-building tests call. If you use another
 environment manager, make sure `python -m pip --version` works inside the activated environment.

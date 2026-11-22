@@ -1,6 +1,6 @@
 # Pokegent
 
-**Status: alpha. The ROM-free checks below need only Python. Full emulator runs need local data generated from your own supported ROM and a native mGBA installation.**
+**Status: alpha. The checks below need no ROM or emulator. Full emulator runs need local data generated from your own supported ROM and a native mGBA installation.**
 
 Pokegent is an LLM agent that plays Pokémon FireRed through mGBA. It reads current RAM,
 presents typed legal actions, executes one action at a time, and checks the result against RAM.
@@ -10,8 +10,8 @@ The optional System One provider supports `agent`, `hybrid` (default), and `syst
 
 For the ROM-free setup and checks:
 
-- Python 3.11 (`>=3.11,<3.12`) and an environment manager such as uv.
-- No ROM, emulator, credentials or network services. After installation the checks run offline.
+- Python 3.11 (`>=3.11,<3.12`), git, and an environment manager such as uv.
+- No ROM, emulator, credentials or game services.
 
 For local emulator runs, in addition:
 
@@ -24,6 +24,8 @@ For local emulator runs, in addition:
 ## Quick start: install and run the ROM-free checks
 
 ```sh
+git clone https://github.com/aimd-labs/pokegent.git
+cd pokegent
 uv venv --python 3.11 --seed
 . .venv/bin/activate
 uv pip install -e '.[dev,stream]' pytest
@@ -37,7 +39,9 @@ python tools/check_rom_data.py
 `--seed` also installs `pip` in the virtualenv; the wheel-building tests invoke it.
 All five checks should pass and need neither a ROM nor a native emulator. They use
 synthetic memory and data. `check_rom_data.py` rejects committed game data.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and review path.
+Installation and the packaging tests may download Python packages through pip build
+isolation, so use a package index or a warm cache. They need no credentials, game
+services or ROM. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and review path.
 
 ## Tested combinations
 
