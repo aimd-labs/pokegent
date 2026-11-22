@@ -8,13 +8,14 @@ the person exist on that map).
 
 Reason codes (stable): ``schema_invalid``, ``unknown_map``, ``missing_target``,
 ``unreachable_target_type``, ``unknown_warp``, ``unknown_npc``, ``out_of_bounds``, ``bad_probe``,
-``bad_event``, ``expired``, ``stale_revision``, ``unreadable_file``, ``file_too_large``.
+``bad_event``, ``expired``, ``stale_revision``, ``unreadable_file``, ``file_too_large``,
+``shop_method_unavailable``.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -43,6 +44,7 @@ from pokegent.goals.models import (
     TrainerDefeated,
     VarProbe,
 )
+from pokegent.goals.shop_admission import ShopObservation, absent_from_possible_stock
 
 #: pret ``TRAINER_FLAGS_START``: the flag of trainer ``n`` is ``0x500 + n`` (decompile value; the
 #: flag array itself is verified by the reader, this offset is not verified on this ROM)
@@ -263,6 +265,7 @@ def validate(
     *,
     now: datetime | None = None,
     directory: MapDirectory | None = None,
+    observation: Callable[[], ShopObservation | None] | None = None,
 ) -> Validation:
     """Schema, names, target shape, probes, events and (optionally) deep map facts."""
     objective, reasons = parse(data)
@@ -275,6 +278,9 @@ def validate(
         found.append(Reason("expired", "expires_at", "the objective is already expired"))
     if found:
         return Validation(False, tuple(found), None, objective)
+    admission = _shop_admission_reason(target, directory, observation)
+    if admission is not None:
+        return Validation(False, (admission,), None, objective)
     navigation_target: ResolvedTarget | None = None
     navigation_reason: str | None = None
     badge = next(
@@ -300,6 +306,43 @@ def validate(
         ResolvedObjective(objective, target, probes, navigation_target, navigation_reason),
         objective,
     )
+
+
+def _shop_admission_reason(
+    target: ResolvedTarget,
+    directory: MapDirectory | None,
+    observation: Callable[[], ShopObservation | None] | None,
+) -> Reason | None:
+    """A negative SHOP fact only; every missing or failed input stays UNKNOWN."""
+    if observation is None or target.map_key is None:
+        return None
+    if not isinstance(target.item, int) or isinstance(target.item, bool):
+        return None
+    stock = getattr(directory, "shop_stock", None) if directory is not None else None
+    if not callable(stock):
+        return None
+    try:
+        current = observation()
+    except Exception:  # optional admission fact: never suppress ordinary validation
+        return None
+    if (
+        current is None
+        or not current.usable
+        or current.quantity(target.item) >= (target.quantity or 1)
+    ):
+        return None
+    try:
+        facts = stock(*target.map_key)
+    except Exception:  # optional admission fact: never suppress ordinary validation
+        return None
+    detail = absent_from_possible_stock(
+        map_key=target.map_key,
+        item_id=target.item,
+        quantity=target.quantity or 1,
+        observation=current,
+        facts=facts,
+    )
+    return Reason("shop_method_unavailable", "target.item", detail) if detail else None
 
 
 def _check_target(

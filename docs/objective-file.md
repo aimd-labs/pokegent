@@ -460,7 +460,7 @@ A failed one-shot attempt may leave the objective permanently unmet; the talk
 target provides no retry or route guarantee. Excluded departure/exit behavior and
 field readiness do not become proven when this partial endpoint completes.
 
-### SHOP feasibility contract (pure foundation; not wired)
+### SHOP feasibility contract (admission wired through the store)
 
 SHOP completion remains bag possession, regardless of how the item was acquired. While the
 requested quantity is unmet, the target map binds the merchant being assessed. The pure
@@ -473,6 +473,12 @@ requested quantity is `SATISFIABLE` without requiring a purchase event.
 The assessment accepts internal typed facts only; objective JSON cannot claim inventory
 completeness or provide proof booleans. Callers are responsible for binding facts to the same ROM
 and target map and supplying a fresh usable bag quantity; `query_item_id` binds `item_price` to
-the requested item id. This contract has no ROM inventory
-producer or objective-admission integration yet, so it makes no live rejection and does not claim
-that any item is globally unobtainable.
+the requested item id.
+
+Admission through `ObjectiveStore` (propose and external-file polling) uses one separate
+`LiveReader(actor, profile).read()` core snapshot per otherwise-valid bound SHOP, never a cached
+decision snapshot, and the directory's cached `POSSIBLE_CLOSED` merchant union. A fresh unmet bag
+quantity plus an item omitted from that union rejects with `shop_method_unavailable`; this is
+absence at the bound map, never effective inventory, price, or global unobtainability. Unknown,
+partial, failed, stale-identity, unusable-bag, unbound or already-owned cases accept as UNKNOWN
+(or possession) without a stock claim. CLI validation without a live actor stays UNKNOWN.
