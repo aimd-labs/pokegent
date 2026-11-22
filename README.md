@@ -39,8 +39,11 @@ The main `ubuntu-latest` CI job uses Ubuntu 26.04, where the six native-helper t
 The separate `native-helper` job runs all six on Ubuntu 24.04 and rejects skips or an empty suite.
 These synthetic checks use neither native binaries nor a ROM.
 
-For later emulator setup, install `.[mgba,dashboard]` and configure `FIRERED_ROM_PATH` with an
-absolute path outside the checkout. `POKEGENT_LOCAL_DATA_DIR` supplies the local game-data files;
+For later emulator setup, install `.[firered,dashboard]` (`firered` and `rom` are aliases for
+`mgba`) and configure `FIRERED_ROM_PATH` with an absolute path outside the checkout. The extra
+installs the Python binding only; the separate native `libmgba` and the [bounded native
+setup](docs/native-install.md) preflight still apply on the tested Ubuntu 24.04 amd64, CPython
+3.11, `mgba==0.10.2` boundary. `POKEGENT_LOCAL_DATA_DIR` supplies the local game-data files;
 `POKEGENT_MAP_GROUPS` optionally overrides the map index.
 Keep generated data outside the repository. Unknown ROM revisions fail closed.
 
