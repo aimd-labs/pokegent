@@ -6,11 +6,13 @@ import copy
 import json
 from dataclasses import fields, is_dataclass
 from enum import IntEnum
+from typing import get_args
 
 import pytest
 
-from pokegent.games.gen3.firered.rom.script_effects import Effect, Guard, Interpretation
+from pokegent.games.gen3.firered.rom.script_effects import Effect, Guard, GuardKind, Interpretation
 from pokegent.games.gen3.firered.rom.static_symbolic_codec import (
+    _GUARD_KINDS,
     MAX_CONTAINER_LENGTH,
     MAX_CUMULATIVE_TEXT_BYTES,
     MAX_DEPTH,
@@ -87,6 +89,17 @@ def node_budget_interpretation(extra=0):
 
 def test_codec_error_is_value_error():
     assert issubclass(CodecError, ValueError)
+
+
+def test_assert_exact_helper_distinguishes_bool_int_and_tuple_list():
+    with pytest.raises(AssertionError):
+        assert_exact(True, 1)
+    with pytest.raises(AssertionError):
+        assert_exact((1,), [1])
+
+
+def test_guard_kind_set_matches_owning_literal():
+    assert _GUARD_KINDS == frozenset(get_args(GuardKind))
 
 
 def test_owning_dataclass_field_parity():
@@ -442,15 +455,42 @@ def test_tagged_mapping_keys_must_be_exact_str(subclass_key):
         decode_guard(raw)
 
 
-def test_lone_surrogate_is_rejected_on_encode_and_decode():
+@pytest.mark.parametrize(
+    ("encoder", "value"),
+    [
+        (encode_guard, make_guard(operator="\ud800")),
+        (encode_effect, make_effect(values=(("n", "\ud800"),))),
+        (encode_effect, make_effect(reason="\ud800")),
+        (encode_interpretation, make_interpretation(unknown=("\ud800",))),
+    ],
+    ids=["operator", "value", "reason", "unknown"],
+)
+def test_lone_surrogate_is_rejected_on_encode(encoder, value):
     with pytest.raises(CodecError):
-        encode_guard(make_guard(operator="\ud800"))
+        encoder(value)
+
+
+@pytest.mark.parametrize("surface", ["operator", "value", "reason", "unknown"])
+def test_lone_surrogate_is_rejected_on_decode(surface):
+    surrogate = "\ud800"
+    if surface == "operator":
+        raw = encode_guard(make_guard())
+        raw["operator"] = surrogate
+        decoder = decode_guard
+    elif surface == "value":
+        raw = encode_guard(make_guard())
+        raw["value"] = {"t": "str", "v": surrogate}
+        decoder = decode_guard
+    elif surface == "reason":
+        raw = encode_effect(make_effect())
+        raw["reason"] = surrogate
+        decoder = decode_effect
+    else:
+        raw = encode_interpretation(make_interpretation())
+        raw["unknown"] = [surrogate]
+        decoder = decode_interpretation
     with pytest.raises(CodecError):
-        encode_effect(make_effect(values=(("n", "\ud800"),)))
-    raw = encode_guard(make_guard())
-    raw["operator"] = "\ud800"
-    with pytest.raises(CodecError):
-        decode_guard(raw)
+        decoder(raw)
 
 
 def test_cycles_raise_codec_error_not_recursion_error():
