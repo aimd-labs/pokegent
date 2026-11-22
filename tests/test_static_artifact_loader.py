@@ -397,7 +397,7 @@ def test_directory_not_owned_by_current_user_refuses(tmp_path: Path, monkeypatch
 
     real_uid = os.getuid()
     monkeypatch.setattr(module.os, "getuid", lambda: real_uid + 1)
-    with pytest.raises(ArtifactLoadError, match="not owned"):
+    with pytest.raises(ArtifactLoadError, match="directory is not owned"):
         load(directory)
 
 

@@ -36,6 +36,13 @@ from pokegent.games.gen3.firered.rom.rom_data import (
     identify_rom_image,
     require_supported,
 )
+from pokegent.games.gen3.firered.rom.static_symbolic_codec import (
+    MAX_CONTAINER_LENGTH,
+    MAX_DEPTH,
+    MAX_INT_BITS,
+    MAX_NODES,
+    MAX_STRING_BYTES,
+)
 from pokegent.local_data import MapGroups
 
 INDEX_MAX_BYTES = 4 * 1024 * 1024
@@ -105,7 +112,7 @@ def _captured_index(path: os.PathLike[str] | str) -> tuple[bytes, str, tuple[str
     try:
         document = static_artifact_loader._parse_json(raw, "map index")
         parsed = MapGroups.model_validate(document)
-    except Exception as exc:
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
         raise StaticIdentityError("map index is not a valid bounded map grouping") from exc
     order = tuple(parsed.group_order)
     groups = tuple(tuple(parsed.groups[name]) for name in order)
@@ -120,7 +127,10 @@ def _bind_grouping(
     effective_order, effective_groups = loaded_groups()
     if captured_order != effective_order or captured_groups != effective_groups:
         raise StaticIdentityError("map index order or member names differ from the loaded groups")
-    sizes = tuple(provider.group_sizes())
+    try:
+        sizes = tuple(provider.group_sizes())
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise StaticIdentityError("provider group sizes cannot be read") from exc
     if type(sizes) is not tuple or any(type(size) is not int or size < 0 for size in sizes):
         raise StaticIdentityError("provider group sizes are not exact non-negative ints")
     if sizes != tuple(len(names) for names in captured_groups):
@@ -135,31 +145,90 @@ def _bind_grouping(
     )
 
 
-def _puzzle_value(value: Any) -> Any:
-    """Type-preserving projection of owner puzzle dataclasses and tuple-keyed maps."""
+def _puzzle_value(
+    value: Any,
+    *,
+    _depth: int = 0,
+    _active: set[int] | None = None,
+    _budget: list[int] | None = None,
+) -> Any:
+    """Type-preserving projection with cycle and occurrence budgets.
+
+    The bounds are this digest boundary's own; they do not rewrite owner
+    semantics.  Repeated shared nodes are counted on every occurrence, so an
+    alias-expanded DAG cannot grow the projection exponentially.
+    """
+    if _depth > MAX_DEPTH:
+        raise StaticIdentityError("puzzle table nesting exceeds its bound")
+    budget = [0] if _budget is None else _budget
+    budget[0] += 1
+    if budget[0] > MAX_NODES:
+        raise StaticIdentityError("puzzle table exceeds its node budget")
     if isinstance(value, bool):
         return ["bool", value]
     if type(value) is int:
+        if value.bit_length() > MAX_INT_BITS:
+            raise StaticIdentityError("puzzle table integer exceeds its bound")
         return ["int", value]
     if type(value) is str:
+        if len(value.encode("utf-8")) > MAX_STRING_BYTES:
+            raise StaticIdentityError("puzzle table string exceeds its bound")
         return ["str", value]
     if value is None:
         return ["none"]
-    if isinstance(value, tuple):
-        return ["tuple", [_puzzle_value(item) for item in value]]
-    if isinstance(value, list):
-        return ["list", [_puzzle_value(item) for item in value]]
-    if isinstance(value, Mapping):
-        pairs = [[_puzzle_value(key), _puzzle_value(item)] for key, item in value.items()]
-        pairs.sort(key=lambda pair: static_artifact_loader._canonical(pair[0]))
-        return ["map", pairs]
-    if type(value) in _PUZZLE_TYPES and is_dataclass(value):
+    container = isinstance(value, (tuple, list, Mapping)) or (
+        type(value) in _PUZZLE_TYPES and is_dataclass(value)
+    )
+    if not container:
+        raise StaticIdentityError(f"unsupported puzzle table value {type(value).__name__}")
+    if isinstance(value, (tuple, list, Mapping)) and len(value) > MAX_CONTAINER_LENGTH:
+        raise StaticIdentityError("puzzle table container exceeds its bound")
+    active = set() if _active is None else _active
+    marker = id(value)
+    if marker in active:
+        raise StaticIdentityError("puzzle table contains a cycle")
+    active.add(marker)
+    try:
+        if isinstance(value, tuple):
+            return [
+                "tuple",
+                [_puzzle_value(item, _depth=_depth + 1, _active=active, _budget=budget)
+                 for item in value],
+            ]
+        if isinstance(value, list):
+            return [
+                "list",
+                [_puzzle_value(item, _depth=_depth + 1, _active=active, _budget=budget)
+                 for item in value],
+            ]
+        if isinstance(value, Mapping):
+            pairs = [
+                [
+                    _puzzle_value(key, _depth=_depth + 1, _active=active, _budget=budget),
+                    _puzzle_value(item, _depth=_depth + 1, _active=active, _budget=budget),
+                ]
+                for key, item in value.items()
+            ]
+            pairs.sort(key=lambda pair: static_artifact_loader._canonical(pair[0]))
+            return ["map", pairs]
         return [
             "dataclass",
             type(value).__name__,
-            [[field.name, _puzzle_value(getattr(value, field.name))] for field in fields(value)],
+            [
+                [
+                    field.name,
+                    _puzzle_value(
+                        getattr(value, field.name),
+                        _depth=_depth + 1,
+                        _active=active,
+                        _budget=budget,
+                    ),
+                ]
+                for field in fields(value)
+            ],
         ]
-    raise StaticIdentityError(f"unsupported puzzle table value {type(value).__name__}")
+    finally:
+        active.discard(marker)
 
 
 def _puzzle_digest(table: Any) -> str:
@@ -179,11 +248,11 @@ def _bind_puzzles(provider: Any, puzzle_path: os.PathLike[str] | str | None) -> 
     raw = _read_exact(puzzle_path, PUZZLE_MAX_BYTES, "puzzle table")
     try:
         fresh = map_boulders.parse_puzzle_bytes(raw, source=str(puzzle_path))
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
         raise StaticIdentityError("puzzle table failed owner parsing") from exc
     try:
         effective = provider.puzzles(path=puzzle_path, allow_empty=True)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         raise StaticIdentityError("effective puzzle table cannot be read") from exc
     if not isinstance(effective, Mapping):
         raise StaticIdentityError("effective puzzle table is not a mapping")
@@ -234,7 +303,7 @@ def derive_identity(
     and puzzle table with the captured bytes.  This helper never creates a
     directory, cache or graph and never selects a path from a receipt.
     """
-    if not isinstance(provider, FireRedMapProvider):
+    if type(provider) is not FireRedMapProvider:
         raise StaticIdentityError("identity requires the standard FireRed map provider")
     if index_path is None:
         raise StaticIdentityError("an explicit existing map index path is required")
@@ -242,7 +311,7 @@ def derive_identity(
     try:
         profile_json = profile.model_dump(mode="json")
         profile_sha256 = _canonical_sha256(profile_json)
-    except Exception as exc:
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
         raise StaticIdentityError("profile cannot be canonicalized") from exc
     map_index_sha256, order, sizes, grouping_sha256 = _bind_grouping(index_path, provider)
     puzzle_sha256 = _bind_puzzles(provider, puzzle_path)
@@ -260,6 +329,10 @@ def derive_identity(
         "grouping_sha256": grouping_sha256,
         "puzzle_sha256": puzzle_sha256,
     }
+    try:
+        static_artifact_loader._validate_identity(portable)
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise StaticIdentityError("derived identity failed loader admission") from exc
     return portable, _canonical_sha256(portable)
 
 
