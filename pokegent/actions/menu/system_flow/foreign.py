@@ -110,6 +110,10 @@ GENERIC_MENU = ForeignMenu(
 
 def classify_generic(snapshot: StateSnapshot, ui: UiEvidence) -> Verdict | None:
     """Claim a supported open menu which no more-specific family claimed (agent #67)."""
+    from pokegent.actions.menu.dialog.evidence import party_close_message_waiting
+
+    if party_close_message_waiting(ui):
+        return None  # The source-bound message acknowledgement owns input, not generic B.
     cb = callback_name(ui)
     # Menu callbacks legitimately change while a bag, party, summary, PC, or
     # START sub-prompt is active.  The corroborated menu evidence, not the
