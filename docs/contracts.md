@@ -307,7 +307,8 @@ on. agent also needs a way to be told at the events it named, without the game e
      `revision`), all with `source="objective"` where the tracker emits them.
    * `runtime.degraded` with `details.component == "objective_store"` for every store warning (`code`, `detail`,
      `revision`, `reasons`, `kept` = the objective that stays active): `unreadable_file`, `file_too_large`,
-     `schema_invalid`, `unknown_map`, `stale_revision`, `file_missing`, `expired`, `session_error`.
+     `schema_invalid`, `unknown_map`, `stale_revision`, `file_missing`, `expired`, `session_error`,
+     `shop_method_unavailable`.
    * `escalation.requested` with `details.kind == "objective_review"` (`EscalationKind.OBJECTIVE_REVIEW`, no
      `error_code`): `objective_id`, `revision`, `trigger: stuck`,
      `review_pending`, `trigger_details`. Requires explicit `next_review_on: ["stuck"]`;

@@ -482,3 +482,7 @@ quantity plus an item omitted from that union rejects with `shop_method_unavaila
 absence at the bound map, never effective inventory, price, or global unobtainability. Unknown,
 partial, failed, stale-identity, unusable-bag, unbound or already-owned cases accept as UNKNOWN
 (or possession) without a stock claim. CLI validation without a live actor stays UNKNOWN.
+
+A pre-emulator bridge proposal can pass schema and target checks with UNKNOWN feasibility.
+The later ROM-aware store can warn and decline activation when fresh evidence proves the
+bound method unavailable. Existing trusted active goals retain their ownership and completion rules.
