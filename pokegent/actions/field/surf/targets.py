@@ -94,6 +94,34 @@ class FromTile(N.Navigator):
         return self._start
 
 
+def movement_tiles(state: MapState, nav: N.Navigator) -> tuple[tuple[int, int], ...]:
+    """Bounded free-swimming targets; ordinary target planning still proves each path."""
+    if state.player is None or not state.player.surfing:
+        return ()
+    targets = []
+    for direction in N.DIRECTIONS:
+        node = nav.start_node()
+        endpoint = None
+        for _ in range(max(state.layout.width, state.layout.height)):
+            stepped = nav.step(node, direction)
+            if stepped is None:
+                break
+            nxt, move = stepped
+            if (
+                move.kind != "walk"
+                or move.warp_index is not None
+                or move.connection is not None
+                or move.script
+                or not surf_nav.is_swimmer(nav, nxt)
+            ):
+                break
+            endpoint = move.dst
+            node = nxt
+        if endpoint is not None:
+            targets.append(endpoint)
+    return tuple(targets)
+
+
 # -- water bodies
 # -----------------------------------------------------------------------------------
 

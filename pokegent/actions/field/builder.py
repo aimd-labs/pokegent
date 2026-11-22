@@ -48,6 +48,7 @@ from pokegent.actions.field.boulder_options import BoulderPlans, boulder_options
 from pokegent.actions.field.capabilities import field_capability
 from pokegent.actions.field.surf.options import surf_options
 from pokegent.actions.field.surf.rules import surf_capability
+from pokegent.actions.field.surf.targets import movement_tiles
 from pokegent.actions.items import ItemCatalog, ItemOptionBuilder
 from pokegent.games.gen3 import mechanics_ids as I
 from pokegent.games.gen3.firered.maps import map_constants as K
@@ -531,6 +532,7 @@ class FieldBuilder:
             # outside the current camera window.  WorldAdapter then proves the mart from the
             # clerk script and the objective ranking can protect this direct interaction.
             required_npc = shop_target_clerk
+        tiles = tuple(dict.fromkeys((*tiles, *movement_tiles(state, nav))))
         targets = T.enumerate_targets(
             state,
             nav,
