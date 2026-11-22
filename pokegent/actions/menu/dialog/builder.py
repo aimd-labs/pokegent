@@ -212,6 +212,7 @@ class DialogBuilder:
             postcondition_ref=postcondition,
             risk=Risk.LOW,
             verb=opt[3],
+            source_task=E.PARTY_CLOSE_TASK if E.party_close_message_waiting(ui) else None,
             facts={
                 "blocked_on": "printer" if waiting else "script_wait",
                 "inputs": 1,

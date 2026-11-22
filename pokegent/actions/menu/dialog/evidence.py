@@ -41,6 +41,7 @@ YES_NO = "dialog.yes_no"
 PARTY_EXIT_TASK = "Task_HandleFieldMoveExitAreaYesNoInput"
 PARTY_REPLACE_TASK = "Task_HandleReplaceMoveYesNoInput"
 PARTY_STOP_TASK = "Task_HandleStopLearningMoveYesNoInput"
+PARTY_CLOSE_TASK = "Task_ClosePartyMenuAfterText"
 MULTICHOICE = "dialog.multichoice"
 GRID_CHOICE = "dialog.grid_choice"
 LIST = "dialog.list"
@@ -174,6 +175,21 @@ def party_learning_yes_no_task(ui: UiEvidence) -> str | None:
         if _party_yes_no_open(ui, task):
             return task
     return None
+
+
+def party_close_message_waiting(ui: UiEvidence) -> bool:
+    """The party close task waits for window 6's final PAUSE_UNTIL_PRESS message."""
+    party = ui.menu.party
+    return bool(
+        ui.valid and ui.main.valid and ui.main.in_battle is False
+        and ui.tasks.valid and ui.menu.valid and ui.text.valid
+        and callback_name(ui) == "CB2_UpdatePartyMenu"
+        and ui.field.valid and ui.field.fade_active is False
+        and party is not None and party.active_hint is True and party.menu_type == 0
+        and any(t.func.name == PARTY_CLOSE_TASK and t.func.verified for t in ui.tasks.active)
+        and any(w.window_id == 6 for w in ui.text.windows)
+        and any(p.window_id == 6 and p.waiting_for_button for p in ui.text.printers)
+    )
 
 
 def _party_yes_no_open(ui: UiEvidence, task_name: str) -> bool:
@@ -372,6 +388,13 @@ def classify(snapshot: StateSnapshot, text: DialogText | None = None) -> Verdict
             YES_NO, 0.95, False,
             {"callback": cb, "mechanism": "party_learning_yes_no",
              "source_task": learning_task},
+        )
+
+    if party_close_message_waiting(ui):
+        return Verdict(
+            ADVANCE, 0.95, False,
+            {"callback": cb, "mechanism": "party_close_message",
+             "source_task": PARTY_CLOSE_TASK},
         )
 
     if cb == "CB2_WhiteOut":

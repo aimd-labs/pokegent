@@ -1,4 +1,5 @@
 """Synthetic party field-move modal: never infer confirmation from stale text."""
+import struct
 from types import SimpleNamespace as NS
 
 import pytest
@@ -7,10 +8,14 @@ from pokegent.actions.menu.dialog import evidence as E
 from pokegent.actions.menu.dialog.builder import DialogBuilder
 from pokegent.actions.menu.dialog.macros import CursorMismatch, answer_yes_no_from
 from pokegent.actions.menu.dialog.text import DialogText
-from pokegent.actions.menu.dialog.verify import _prompt_closed
+from pokegent.actions.menu.dialog.verify import _box_moved_on, _prompt_closed
 from pokegent.actions.menu.start_party.detect import StartPartyDetector
-from pokegent.games.gen3.firered.reader.ui import UiEvidenceReader
+from pokegent.games.gen3.firered.reader import ui_symbols as U
+from pokegent.games.gen3.firered.reader.memory_port import SnapshotMemoryReader
+from pokegent.games.gen3.firered.reader.ui import UiEvidenceReader, _Sec
+from pokegent.games.gen3.firered.reader.ui_schemas import TaskEvidence
 from pokegent.games.gen3.firered.rom.rom_data import load_profiles
+from pokegent.state.scenes import SceneResult
 
 
 def snapshot():
@@ -195,3 +200,122 @@ def test_unknown_party_task_and_fade_remain_busy():
     assert scene.scene_id == "party.list" and not scene.busy
     snap.ui.field.fade_active = True
     assert StartPartyDetector().detect(snap).busy
+
+
+def party_close_message():
+    snap = snapshot()
+    ui = snap.ui
+    ui.tasks.active[0].func.name = "Task_ClosePartyMenuAfterText"
+    ui.menu.start_menu = None
+    ui.menu.party.action_name = "use_item"
+    ui.menu.party.action_ids = ()
+    ui.menu.party.slot_id = 0
+    ui.text.printers = (NS(window_id=6, state_name="wait", waiting_for_button=True,
+                           current_char_ptr=0x02001000),)
+    ui.text.windows = (NS(window_id=6),)
+    ui.script = NS(native=None)
+    return snap
+
+
+def test_party_learning_recovery_reaches_owned_final_acknowledgement():
+    # Source sequence: decline replacement, stop learning, acknowledge the final message.
+    drafts = []
+    for task, _answer in LEARNING_TASKS:
+        snap = snapshot()
+        snap.ui.tasks.active[0].func.name = task
+        verdict = E.classify(snap)
+        scene = SceneResult(scene_id=verdict.scene_id, confidence=verdict.confidence,
+                            evidence=verdict.evidence)
+        drafts.append(DialogBuilder().build(NS(snapshot=snap, scene=scene,
+                                               goal_id=None, objective_kind=None)))
+    snap = party_close_message()
+    verdict = E.classify(snap)
+    assert verdict is not None and verdict.scene_id == E.ADVANCE and not verdict.busy
+    assert StartPartyDetector().detect(snap) is None
+    scene = SceneResult(scene_id=verdict.scene_id, confidence=verdict.confidence,
+                        evidence=verdict.evidence)
+    drafts.append(DialogBuilder().build(NS(snapshot=snap, scene=scene)))
+    assert [[o.id for o in draft.options if o.legality.chooseable] for draft in drafts] == [
+        ["no"], ["yes"], ["advance_text"],
+    ]
+    option = drafts[-1].options[0]
+    assert option.executor_ref == "dialog.advance_text"
+    assert option.source_task == "Task_ClosePartyMenuAfterText"
+    assert not option.irreversible
+    assert not _box_moved_on(NS(before=snap, after=snap))
+    acknowledged = party_close_message()
+    acknowledged.ui.text.printers = ()
+    assert _box_moved_on(NS(before=snap, after=acknowledged))
+
+
+@pytest.mark.parametrize("change", ["unknown", "unverified", "callback", "window", "no_window",
+                                    "no_printer", "printing", "fade", "invalid", "text_invalid",
+                                    "battle", "party"])
+def test_final_party_ack_refuses_unproven_or_busy_input(change):
+    snap = party_close_message()
+    ui = snap.ui
+    if change == "unknown":
+        ui.tasks.active[0].func.name = "Task_UnrecognizedPartyOverlay"
+    elif change == "unverified":
+        ui.tasks.active[0].func.verified = False
+    elif change == "callback":
+        ui.main.callback2.name = "CB2_InitPartyMenu"
+    elif change == "window":
+        ui.text.printers[0].window_id = 5
+    elif change == "no_window":
+        ui.text.windows = ()
+    elif change == "no_printer":
+        ui.text.printers = ()
+    elif change == "printing":
+        ui.text.printers[0].waiting_for_button = False
+    elif change == "fade":
+        ui.field.fade_active = True
+    elif change == "invalid":
+        ui.tasks.valid = False
+    elif change == "text_invalid":
+        ui.text.valid = False
+    elif change == "battle":
+        ui.main.in_battle = True
+    else:
+        ui.menu.party.menu_type = 1
+    assert E.classify(snap) is None
+    if change in {"unknown", "unverified", "printing", "fade", "no_window", "no_printer"}:
+        assert StartPartyDetector().detect(snap).busy
+
+
+def test_profile_resolves_post_learning_close_task():
+    profile = load_profiles().get("firered-us-rev0")
+    reader = UiEvidenceReader(None, profile)
+    entry = profile.symbols.get("Task_ClosePartyMenuAfterText")
+    assert entry is not None
+    ref = reader._fn(NS(used=set()), entry.address | 1)
+    assert ref.name == "Task_ClosePartyMenuAfterText" and ref.verified
+
+
+@pytest.mark.parametrize("state,ready", [(0, False), (1, True), (4, False), (5, False), (6, False)])
+def test_raw_party_printer_pause_until_press_is_input_ready(state, ready):
+    # pret text.c: EXT_CTRL_CODE_PAUSE_UNTIL_PRESS installs RENDER_STATE_WAIT (1).
+    # All memory here is invented, including the printer table and text addresses.
+    profile = load_profiles().get("firered-us-rev0")
+    symbol = profile.symbols["sTextPrinters"].model_copy(update={"address": 0x02002000})
+    profile = profile.model_copy(update={"symbols": {"sTextPrinters": symbol}})
+    raw = bytearray(U.NUM_TEXT_PRINTERS * U.TEXT_PRINTER_SIZE)
+    offset = 6 * U.TEXT_PRINTER_SIZE
+    struct.pack_into("<I", raw, offset + U.TP_CURRENT_CHAR, 0x02004000)
+    raw[offset + U.TP_WINDOW_ID] = 6
+    raw[offset + U.TP_ACTIVE] = 1
+    raw[offset + U.TP_STATE] = state
+    windows = bytearray(U.NUM_WINDOWS * U.WINDOW_SIZE)
+    for index in range(U.NUM_WINDOWS):
+        windows[index * U.WINDOW_SIZE + U.WIN_BG] = U.WINDOW_FREE_BG
+    windows[6 * U.WINDOW_SIZE + U.WIN_BG] = 0
+    reader = UiEvidenceReader(SnapshotMemoryReader({0x02002000: bytes(raw)}), profile)
+    text = reader._read_text(_Sec("text"), bytes(windows),
+                             TaskEvidence(valid=True, confidence=1.0))
+    assert text.valid and text.printers[0].waiting_for_button is ready
+    snap = party_close_message()
+    snap.ui.text = text
+    verdict = E.classify(snap)
+    assert (verdict is not None and verdict.scene_id == E.ADVANCE) is ready
+    if not ready:
+        assert StartPartyDetector().detect(snap).busy
