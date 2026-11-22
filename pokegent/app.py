@@ -1083,6 +1083,7 @@ def build_decider(
                 system1,
                 port=external_port,
                 external_timeout=external_timeout,
+                agent_handoff_timeout_s=settings.get("agent_handoff_timeout_s", 300.0),
                 autoplay=autoplay or "off",
                 escalate_below_confidence=settings.get("escalate_below_confidence", 0.35),
                 override_window_s=float(settings.get("override_window_s", 0.0)),
@@ -1776,6 +1777,7 @@ def run_offline(
     external_timeout: float = 300.0,
     hybrid_escalate_below_confidence: float | None = None,
     hybrid_override_window_s: float | None = None,
+    hybrid_agent_handoff_timeout_s: float | None = None,
     system1_outage: str | None = None,
     system1_max_outage_s: float | None = None,
     autoplay: str | None = None,
@@ -1812,6 +1814,7 @@ def run_offline(
         for v in (
             hybrid_escalate_below_confidence,
             hybrid_override_window_s,
+            hybrid_agent_handoff_timeout_s,
         )
     ):
         hybrid = dict(raw.get("hybrid") or {})
@@ -1819,6 +1822,8 @@ def run_offline(
             hybrid["escalate_below_confidence"] = hybrid_escalate_below_confidence
         if hybrid_override_window_s is not None:
             hybrid["override_window_s"] = hybrid_override_window_s
+        if hybrid_agent_handoff_timeout_s is not None:
+            hybrid["agent_handoff_timeout_s"] = hybrid_agent_handoff_timeout_s
         raw["hybrid"] = hybrid
     if system1_outage is not None or system1_max_outage_s is not None:
         runner = dict(raw.get("runner") or {})

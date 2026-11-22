@@ -30,8 +30,14 @@ written to `events.jsonl`.
 
 An agent can use the same loop with `GET /frame`, `POST /choose` with
 `{"frame_id":"...", "option_id":"..."}`, and `GET /status`. A stale frame
-returns HTTP 409. The runner waits indefinitely for the agent's choice; it never chooses an
-option on its own. `/status` reports `waiting_for_choice` while it waits.
+returns HTTP 409. In `agent` mode the runner waits for the agent's choice; it never chooses an
+option on its own. In `hybrid` mode each escalated agent handoff (including unknown-scene and
+no-progress recovery) is bounded by `hybrid.agent_handoff_timeout_s` (default 300 seconds).
+On expiry the runner emits `decision.agent.expired`, stops waiting, and pauses with
+`SAFE_PAUSE`; it does not reuse the rejected System One choice or start another handoff.
+Hybrid falls back to the plain agent decider when System One is disabled or unconfigured; that
+fallback keeps the unchanged agent-mode wait and is not bounded by this key.
+`/status` reports `waiting_for_choice` while it waits.
 Use `POST /interrupt` to request interruption of an active macro or interruptible wait.
 
 `GET /frame` long-polls for the next frame for up to 30 seconds by default. Clients must set their

@@ -149,7 +149,7 @@ def test_hybrid_gets_one_agent_window_then_safe_pause(harness):
     assert len(actions) == 4
     assert len(requests) == 2
     assert all(r["metadata"]["escalation_reason"] == "no_progress" for r in requests)
-    assert all(r["interruptible_wait"] and r["wait_timeout"] is None for r in requests)
+    assert all(r["interruptible_wait"] and r["wait_timeout"] == 300.0 for r in requests)
     agent_events = events.of_type(EventType.DECISION_AGENT_REQUESTED)
     assert len(agent_events) == 2
     assert all(e.details["escalation_reason"] == "no_progress" for e in agent_events)
@@ -227,7 +227,7 @@ def test_repeated_sign_uses_adaptive_gate_then_bounded_no_progress_window(harnes
     # After two further System One sign reads both gates are due. Recovery wins,
     # and its first agent result resets the adaptive streak for the rest of the window.
     assert reasons == ["repeated_option"] + ["no_progress"] * 5
-    assert all(r["interruptible_wait"] and r["wait_timeout"] is None for r in requests)
+    assert all(r["interruptible_wait"] and r["wait_timeout"] == 300.0 for r in requests)
     assert [e.details["escalation_reason"] for e in
             events.of_type(EventType.DECISION_AGENT_REQUESTED)] == reasons
     assert len(events.of_type(EventType.DECISION_AGENT_COMPLETED)) == len(requests)

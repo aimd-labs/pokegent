@@ -11,6 +11,7 @@ from pokegent.actions._exec.models import ActionStatus
 from pokegent.events import EventSink, EventType
 from pokegent.options.models import (
     OBJECTIVE_RELATION_NOT_SERVING,
+    AgentHandoffTimeout,
     ChoiceResult,
     DecisionFrame,
     Option,
@@ -105,6 +106,7 @@ class HybridDecider:
         *,
         port: int,
         external_timeout: float,
+        agent_handoff_timeout_s: float = 300.0,
         escalate_below_confidence: float | Mapping[str, float] = 0.35,
         override_window_s: float = 0.0,
         escalate_on_no_progress: bool = True,
@@ -116,6 +118,13 @@ class HybridDecider:
         self._thresholds = self._validate_thresholds(escalate_below_confidence)
         if override_window_s < 0:
             raise ValueError("hybrid.override_window_s must be non-negative")
+        if (
+            isinstance(agent_handoff_timeout_s, bool)
+            or not isinstance(agent_handoff_timeout_s, (int, float))
+            or not math.isfinite(float(agent_handoff_timeout_s))
+            or agent_handoff_timeout_s <= 0
+        ):
+            raise ValueError("hybrid.agent_handoff_timeout_s must be a positive finite number")
         if not isinstance(escalate_on_no_progress, bool):
             raise ValueError("hybrid.escalate_on_no_progress must be a boolean")
         self.escalate_on_no_progress = escalate_on_no_progress
@@ -139,6 +148,7 @@ class HybridDecider:
         self.external = self.agent
         self.escalate_below_confidence = escalate_below_confidence
         self.override_window_s = override_window_s
+        self.agent_handoff_timeout_s = float(agent_handoff_timeout_s)
         self.last_decision: dict[str, Any] = {}
         self._stuck = False
         self._events = events
@@ -205,12 +215,17 @@ class HybridDecider:
             self.last_decision = {
                 "decided_by": "agent", "escalated": True, "escalation_reason": reason,
             }
-            return self.external.offer(
-                frame,
-                metadata={"escalated": True, "escalation_reason": reason},
-                wait_timeout=None,
-                interruptible_wait=True,
-            )
+            try:
+                return self.external.offer(
+                    frame,
+                    metadata={"escalated": True, "escalation_reason": reason},
+                    wait_timeout=self.agent_handoff_timeout_s,
+                    interruptible_wait=True,
+                    handoff_timeout=True,
+                )
+            except AgentHandoffTimeout as exc:
+                self._emit_handoff_expired(frame, reason, "recovery_window", exc)
+                raise
         scope = (frame.scene_id, frame.state_fingerprint)
         # Offering or discarding a choice is not an executed action. Only result accounting
         # updates the streak, including after a forced agent choice has actually completed.
@@ -328,13 +343,20 @@ class HybridDecider:
             "escalated": escalate,
             "escalation_reason": metadata["escalation_reason"],
         }
-        result = self.external.offer(
-            frame,
-            metadata=metadata,
-            default=served if not escalate else None,
-            wait_timeout=None if escalate else self.override_window_s,
-            interruptible_wait=escalate,
-        )
+        try:
+            result = self.external.offer(
+                frame,
+                metadata=metadata,
+                default=served if not escalate else None,
+                wait_timeout=self.agent_handoff_timeout_s if escalate else self.override_window_s,
+                interruptible_wait=escalate,
+                handoff_timeout=escalate,
+            )
+        except AgentHandoffTimeout as exc:
+            self._emit_handoff_expired(
+                frame, metadata["escalation_reason"], "escalated", exc
+            )
+            raise
         decided_by = "agent" if result.provider_id in {"agent", "external"} else "system1"
         self.last_decision = {
             "decided_by": decided_by,
@@ -413,6 +435,28 @@ class HybridDecider:
             (option for option in frame.chooseable() if option.id == result.option_id), None
         )
         return chosen is not None and _irreversible(chosen)
+
+    def _emit_handoff_expired(
+        self, frame: DecisionFrame, reason: str, ownership: str, exc: Exception
+    ) -> None:
+        """Record one bounded handoff expiry without inventing a fallback choice."""
+        if self._events is None:
+            return
+        self._events.emit(
+            EventType.DECISION_AGENT_EXPIRED,
+            scene_id=frame.scene_id,
+            request_id=frame.decision_id,
+            provider="agent",
+            outcome="expired",
+            public_visibility=True,
+            details={
+                "decision_id": frame.decision_id,
+                "reason": reason,
+                "ownership": ownership,
+                "timeout_s": self.agent_handoff_timeout_s,
+                "stop_reason": str(exc),
+            },
+        )
 
     def _agent_requested(self, frame_id: str, frame: DecisionFrame) -> None:
         if self._events is None:

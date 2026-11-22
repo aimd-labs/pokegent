@@ -114,7 +114,7 @@ def test_irreversible_pick_escalates_despite_high_confidence(decider_factory):
 
     assert len(external.offers) == 1
     offer = external.offers[0]
-    assert offer["wait_timeout"] is None
+    assert offer["wait_timeout"] == 300.0
     assert offer["interruptible_wait"] is True
     # The agent must decide; System One's suggestion is never the default.
     assert offer["default"] is None

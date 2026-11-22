@@ -157,7 +157,7 @@ def test_unknown_offered_to_agent_with_bounded_real_execution(harness):
             "wait:30", "tap:b", "tap:up", "tap:down", "tap:left", "tap:right",
         }
         assert request["metadata"]["escalation_reason"] == "unknown_scene"
-        assert request["wait_timeout"] is None and request["interruptible_wait"]
+        assert request["wait_timeout"] == 300.0 and request["interruptible_wait"]
         assert "screenshot" in str(to_system_one_payload(frame))
     assert all(r.verified_outcome is True and r.progressed is False for r in h.results)
     assert all(r.elapsed_frames == 3 and len(r.input_trace) == 1 for r in h.results)

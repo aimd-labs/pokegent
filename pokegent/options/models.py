@@ -608,6 +608,14 @@ class DeciderTimeout(DeciderError):
     code = ErrorCode.E_DECIDER_TIMEOUT
 
 
+class AgentHandoffTimeout(DeciderTimeout):
+    """An explicitly bounded escalated hybrid handoff expired without a choice.
+
+    This is not a provider failure or a shared decider timeout: the caller requested the
+    bounded agent wait and no local default is authorized, so the run must pause.
+    """
+
+
 class StaleDecision(DeciderError):
     """Idle emulation invalidated the offered state; request a fresh decision, no input."""
 

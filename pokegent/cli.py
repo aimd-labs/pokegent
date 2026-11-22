@@ -485,6 +485,7 @@ def cmd_run(args):
                 "hybrid": {
                     "escalate_below_confidence": args.hybrid_escalate_below_confidence,
                     "override_window_s": args.hybrid_override_window_s,
+                    "agent_handoff_timeout_s": args.hybrid_agent_handoff_timeout_s,
                 },
                 "system1": {
                     "outage": args.system1_outage,
@@ -511,6 +512,11 @@ def cmd_run(args):
         user["hybrid"]["override_window_s"]
         if args.hybrid_override_window_s is None
         else args.hybrid_override_window_s
+    )
+    args.hybrid_agent_handoff_timeout_s = (
+        user["hybrid"]["agent_handoff_timeout_s"]
+        if args.hybrid_agent_handoff_timeout_s is None
+        else args.hybrid_agent_handoff_timeout_s
     )
     args.system1_outage = (
         user.get("system1", {}).get("outage")
@@ -559,6 +565,7 @@ def cmd_run(args):
             state_fallback=not args.no_state_fallback,
             hybrid_escalate_below_confidence=args.hybrid_escalate_below_confidence,
             hybrid_override_window_s=args.hybrid_override_window_s,
+            hybrid_agent_handoff_timeout_s=args.hybrid_agent_handoff_timeout_s,
             system1_outage=args.system1_outage,
             system1_max_outage_s=args.system1_max_outage_s,
         )
@@ -771,6 +778,7 @@ def main(argv=None):
         help=argparse.SUPPRESS,
     )
     run_p.add_argument("--hybrid-override-window-s", type=float, default=None)
+    run_p.add_argument("--hybrid-agent-handoff-timeout-s", type=float, default=None)
     run_p.add_argument("--system1-outage", choices=("wait", "pause"), default=None)
     run_p.add_argument("--system1-max-outage-s", type=float, default=None)
     run_p.add_argument("--max-steps", type=int, default=200, help="router iterations (default 200)")

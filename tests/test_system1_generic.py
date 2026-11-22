@@ -290,8 +290,11 @@ def test_hybrid_missing_confidence_still_offers_agent(runner_harness):
     runner, _, _, offers, _ = runner_harness()
     runner.decider.system1.decide = lambda frame: ChoiceResult(option_id="sign", confidence=None)
     runner.decider._thresholds["default"] = 0
+    runner.decider.agent_handoff_timeout_s = 42.0
     runner.decider.decide(runner.perceiver.perceive("test").frame)
-    assert len(offers) == 1 and offers[0]["wait_timeout"] is None
+    assert len(offers) == 1
+    assert offers[0]["wait_timeout"] == 42.0
+    assert offers[0]["handoff_timeout"] is True
     assert offers[0]["default"] is None
 
 

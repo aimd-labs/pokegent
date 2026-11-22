@@ -55,6 +55,7 @@ from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.source import ObjectiveSession, is_objective_rejection
 from pokegent.history import DEFAULT_KEEP, MAX_KEEP, DecisionHistory
 from pokegent.options.models import (
+    AgentHandoffTimeout,
     Decider,
     DeciderTimeout,
     DecisionFrame,
@@ -1551,6 +1552,10 @@ class Runner:
                 )
                 return None  # the next iteration perceives and offers a fresh state
             except DeciderTimeout as exc:
+                if isinstance(exc, AgentHandoffTimeout):
+                    # A bounded hybrid agent handoff expired with no authorized default.
+                    # Pause before any System One attribution or another wait.
+                    return RunStatus.SAFE_PAUSE
                 last_error = exc
                 self._emit(
                     EventType.DECISION_SYSTEMONE_TIMEOUT,
