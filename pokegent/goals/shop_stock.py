@@ -23,6 +23,7 @@ from enum import Enum
 from typing import Iterable
 
 from pokegent.games.gen3.firered.rom.script_scan import (
+    _TRAINER_SCRIPT_TYPES,
     Cmd,
     UnknownOpcode,
     decode_stream,
@@ -196,9 +197,18 @@ def _walk(rom: bytes, profile, pointer: int) -> tuple[Cmd, ...]:
                 if target is None:
                     raise _Unsupported(f"invalid {cmd.name} target")
                 todo.append(target)
-            target = cmd.trainer_script_target
-            if target is not None:
+            if cmd.name == "trainerbattle" and cmd.operands and (
+                cmd.operands[0] in _TRAINER_SCRIPT_TYPES
+            ):
+                # The helper returns None for both no continuation and an invalid pointer.
+                target = _rom_offset(cmd.u32(len(cmd.operands) - 4))
+                if target is None:
+                    raise _Unsupported("trainerbattle continuation is not ROM")
                 todo.append(target)
+            else:
+                target = cmd.trainer_script_target
+                if target is not None:
+                    todo.append(target)
     return tuple(out)
 
 
@@ -271,6 +281,10 @@ def _frame_table_roots(rom: bytes, table_ptr: int) -> list[ScriptRoot]:
 def _event_roots(objects, coord_events, bg_events) -> list[ScriptRoot]:
     roots: list[ScriptRoot] = []
     for obj in objects:
+        if getattr(obj, "role", None) == "clone" or getattr(obj, "clone_of", None):
+            # The live engine inherits the referenced template's script, which may be on
+            # another map; this bounded reader never resolves clones.
+            raise _Unsupported("object clone root is unresolved")
         pointer = getattr(obj, "script_ptr", None)
         if pointer:
             roots.append(ScriptRoot("object", getattr(obj, "local_id", None), pointer))
@@ -281,7 +295,10 @@ def _event_roots(objects, coord_events, bg_events) -> list[ScriptRoot]:
     for event in bg_events:
         if event.kind == "hidden_item":
             continue  # item payload, not a script root
-        if event.kind not in ("sign", "secret_base"):
+        if event.kind == "secret_base":
+            # MapReader drops the raw payload pointer for kind 8, which may be a script.
+            raise _Unsupported("secret_base background event is unsupported")
+        if event.kind != "sign":
             raise _Unsupported(f"unsupported background event kind {event.kind!r}")
         if event.script_ptr:
             roots.append(ScriptRoot("bg", None, event.script_ptr))

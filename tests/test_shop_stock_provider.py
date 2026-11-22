@@ -1,11 +1,14 @@
 """Invented ROM bytes only: bounded merchant-stock evidence, never real game data."""
 
+import json
 import struct
 from types import SimpleNamespace
 
 import pytest
 
+from pokegent.games.gen3.firered.maps.map_data import MapReader
 from pokegent.games.gen3.firered.rom.rom_data import load_profiles
+from pokegent.games.gen3.firered.rom.rom_tables import RomImagePort
 from pokegent.goals.directory import RomMapDirectory
 from pokegent.goals.shop_stock import (
     StockCoverage,
@@ -400,3 +403,125 @@ def test_directory_missing_or_truncated_header_is_unknown(header):
     result = directory.shop_stock(0, 0)
     assert result.coverage is StockCoverage.UNKNOWN
     assert result.reasons
+
+
+def _real_reader_map(tmp_path, monkeypatch, *, clone):
+    """One invented map through the real MapReader: clone template or normal NPC."""
+    image = bytearray(0x2000)
+    struct.pack_into("<I", image, 0x4C, BASE + 0x40)  # gMapGroups -> group table
+    struct.pack_into("<I", image, 0x40, BASE + 0x100)  # one MapHeader
+    struct.pack_into("<IIII", image, 0x100, BASE + 0x200, BASE + 0x400, 0, 0)
+    struct.pack_into(
+        "<iiIIIIBB", image, 0x200, 1, 1,
+        BASE + 0x500, BASE + 0x502, BASE + 0x300, BASE + 0x320, 1, 1,
+    )  # fmt: skip
+    struct.pack_into("<I", image, 0x314, BASE + 0x800)  # primary attributes
+    struct.pack_into("<I", image, 0x334, BASE + 0x800)  # secondary attributes
+    image[0x400] = 1  # one object template
+    struct.pack_into("<I", image, 0x404, BASE + 0x420)
+    image[0x422] = 0xFF if clone else 0  # ObjectEventTemplate.kind
+    image[0x428] = 1  # clone target local id; ignored for a normal NPC
+    if not clone:
+        struct.pack_into("<I", image, 0x430, BASE + 0x600)  # template script
+    image[0x600 : 0x600 + 6] = script(pokemart(0x700), END)
+    image[0x700 : 0x700 + 4] = items(7)
+    profile = load_profiles().get("firered-us-rev0")
+    symbols = dict(profile.symbols)
+    symbols["gMapGroups"] = symbols["gMapGroups"].model_copy(
+        update={"address": BASE + 0x4C, "size": 4}
+    )
+    profile = profile.model_copy(update={"symbols": symbols})
+    index = tmp_path / "invented-map-groups.json"
+    index.write_text(
+        json.dumps({"group_order": ["Group_000"], "groups": {"Group_000": ["Map_G000_N000"]}})
+    )
+    monkeypatch.setenv("POKEGENT_MAP_GROUPS", str(index))
+    rom = bytes(image)
+    result = MapReader(RomImagePort(rom), profile).read_static(0, 0)
+    assert result.usable, result.errors
+    return rom, profile, result.state
+
+
+def test_real_reader_clone_without_script_is_unknown(tmp_path, monkeypatch):
+    rom, profile, state = _real_reader_map(tmp_path, monkeypatch, clone=True)
+    assert state.objects[0].role == "clone"
+    assert state.objects[0].clone_of is not None
+    assert state.objects[0].script_ptr is None
+    result = facts(rom, profile, objects=state.objects)
+    assert result.coverage is StockCoverage.UNKNOWN
+    assert result.possible_item_ids == frozenset()
+    assert result.reasons
+
+
+def test_real_reader_normal_npc_control_stays_closed(tmp_path, monkeypatch):
+    rom, profile, state = _real_reader_map(tmp_path, monkeypatch, clone=False)
+    assert state.objects[0].role != "clone"
+    assert state.objects[0].clone_of is None
+    result = facts(rom, profile, objects=state.objects)
+    assert result.coverage is StockCoverage.POSSIBLE_CLOSED
+    assert result.possible_item_ids == frozenset({7})
+
+
+def test_typed_clone_root_is_unknown_not_silently_omitted():
+    rom, profile = build({0x100: script(END)})
+    clone = SimpleNamespace(
+        role="clone", clone_of=(2, 3, 4), script_ptr=None, source="template"
+    )
+    result = facts(rom, profile, objects=(clone,))
+    assert result.coverage is StockCoverage.UNKNOWN
+    assert result.reasons
+
+
+def test_secret_base_background_event_is_unknown_even_with_script():
+    rom, profile = build({0x100: script(pokemart(0x300), END), 0x300: items(1)})
+    secret = SimpleNamespace(kind="secret_base", script_ptr=BASE + 0x100)
+    result = facts(rom, profile, bgs=(secret,))
+    assert result.coverage is StockCoverage.UNKNOWN
+    assert result.possible_item_ids == frozenset()
+
+
+def test_ordinary_sign_with_same_script_remains_closed():
+    rom, profile = build({0x100: script(pokemart(0x300), END), 0x300: items(1)})
+    sign = SimpleNamespace(kind="sign", script_ptr=BASE + 0x100)
+    result = facts(rom, profile, bgs=(sign,))
+    assert result.coverage is StockCoverage.POSSIBLE_CLOSED
+    assert result.possible_item_ids == frozenset({1})
+
+
+def trainerbattle(battle_type, pointer):
+    size = {0: 13, 1: 17, 2: 17, 3: 9, 4: 17, 5: 13, 6: 21, 7: 17, 8: 21, 9: 13}[battle_type]
+    return b"\x5c" + bytes([battle_type]) + bytes(size - 5) + struct.pack("<I", pointer)
+
+
+@pytest.mark.parametrize("pointer", [0, 0x0200_0100])
+def test_continuation_bearing_trainerbattle_with_invalid_pointer_is_unknown(pointer):
+    rom, profile = build({0x100: script(trainerbattle(1, pointer), END)})
+    result = facts(rom, profile, objects=(obj(1, BASE + 0x100),))
+    assert result.coverage is StockCoverage.UNKNOWN
+    assert result.possible_item_ids == frozenset()
+
+
+def test_continuation_bearing_trainerbattle_with_rom_pointer_is_followed():
+    rom, profile = build(
+        {
+            0x100: script(trainerbattle(1, BASE + 0x180), END),
+            0x180: script(pokemart(0x300), END),
+            0x300: items(7),
+        }
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + 0x100),))
+    assert result.coverage is StockCoverage.POSSIBLE_CLOSED
+    assert result.possible_item_ids == frozenset({7})
+
+
+def test_non_continuation_trainerbattle_pointer_is_not_followed():
+    rom, profile = build(
+        {
+            0x100: script(trainerbattle(0, BASE + 0x180), END),
+            0x180: script(pokemart(0x300), END),
+            0x300: items(7),
+        }
+    )
+    result = facts(rom, profile, objects=(obj(1, BASE + 0x100),))
+    assert result.coverage is StockCoverage.POSSIBLE_CLOSED
+    assert result.possible_item_ids == frozenset()
