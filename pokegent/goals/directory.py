@@ -8,6 +8,7 @@ against the map's warp table, coordinates against the layout size.
 from __future__ import annotations
 
 import re
+import struct
 import unicodedata
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ from pokegent.games.gen3.firered.maps.map_data import MapReader, RomMapCache
 from pokegent.games.gen3.firered.maps.world import WorldAdapter
 from pokegent.games.gen3.firered.reader.memory_port import SnapshotMemoryReader
 from pokegent.games.gen3.firered.rom.rom_tables import GameTables
+from pokegent.goals.shop_stock import ShopStockFacts, StockCoverage, stock_from_sources
 from pokegent.goals.validate import MapFacts
 
 
@@ -52,6 +54,7 @@ class RomMapDirectory:
             self._tables = None
             self._tables_error = exc
         self._facts: dict[tuple[int, int], MapFacts | None] = {}
+        self._shop_stock: dict[tuple[int, int], ShopStockFacts] = {}
         self._leaders: dict[int, tuple[tuple[int, int], int] | None] | None = None
 
     def resolve_item(self, name: str) -> int | None:
@@ -87,6 +90,46 @@ class RomMapDirectory:
                 )
             )
         return self._facts[key]
+
+    def shop_stock(self, group: int, number: int) -> ShopStockFacts:
+        """ROM-only merchant evidence for one map; cached per directory instance."""
+        key = (group, number)
+        if key not in self._shop_stock:
+            self._shop_stock[key] = self._read_shop_stock(group, number)
+        return self._shop_stock[key]
+
+    def _read_shop_stock(self, group: int, number: int) -> ShopStockFacts:
+        identity = (self._profile.profile_id, self._profile.rom.sha1)
+        result = self._reader.read_static(group, number)
+        if not result.usable or result.state is None:
+            reason = result.errors[0].code if result.errors else "map_unreadable"
+            return ShopStockFacts(
+                (group, number), identity[0], identity[1], StockCoverage.UNKNOWN, reasons=(reason,)
+            )
+        header = self._reader.rom_header_address(group, number)
+        if header is None:
+            return ShopStockFacts(
+                (group, number), identity[0], identity[1], StockCoverage.UNKNOWN,
+                reasons=("map_header_unavailable",),
+            )
+        offset = header - 0x0800_0000 + self._profile.field("MapHeader", "mapScripts").offset
+        if not 0 <= offset <= len(self._rom) - 4:
+            return ShopStockFacts(
+                (group, number), identity[0], identity[1], StockCoverage.UNKNOWN,
+                reasons=("map_scripts_unreadable",),
+            )
+        scripts_ptr = struct.unpack_from("<I", self._rom, offset)[0]
+        state = result.state
+        return stock_from_sources(
+            self._rom,
+            self._profile,
+            objects=state.objects,
+            coord_events=state.coord_events,
+            bg_events=state.bg_events,
+            scripts_ptr=scripts_ptr,
+            tables=self._tables,
+            map_key=(group, number),
+        )
 
     def leader_for_badge(self, badge: int) -> tuple[tuple[int, int], int] | None:
         """Find the NPC whose ROM script sets this badge's flag."""
