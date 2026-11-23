@@ -282,6 +282,8 @@ _EDGE_KEY = re.compile(
     r"boulder_plan:[A-Za-z0-9_]+:[A-Za-z0-9_:]+"
     r")\b"
 )
+# Border-edge keys only: the route may name an edge the frame does not offer as an option.
+_ROUTE_EDGE_KEY = re.compile(r"\bedge:[NSEW]:\d+:\d+\b")
 _INTERNAL_KEYS = ("executor_ref", "executor_args", "postcondition_ref", "source_task", "pointer")
 LeakKind = Literal[
     "fingerprint",
@@ -436,6 +438,24 @@ def sanitize_internal_text(value: Any, frame: DecisionFrame) -> Any:
     return value
 
 
+def sanitize_route_edge_keys(value: Any, option_ids: set[str]) -> Any:
+    """Relabel raw ``edge:D:g:n`` keys that are not exposed options in visible route text.
+
+    The planner's route can name a border edge the frame does not offer (#178). The key is not
+    an option identity, so it is rendered as prose instead of tripping the leak guard, which
+    stays unchanged as the backstop for every other internal key.
+    """
+    if isinstance(value, str):
+        return _ROUTE_EDGE_KEY.sub(
+            lambda m: m.group(0) if m.group(0) in option_ids else "the map edge", value
+        )
+    if isinstance(value, Mapping):
+        return {key: sanitize_route_edge_keys(item, option_ids) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [sanitize_route_edge_keys(item, option_ids) for item in value]
+    return value
+
+
 def assert_payload_clean(payload: Mapping[str, Any], frame: DecisionFrame) -> None:
     """Fail closed if anything internal would reach the model."""
     if set(payload) != {"state", "instructions", "criteria"}:
@@ -527,24 +547,32 @@ def to_system_one_payload(frame: DecisionFrame) -> dict[str, Any]:
             prompts.append(o.semantic_prompt)
     if prompts:
         state["prompt"] = " | ".join(prompts)
+    option_ids = {o.id for o in frame.options}
     payload = {
-        "state": json.loads(
-            json.dumps(
-                {
-                    **state,
-                    **(
-                        {"objective": sanitize_internal_text(state["objective"], frame)}
-                        if "objective" in state
-                        else {}
-                    ),
-                }
-            )
+        "state": sanitize_route_edge_keys(
+            json.loads(
+                json.dumps(
+                    {
+                        **state,
+                        **(
+                            {"objective": sanitize_internal_text(state["objective"], frame)}
+                            if "objective" in state
+                            else {}
+                        ),
+                    }
+                )
+            ),
+            option_ids,
         ),
-        "instructions": sanitize_internal_text(
-            frame.instructions or _INSTRUCTIONS[frame.decision_type], frame
+        "instructions": sanitize_route_edge_keys(
+            sanitize_internal_text(frame.instructions or _INSTRUCTIONS[frame.decision_type], frame),
+            option_ids,
         ),
         "criteria": {
-            o.id: criterion_text(o, repetition=repetition.get(o.id)) for o in frame.chooseable()
+            o.id: sanitize_route_edge_keys(
+                criterion_text(o, repetition=repetition.get(o.id)), option_ids
+            )
+            for o in frame.chooseable()
         },
     }
     assert_payload_clean(payload, frame)
