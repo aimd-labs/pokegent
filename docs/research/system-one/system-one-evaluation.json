@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "status": "proposed_not_executed",
+  "work_package": "R03",
+  "baseline_commit": "c73774285e5e164d01629ca14a5e8e551e03493f",
+  "reference_pins": {
+    "christianmat/jev-pokemon": "20cdcb846ff995383fe3da1d48ad5eac6d8d1abd",
+    "anxkhn/JevPlaysPokemon": "aa450c686da75b9bdaa4aa5972ee4d02cfca9d8e",
+    "daniel4x/JevEmon": "572454c69bf791f766ece736ffa6d6c954c6a075",
+    "2389-research/jev-plays-pokemon": "75193d9883bea71be66647bcb6cefcf441c932e4"
+  },
+  "evidence_policy": {
+    "labels": "Independent set of acceptable actions or explicitly unknown; do not use outcome alone as gold. Label family and reason.",
+    "split": "Group by run/save/near-duplicate scenario family, map and context; lock holdout before tuning.",
+    "strata": [
+      "game_revision",
+      "backend_version",
+      "provider_protocol",
+      "reported_model_and_version",
+      "prompt_profile_version",
+      "scene_family",
+      "risk",
+      "knowledge_policy",
+      "option_count",
+      "hierarchy",
+      "truncation"
+    ],
+    "required_manifest": [
+      "rom_identity_or_synthetic_fixture_id",
+      "backend_and_version",
+      "initial_state_hash_or_fixture_hash",
+      "seed_or_replay_identity",
+      "goal_and_success_probes",
+      "mode",
+      "provider_and_model_identity",
+      "profile_and_config_hash",
+      "knowledge_policy",
+      "budgets",
+      "preparation_type",
+      "operator_intervention",
+      "result_and_evidence"
+    ],
+    "proposed_guarded_gate": {
+      "min_independent_labeled_families": 100,
+      "one_sided_wilson_confidence": 0.95,
+      "min_lower_bound_admitted_acceptable_choice_rate": 0.9,
+      "zero_unauthorized_inputs_in_safety_cases": true,
+      "notes": "Proposed minimum, not proven or enabled; report admitted count and coverage, cluster dependence, insufficient evidence and calibration reliability. No authority upgrade without review."
+    },
+    "campaign_target": "Existing #135/#138 propose >=90% unattended main story completion; no new target, no proof here."
+  },
+  "cases": [
+    {
+      "id": "R03-E01",
+      "layer": "L0",
+      "mode": "all",
+      "name": "singleton distinction",
+      "acceptance": "Pure wait vs only action-bearing option; no hidden authority expansion; distinguish no model HTTP call from forced/local confidence.",
+      "existing_test_path": "tests/test_hybrid_route_step_veto.py",
+      "issue": 132,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E02",
+      "layer": "L0",
+      "mode": "hybrid",
+      "name": "unique proven route pre-call",
+      "acceptance": "Exact current legal low-risk route, explicit goal and no meaningful alternatives: shadow candidate then reviewed admit; zero provider requests only when admitted.",
+      "existing_test_path": "tests/test_hybrid_route_step_veto.py",
+      "issue": 132,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E03",
+      "layer": "L0",
+      "mode": "hybrid",
+      "name": "ambiguous/risk/competing intent",
+      "acceptance": "Multiple route steps, stale step, high-risk, irreversible, resource/healing/battle alternatives, unknown launch; no deterministic shortcut.",
+      "existing_test_path": "tests/test_hybrid_irreversible_escalation.py",
+      "issue": 132,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E04",
+      "layer": "L0",
+      "mode": "all",
+      "name": "frame and revision freshness",
+      "acceptance": "Withdraw old choice on observable state or objective revision change; no input from stale choice even when ID remains present.",
+      "existing_test_path": "tests/test_step_choose_frame_id.py",
+      "issue": 132,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E05",
+      "layer": "L0",
+      "mode": "all",
+      "name": "payload containment",
+      "acceptance": "Unexposed route ID and actual executor token: refuse genuine leaks; sanitized text not proof of route identity; no hidden data.",
+      "existing_test_path": "tests/test_system1_security.py",
+      "issue": 178,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E06",
+      "layer": "L0",
+      "mode": "hybrid",
+      "name": "no-progress/recovery",
+      "acceptance": "Repeat executed no-effect and map cycles; bounded agent window; movement alone not durable; timeout pause no default reuse.",
+      "existing_test_path": "tests/test_hybrid_stuck_escalation.py",
+      "issue": 133,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E07",
+      "layer": "L0",
+      "mode": "hybrid",
+      "name": "unknown scene",
+      "acceptance": "Preserve current bounded wait/B/direction primitives and fail-closed unsupported state; never confirmation through classifier.",
+      "existing_test_path": "tests/test_unknown_scene_escalation.py",
+      "issue": 133,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E08",
+      "layer": "L0",
+      "mode": "hybrid",
+      "name": "agent handoff expiry",
+      "acceptance": "Ordinary and recovery handoff deadline, stop, stale submission; no rejected System One reuse or input.",
+      "existing_test_path": "tests/test_hybrid_agent_handoff_timeout.py",
+      "issue": 133,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E09",
+      "layer": "L0",
+      "mode": "all",
+      "name": "provider terminal/transient",
+      "acceptance": "401/422, strict identity mismatch, malformed, 429/5xx, timeout and breaker; preserve bounded attempts and typed terminal path.",
+      "existing_test_path": "tests/test_system1_generic.py",
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E10",
+      "layer": "L0",
+      "mode": "hybrid",
+      "name": "missing/partial uncertainty",
+      "acceptance": "Exact choice, absent confidence chat, missing stage confidence, partial distribution, invalid keys/NaN; no invented confidence or statistical admission.",
+      "existing_test_path": "tests/test_system1_generic.py",
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E11",
+      "layer": "L0",
+      "mode": "all",
+      "name": "objective revision",
+      "acceptance": "Invalid/no-op proposal leaves standing plan; newer operator revision survives; exact proof before completion; pure mode never calls agent.",
+      "existing_test_path": "tests/test_objective_completion_continue.py",
+      "issue": 133,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E12",
+      "layer": "L1",
+      "mode": "system1/hybrid",
+      "name": "position sensitivity",
+      "acceptance": "Same facts and options, deterministic permutations on held-out labeled frames; compare acceptable accuracy, selection agreement, sent rank, stage depth and cost.",
+      "existing_test_path": null,
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E13",
+      "layer": "L1",
+      "mode": "system1/hybrid",
+      "name": "payload sufficiency",
+      "acceptance": "Current vs compact scene profile, flat vs hierarchy; protected facts, full option reachability, partial stage mass, actual usage and truncation.",
+      "existing_test_path": null,
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E14",
+      "layer": "L1",
+      "mode": "system1/hybrid",
+      "name": "scene eligibility and calibration",
+      "acceptance": "Separate identity/protocol/scene/risk/game/knowledge/profile strata; grouped calibration/test; full-distribution vs chat/no confidence; coverage-risk and missingness.",
+      "existing_test_path": null,
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E15",
+      "layer": "L1",
+      "mode": "all",
+      "name": "strategic intent persistence",
+      "acceptance": "Repeated heal/shop/route oscillation, missing prerequisites, changed resources; bounded validated successor goal, no premature completion.",
+      "existing_test_path": null,
+      "issue": 133,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E16",
+      "layer": "L2",
+      "mode": "all",
+      "name": "battle identity and effectiveness",
+      "acceptance": "Stable identity after menu reorder; separate legal immune/miss/catch fail/KO cases; independently validated Gen-3 facts.",
+      "existing_test_path": null,
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E17",
+      "layer": "L2",
+      "mode": "all",
+      "name": "simulator battle suite",
+      "acceptance": "Fixed opponent policy, seed, information, team and restoration; record per-turn legality and outcome; no native campaign claim.",
+      "existing_test_path": null,
+      "issue": 134,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E18",
+      "layer": "L2",
+      "mode": "all",
+      "name": "native warp and interruption",
+      "acceptance": "Seafoam first-bad-transition capture; exact landing, direction, interruption, bounded replan, held-input release, no false visit.",
+      "existing_test_path": null,
+      "issue": 180,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E19",
+      "layer": "L2",
+      "mode": "all",
+      "name": "native fishing outcomes",
+      "acceptance": "Rod/target, bite/no bite/got away; legal action vs game result, verify battle or field return; no unnecessary model reaction.",
+      "existing_test_path": null,
+      "issue": 176,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E20",
+      "layer": "L2",
+      "mode": "all",
+      "name": "native league and recovery",
+      "acceptance": "Full league sequential resource carryover, no RAM-written party unless fixture declared; repeated losses prompt evidence-backed team/level/resource strategy.",
+      "existing_test_path": null,
+      "issue": 135,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E21",
+      "layer": "L3",
+      "mode": "agent",
+      "name": "cold-to-credits campaign",
+      "acceptance": "No System One calls; verify badges/gates/Hall of Fame, operator intervention recorded; report budget and failure.",
+      "existing_test_path": null,
+      "issue": 138,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E22",
+      "layer": "L3",
+      "mode": "system1",
+      "name": "cold-to-credits campaign",
+      "acceptance": "No external-agent calls; explicit goal strategy/fallback manifest, native RAM proof, all starts denominator, no intervention counted as autonomous.",
+      "existing_test_path": null,
+      "issue": 138,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E23",
+      "layer": "L3",
+      "mode": "hybrid",
+      "name": "cold-to-credits campaign",
+      "acceptance": "Matched seed/knowledge/budgets; all three choice origins and cost; handoffs/recovery/pauses; RAM proof; compare to pure modes.",
+      "existing_test_path": null,
+      "issue": 138,
+      "status": "not_run"
+    },
+    {
+      "id": "R03-E24",
+      "layer": "L0",
+      "mode": "all",
+      "name": "event provenance",
+      "acceptance": "Distinguish forced/local/route/model/agent and actual HTTP attempts, reject or override trace, no duplicate completion or fake provider call; keep existing event consumers compatible.",
+      "existing_test_path": "tests/test_event_type_validation.py",
+      "issue": 132,
+      "status": "not_run"
+    }
+  ],
+  "metrics": [
+    "eligible_offers",
+    "logical_decisions_by_final_origin",
+    "provider_logical_requests",
+    "actual_http_attempts",
+    "invalid_timeout_stale_counts",
+    "admission_coverage",
+    "acceptable_choice_accuracy",
+    "confidence_reliability_if_defined",
+    "verified_action_outcomes",
+    "durable_milestones",
+    "end_to_end_and_provider_p50_p95",
+    "input_output_usage_and_missingness",
+    "cost_estimate_or_receipt",
+    "handoff_count_and_wait",
+    "stuck_recovery_wipes_pauses",
+    "campaign_started_completed_failed_censored",
+    "operator_interventions"
+  ],
+  "notes": "Existing test paths are starting points, not proof they implement proposed cases; null means no targeted test identified here. No executable benchmark, provider calls, runtime config or test results added."
+}

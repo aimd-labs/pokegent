@@ -112,46 +112,50 @@ repositories:
   url: https://github.com/christianmat/jev-pokemon
   origin: user_seed
   category: system_one
-  license_signal: GPL-2.0
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  license_signal: GPL-2.0-or-later (README; GPL-2.0 root text)
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/test/result inspection; no execution
+  source_commit: 20cdcb846ff995383fe3da1d48ad5eac6d8d1abd
   provisional_integration: REFERENCE
   priority: P0
   research_target: Self-reported Gen 1 completed run, legal decisions, loop protection
+  research_report: docs/research/system-one/jev-comparison.md
 - repository: anxkhn/JevPlaysPokemon
   url: https://github.com/anxkhn/JevPlaysPokemon
   origin: user_seed
   category: system_one
   license_signal: GPL-3.0
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/test/result inspection; no execution
+  source_commit: aa450c686da75b9bdaa4aa5972ee4d02cfca9d8e
   provisional_integration: REFERENCE
   priority: P0
   research_target: Showdown and FireRed battle benchmark
+  research_report: docs/research/system-one/jev-comparison.md
 - repository: 2389-research/jev-plays-pokemon
   url: https://github.com/2389-research/jev-plays-pokemon
   origin: user_seed
   category: agent
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
-  provisional_integration: ADAPT
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/test/result inspection; no execution
+  source_commit: 75193d9883bea71be66647bcb6cefcf441c932e4
+  provisional_integration: REFERENCE
   priority: P1
   research_target: PyBoy harness; manual intro
+  research_report: docs/research/system-one/jev-comparison.md
 - repository: daniel4x/JevEmon
   url: https://github.com/daniel4x/JevEmon
   origin: user_seed
   category: system_one
   license_signal: GPL-3.0
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/test/result inspection; no execution
+  source_commit: 572454c69bf791f766ece736ffa6d6c954c6a075
   provisional_integration: REFERENCE
   priority: P0
   research_target: Reachable destinations and encounter replanning; partial journey
+  research_report: docs/research/system-one/jev-comparison.md
 - repository: smogon/pokemon-showdown
   url: https://github.com/smogon/pokemon-showdown
   origin: expanded_research
