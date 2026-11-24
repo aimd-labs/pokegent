@@ -215,6 +215,7 @@ class WarpInfo(_Frozen):
     trigger: WarpTrigger | None
     trigger_direction: Facing | None
     knowledge: Knowledge = "technical"
+    exit: bool = True  # False: plain-tile warp with no trigger; the player cannot step on it
 
 
 class CoordEventInfo(_Frozen):

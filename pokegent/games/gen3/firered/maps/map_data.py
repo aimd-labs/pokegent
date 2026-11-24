@@ -724,6 +724,7 @@ class MapReader:
                     trigger=info.warp_trigger if info else None,
                     trigger_direction=info.warp_direction if info else None,
                     knowledge="observed" if in_view(x, y) else "technical",
+                    exit=(info.warp_trigger is not None) if info else True,
                 )
             )
 

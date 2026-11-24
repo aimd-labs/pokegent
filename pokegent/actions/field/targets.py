@@ -187,6 +187,12 @@ def warp_target(state: MapState, nav: N.Navigator, warp) -> Target:
             for o in state.warps
         )
         info["untested"] = not twin
+        if getattr(warp, "exit", True) is False:
+            # Plain-tile warp with no trigger and no exit flag: the player cannot step on
+            # this tile to activate the warp.  Mark it unavailable so the navigation
+            # system routes through a real exit warp instead.
+            return Target(option_id, "warp", "step", label, (), at=at, info=info,
+                          unavailable="inert_plain_tile")  # fmt: skip
         if twin:
             return Target(option_id, "warp", "step", label, (), at=at, info=info,
                           unavailable="inert_duplicate")  # fmt: skip
