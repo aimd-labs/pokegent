@@ -58,34 +58,37 @@ repositories:
   origin: user_seed
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected layout/README inspection; no build
+  source_commit: 037335f4c725d7c9aecdac87066f2002b4bd7e14
   provisional_integration: REFERENCE
   priority: P0
   research_target: FireRed/LeafGreen symbols; existing source-lock pin is authoritative
+  research_report: docs/research/game-mechanics/decompilation-profiles.md
 - repository: pret/pokeruby
   url: https://github.com/pret/pokeruby
   origin: user_seed
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected layout/README inspection; no build
+  source_commit: 5784633ce4ef7ade1a7f2d2d0c288e3d5e6cdd7f
   provisional_integration: REFERENCE
   priority: P1
   research_target: Ruby/Sapphire behavior and differences
+  research_report: docs/research/game-mechanics/decompilation-profiles.md
 - repository: pret/pokeemerald
   url: https://github.com/pret/pokeemerald
   origin: user_seed
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected layout/README inspection; no build
+  source_commit: 8cf518839e529eeb2477905ede1df7213ac134b8
   provisional_integration: REFERENCE
   priority: P0
   research_target: Emerald variant behavior
+  research_report: docs/research/game-mechanics/decompilation-profiles.md
 - repository: NousResearch/pokemon-agent
   url: https://github.com/NousResearch/pokemon-agent
   origin: user_seed
@@ -242,23 +245,25 @@ repositories:
   origin: expanded_research
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected layout/README inspection; no build
+  source_commit: ba9c0568f64ae602fadda577a08c66639f93082a
   provisional_integration: REFERENCE
   priority: P1
   research_target: Red/Blue disassembly
+  research_report: docs/research/game-mechanics/decompilation-profiles.md
 - repository: pret/pokecrystal
   url: https://github.com/pret/pokecrystal
   origin: expanded_research
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected layout/README inspection; no build
+  source_commit: 9ce4c4e5068ffdf56e23ca3d8dc9178b2465d482
   provisional_integration: REFERENCE
   priority: P1
   research_target: Crystal disassembly
+  research_report: docs/research/game-mechanics/decompilation-profiles.md
 - repository: pret/pokeplatinum
   url: https://github.com/pret/pokeplatinum
   origin: expanded_research
