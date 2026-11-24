@@ -50,11 +50,12 @@ repositories:
   category: fixtures
   license_signal: not detected
   review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  inspection: Pinned tree and README scenario inventory; no save read
+  source_commit: cbd7a509036980bc911c89c77e186e8923d57637
   provisional_integration: REFERENCE
   priority: P1
   research_target: Scenario inventory; do not copy saves or states
+  research_report: docs/architecture/addon-extension-contract.md
 - repository: pret/pokefirered
   url: https://github.com/pret/pokefirered
   origin: user_seed
@@ -230,12 +231,13 @@ repositories:
   origin: expanded_research
   category: mechanics
   license_signal: GPL-3.0
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source; no execution
+  source_commit: 5da107891e3a15bf07c23581f919475f38869aa4
   provisional_integration: REFERENCE
   priority: P1
   research_target: RNG and encounter mechanics
+  research_report: docs/architecture/addon-extension-contract.md
 - repository: hsahovic/poke-env
   url: https://github.com/hsahovic/poke-env
   origin: expanded_research
@@ -372,13 +374,14 @@ repositories:
   url: https://github.com/kwsch/SysBot.NET
   origin: expanded_research
   category: automation
-  license_signal: AGPL-3.0
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  license_signal: AGPL-3.0 (root text reviewed)
+  review_status: source_inspected
+  inspection: Pinned tree and selected source; no execution
+  source_commit: 844c1f31face95bc8e1cfec9c9b7cbd9f7a62895
   provisional_integration: REFERENCE
   priority: P2
   research_target: Switch remote automation
+  research_report: docs/architecture/addon-extension-contract.md
 - repository: pret/pokeyellow
   url: https://github.com/pret/pokeyellow
   origin: expanded_research
