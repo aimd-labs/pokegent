@@ -12,12 +12,13 @@ repositories:
   origin: user_seed
   category: knowledge
   license_signal: Apache-2.0
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
-  provisional_integration: DEPEND
+  review_status: source_inspected
+  inspection: Pinned tree and selected source; no hosted API calls
+  source_commit: 319159d7214785f922b4eb145d6e0d1034b713c4
+  provisional_integration: REFERENCE
   priority: P1
   research_target: External MCP knowledge; version fidelity and offline fallback
+  research_report: docs/research/knowledge-sources/knowledge-layer.md
 - repository: 40Cakes/pokebot-gen3
   url: https://github.com/40Cakes/pokebot-gen3
   origin: user_seed
@@ -204,12 +205,13 @@ repositories:
   origin: expanded_research
   category: knowledge
   license_signal: BSD-3-Clause
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  review_status: source_inspected
+  inspection: Pinned tree and selected source; no hosted API calls
+  source_commit: de6760be38b60a3024f1d9054330ff265f0dc619
+  provisional_integration: REFERENCE
   priority: P1
   research_target: Versioned knowledge and local-first strategy
+  research_report: docs/research/knowledge-sources/knowledge-layer.md
 - repository: kwsch/PKHeX
   url: https://github.com/kwsch/PKHeX
   origin: expanded_research
