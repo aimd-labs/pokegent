@@ -6,6 +6,7 @@
   "required": [
     "schema_version",
     "attempt_id",
+    "segment_id",
     "campaign_id",
     "scenario_family",
     "layer",
@@ -21,6 +22,7 @@
     "config_sha256",
     "profile_sha256",
     "prompt_sha256",
+    "adapter_sha256",
     "decider_mode",
     "knowledge_policy",
     "preparation",
@@ -38,6 +40,11 @@
       "const": "pokegent-evaluation/1"
     },
     "attempt_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "segment_id": {
       "type": "string",
       "minLength": 1,
       "maxLength": 128
@@ -135,6 +142,17 @@
       "pattern": "^[0-9a-f]{64}$"
     },
     "prompt_sha256": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "adapter_sha256": {
       "anyOf": [
         {
           "type": "string",
@@ -268,6 +286,10 @@
             "minLength": 1
           },
           "rom_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "initial_state_sha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
           }

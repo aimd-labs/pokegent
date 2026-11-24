@@ -1,6 +1,6 @@
 # R08 — Nintendo DS automation and game adapter research
 
-Status: proposed, 2026-11-24. Runtime baseline c73774285e5e164d01629ca14a5e8e551e03493f. R05/R10 and #139 govern admission. No DS ROM, native test, emulator build, Lua execution, data copy or backend commitment.
+Status: proposed, 2026-11-24. Runtime baseline c73774285e5e164d01629ca14a5e8e551e03493f. R10 owns generic admission; this package only supplies DS evidence. #139 remains the implementation owner. No DS ROM, native test, emulator build, Lua execution, data copy or backend commitment.
 
 ## Pinned evidence
 
@@ -11,7 +11,7 @@ Status: proposed, 2026-11-24. Runtime baseline c73774285e5e164d01629ca14a5e8e551
 - [pret/pokeheartgold @ 8946577385ef0e3b1a29f2f56c03db20fd675cb0](https://github.com/pret/pokeheartgold/tree/8946577385ef0e3b1a29f2f56c03db20fd675cb0)
 - [Project-Holon/aletheia @ 50731dd699fb0fb3f881cd028a67d8f6aa649a88](https://github.com/Project-Holon/aletheia/tree/50731dd699fb0fb3f881cd028a67d8f6aa649a88)
 
-PokéBot NDS is archived (GitHub metadata); its [README](https://github.com/wyanido/pokebot-nds/blob/d73aee2bb96ca19384f9d47b5a4554ca248ee3ce/README.md) claims all languages and DPPt, HGSS, BW, B2W2 support for selected automation modes. [MIT root license](https://github.com/wyanido/pokebot-nds/blob/d73aee2bb96ca19384f9d47b5a4554ca248ee3ce/LICENSE) reviewed; data tables/assets not automatically cleared. melonDS metadata GPL-3.0; source headers say v3 or later; keep separate reference/backend candidate, no bundled core. BizHawk metadata NOASSERTION: mixed cores/components require per-component review. pret projects no recognized license signal; technical references only. Holon tree response truncated, so only its pin is registered as candidate, not audited. None establishes a native Pokegent DS implementation.
+PokéBot NDS is archived (GitHub metadata); its [README](https://github.com/wyanido/pokebot-nds/blob/d73aee2bb96ca19384f9d47b5a4554ca248ee3ce/README.md) claims all languages and DPPt, HGSS, BW, B2W2 support for selected automation modes, but the same README limits Gen 4 to English with minimal non-English support. No broad language or full-title support follows from that text. [MIT root license](https://github.com/wyanido/pokebot-nds/blob/d73aee2bb96ca19384f9d47b5a4554ca248ee3ce/LICENSE) reviewed; data tables/assets not automatically cleared. melonDS metadata GPL-3.0; source headers say v3 or later; keep separate reference/backend candidate, no bundled core. BizHawk metadata NOASSERTION: mixed cores/components require per-component review. pret projects no recognized license signal; technical references only. Holon tree response truncated, so only its pin is registered as candidate, not audited. None establishes a native Pokegent DS implementation.
 
 ## Source audit
 
