@@ -23,6 +23,14 @@ The goal is a complete Pokémon tool for arbitrary agents, not a fixed walkthrou
 
 All twelve initial documentation packages have been prepared as a stacked review proposal. See [senior review index](docs/research/oss-maintenance.md#senior-review-index) for each incremental PR and outstanding validation. This is not completion of implementation, exhaustive source audits, native acceptance or a release gate. No support statuses are promoted. Review and merge in order, retarget/rebase as necessary; maintainer owns merge and deployment.
 
+## Next implementation plan (v0.1.1 FireRed stability)
+
+Planning target is v0.1.1 FireRed stability; this is not a release, deployment or a claim that any completion gate or 90% target is achieved.
+Order: #179 payload (done, `cc46`) → #181 Fly config/small existing-offering fix → #180 correlated warp/exit wrong-transition → #133 concrete cycle; then #176/#168/#162 as small PRs.
+Runtime owner is Hermes with one child; pg-lead gives one review per green change; no concurrent duplicate author. Issue #106 stays paused.
+Acceptance: no unauthorized input, exact-source public CI and startup budget unchanged, and owner menu, save-resume, Fly and warp canaries run separately.
+No new game, plugin or DS work. See [senior disposition](docs/research/senior-disposition.md).
+
 ## Milestones (no calendar promises)
 
 1. **Research foundation:** R01 initial mapping, R02–R07 research notes pinned to source revisions; prioritize current live blockers in parallel with research.
