@@ -11,6 +11,8 @@ This directory coordinates research before implementation. The project goal is a
 
 ## Completed research slices (proposals)
 
+- [R03: Jev/System One comparison](system-one/jev-comparison.md), [decision-routing architecture proposal](../architecture/decision-routing.md) and [evaluation case catalog](system-one/system-one-evaluation.json). Pinned source evidence, no runtime changes or model calls; review before implementation.
+
 - [R02: PokéBot Gen3 source audit](game-mechanics/pokebot-gen3.md) and [capability crosswalk](game-mechanics/pokebot-gen3-capabilities.json). Exact upstream pin, selected source evidence, ordinary mechanics vs policies, no copied GPL code.
 - [Open issue review — 2026-11-24](issue-review-2026-11-24.md): snapshot of 22 issues, coordination and proposed priorities; not a live board.
 
