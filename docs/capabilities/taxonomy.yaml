@@ -1,0 +1,275 @@
+schema_version: 1
+status: proposed_initial_taxonomy
+baseline_commit: c73774285e5e164d01629ca14a5e8e551e03493f
+scope:
+  core: Ordinary gameplay and reusable agent/runtime capabilities; game-specific execution belongs to adapters.
+    Core does not imply hardcoded strategy.
+  addons: Specialized policies or optional external/observer integrations. System One is optional as a provider,
+    but mode support is a framework capability.
+  extension_rule: Add stable capability IDs per game as research identifies title-specific mechanics; this
+    inventory is initial, not exhaustive.
+capabilities:
+- id: runtime.backend
+  group: runtime
+  kind: core
+  description: Emulator start, frame control and atomic reads
+- id: runtime.state
+  group: runtime
+  kind: core
+  description: Read player, party, flags, variables, UI and state health
+- id: runtime.scene
+  group: runtime
+  kind: core
+  description: Scene detection and registered typed options
+- id: runtime.execution
+  group: runtime
+  kind: core
+  description: Single writer, fresh-state validation and outcome verification
+- id: runtime.agent
+  group: runtime
+  kind: core
+  description: External inspect/choose/verify and planning interface
+- id: runtime.system_one
+  group: runtime
+  kind: core
+  description: Optional exact-choice model provider in pure mode
+- id: runtime.hybrid
+  group: runtime
+  kind: core
+  description: Routing, handoffs and bounded recovery in hybrid mode
+- id: runtime.objectives
+  group: runtime
+  kind: core
+  description: Revisioned objective lifecycle, progress and recovery
+- id: runtime.sessions
+  group: runtime
+  kind: core
+  description: Validated start/save/resume and session lifecycle
+- id: runtime.telemetry
+  group: runtime
+  kind: core
+  description: Events, decision history, ledger and replay evidence
+- id: runtime.game_plugin
+  group: runtime
+  kind: core
+  description: Game registration and version-specific capability negotiation
+- id: world.navigation
+  group: world
+  kind: core
+  description: Local and world navigation, map connections and warps
+- id: world.exploration
+  group: world
+  kind: core
+  description: Discover reachable areas and ordinary map exploration
+- id: world.interaction
+  group: world
+  kind: core
+  description: NPCs, signs, interactable objects and dialogs
+- id: world.pickup
+  group: world
+  kind: core
+  description: Visible field items
+- id: world.hidden_items
+  group: world
+  kind: core
+  description: Discover and pick up hidden items under player-knowledge policy
+- id: world.field_moves
+  group: world
+  kind: core
+  description: Cut, Strength, Surf, Rock Smash, Fly, and other title-specific field moves
+- id: world.transport
+  group: world
+  kind: core
+  description: Bike, ferries, elevators and other travel modes
+- id: world.puzzles
+  group: world
+  kind: core
+  description: Normal boulder, switch, ice, scripted and title-specific puzzles
+- id: world.ice_slide
+  group: world
+  kind: core
+  description: Ice movement and controlled exit
+- id: world.unknown_obstacle
+  group: world
+  kind: core
+  description: Ordinary obstacle recognition and safe handling
+- id: world.fishing
+  group: world
+  kind: core
+  description: Select rod, fish, react and verify encounter/cancel
+- id: world.sweet_scent
+  group: world
+  kind: core
+  description: Use Sweet Scent and verify encounter or failure
+- id: world.encounters
+  group: world
+  kind: core
+  description: Read and target ordinary wild encounter methods and species
+- id: battle.moves
+  group: battle
+  kind: core
+  description: Select legal moves and resolve battle turns
+- id: battle.switch
+  group: battle
+  kind: core
+  description: Switch, send out, faint handling
+- id: battle.items
+  group: battle
+  kind: core
+  description: Legal battle item selection and execution
+- id: battle.damage
+  group: battle
+  kind: core
+  description: Version-specific damage, effectiveness, speed and effects
+- id: battle.formats
+  group: battle
+  kind: core
+  description: Singles, doubles, multi and title-specific battle formats
+- id: battle.escape
+  group: battle
+  kind: core
+  description: Flee legal encounters and verify escape
+- id: battle.capture
+  group: battle
+  kind: core
+  description: Legal ball use, catch mechanics, post-capture flow
+- id: pokemon.identity
+  group: pokemon
+  kind: core
+  description: Species, forms, stable Pokémon identity and stats
+- id: pokemon.shiny_status
+  group: pokemon
+  kind: core
+  description: Read or derive shiny status (ordinary state, not hunting policy)
+- id: pokemon.party
+  group: pokemon
+  kind: core
+  description: Party order, summary, held items and management
+- id: pokemon.storage
+  group: pokemon
+  kind: core
+  description: Box/PC, deposit, withdraw and safe release policy
+- id: pokemon.evolution
+  group: pokemon
+  kind: core
+  description: Ordinary evolution and cancellation
+- id: pokemon.moves
+  group: pokemon
+  kind: core
+  description: Learn, forget, teach TM/HM, manage PP and relearn moves
+- id: pokemon.leveling
+  group: pokemon
+  kind: core
+  description: Experience, normal training and leveling
+- id: pokemon.ev_iv
+  group: pokemon
+  kind: core
+  description: Read and use EVs/IVs, ordinary training and stat optimization
+- id: pokemon.friendship
+  group: pokemon
+  kind: core
+  description: Friendship and other evolution-related conditions
+- id: pokemon.breeding
+  group: pokemon
+  kind: core
+  description: Daycare, compatibility, eggs and hatching
+- id: pokemon.trading
+  group: pokemon
+  kind: core
+  description: Ordinary NPC and supported link trading
+- id: pokemon.naming
+  group: pokemon
+  kind: core
+  description: Naming, nickname and renaming flows
+- id: strategy.team_optimization
+  group: strategy
+  kind: core
+  description: Evaluate team, coverage, matchups, training needs and swaps
+- id: strategy.dex_completion
+  group: strategy
+  kind: core
+  description: Seen/owned state, attainable collection goals and version-specific completion
+- id: strategy.dex_ui
+  group: strategy
+  kind: core
+  description: Read and navigate normal Pokédex interface
+- id: strategy.resources
+  group: strategy
+  kind: core
+  description: Plan healing, money, items, PP and restocking
+- id: inventory.bag
+  group: inventory
+  kind: core
+  description: Inspect bag, use items and target Pokémon
+- id: inventory.shop
+  group: inventory
+  kind: core
+  description: Buy/sell, quantities and money management
+- id: inventory.pc_items
+  group: inventory
+  kind: core
+  description: Deposit and withdraw items in PC
+- id: inventory.healing
+  group: inventory
+  kind: core
+  description: Pokémon Center, normal healing and status recovery
+- id: inventory.berries
+  group: inventory
+  kind: core
+  description: Berry use, growing, harvesting and related title mechanics
+- id: progression.intro
+  group: progression
+  kind: core
+  description: New game, naming, starter and intro
+- id: progression.story
+  group: progression
+  kind: core
+  description: Story quests, prerequisites and badge progression
+- id: progression.elite_four
+  group: progression
+  kind: core
+  description: League, champion and main story completion
+- id: progression.postgame
+  group: progression
+  kind: core
+  description: Postgame quests, legendary encounters, rematches and facilities
+- id: progression.side_content
+  group: progression
+  kind: core
+  description: Ordinary minigames, side quests and special encounters
+- id: progression.title_mechanics
+  group: progression
+  kind: core
+  description: Title-specific mechanics such as contests, secret bases, raids and regional systems
+- id: addon.shiny_hunting
+  group: extensions
+  kind: addon
+  description: Specialized shiny hunting policy
+- id: addon.nuzlocke
+  group: extensions
+  kind: addon
+  description: Challenge rules and additional constraints
+- id: addon.speedrunning
+  group: extensions
+  kind: addon
+  description: Time-optimized run policy and splits
+- id: addon.rng_manipulation
+  group: extensions
+  kind: addon
+  description: Specialized RNG targeting policy
+- id: addon.streaming
+  group: extensions
+  kind: addon
+  description: Picture/audio streaming and broadcast integration
+- id: addon.dashboard
+  group: extensions
+  kind: addon
+  description: Optional local operator/telemetry UI
+- id: addon.external_services
+  group: extensions
+  kind: addon
+  description: Optional external knowledge, chat, analytics and service integrations
+- id: addon.model_training
+  group: extensions
+  kind: addon
+  description: Training and experimental data pipelines

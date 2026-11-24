@@ -1,0 +1,878 @@
+schema_version: 1
+baseline_commit: c73774285e5e164d01629ca14a5e8e551e03493f
+inspected_on: '2026-11-24'
+status_definitions:
+  present: Implementation surface exists; not proof of complete feature.
+  partial: Known limited scope or incomplete evidence.
+  gap: Explicit missing behavior documented.
+  unknown: Not established by this audit; not a claim of absence.
+  not_applicable: Only when justified for exact game.
+evidence_definitions:
+  path_inventory: Tracked file identified
+  source_inspected: At least one relevant source or contract inspected; not all functions
+  test_path: Test file identified, assertions not comprehensively audited
+  documented_native_smoke: README reports native narrow smoke, not independent reproduction
+  historical_ci: Baseline public checks passed; see run below
+  reproduced_scenario: Exact game scenario reproduced
+  reproduced_campaign: Exact campaign reproduced
+  repeated_regression: Repeated scenario with stable acceptance evidence
+baseline_ci:
+  url: https://github.com/aimd-labs/pokegent/actions/runs/45069405352
+  conclusion: success
+  jobs:
+  - public-checks
+  - native-helper
+  - public-startup-latency
+  scope: ROM-free public checks; not full gameplay
+native_smoke:
+  source: README.md
+  host: Ubuntu 24.04 amd64
+  python: '3.11'
+  backend: mGBA 0.10.2
+  result: First field and three RAM-verified movements, as documented by project
+  independently_reproduced: false
+games:
+  firered_us_rev0:
+    title: FireRed USA Rev 0
+    generation: 3
+    rom_admission: admitted
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    profile: pokegent/references/rom_profiles.yaml#firered-us-rev0
+    campaign_verified: false
+    campaign_note: No complete campaign evidence established by this audit; false means not verified here.
+    capabilities:
+      runtime.backend:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/emulator.py
+        test_paths:
+        - tests/emulator/test_emulator_actor.py
+        limitations: Native Rev 0 setup is documented; other backends are not game support.
+      runtime.state:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/games/gen3/firered/reader/schemas.py
+        - pokegent/games/gen3/firered/reader/reader.py
+        - pokegent/games/gen3/firered/reader/snapshot_sources.py
+        test_paths:
+        - tests/games/gen3/firered/test_reader.py
+      runtime.scene:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/pipeline.py
+        - pokegent/actions/ownership.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Existing catalog dispositions include five explicit gaps.
+      runtime.execution:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/_exec/executor.py
+        - pokegent/emulator.py
+        test_paths:
+        - tests/emulator/test_emulator_input.py
+      runtime.agent:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/server.py
+        - docs/connect-your-agent.md
+        test_paths:
+        - tests/test_step_choose_frame_id.py
+        - tests/test_agent_onboarding.py
+      runtime.system_one:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - addons/system_one/provider.py
+        - addons/system_one/policy.py
+        - docs/system-one.md
+        test_paths:
+        - tests/test_system1_generic.py
+        limitations: Mode is implemented; full autonomous play not demonstrated.
+      runtime.hybrid:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - addons/system_one/hybrid.py
+        - docs/system-one.md
+        test_paths:
+        - tests/test_hybrid_adaptive_gate.py
+        - tests/test_hybrid_stuck_escalation.py
+        limitations: Default missing-confidence handoff; provider/scene calibration not demonstrated.
+      runtime.objectives:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/goals/source.py
+        - pokegent/goals/tracker.py
+        - pokegent/loop.py
+        test_paths:
+        - tests/test_objective_completion_continue.py
+        - tests/test_objective_stuck_review.py
+      runtime.sessions:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/app.py
+        - pokegent/emulator.py
+        - docs/clean-start.md
+        test_paths:
+        - tests/test_intro_save_validation.py
+        limitations: Full multi-game/session lifecycle not audited.
+      runtime.telemetry:
+        implementation: present
+        evidence:
+        - path_inventory
+        - test_path
+        sources:
+        - pokegent/events.py
+        - pokegent/history.py
+        - pokegent/ledger.py
+        test_paths:
+        - tests/test_decision_history.py
+        - tests/test_ledger.py
+      runtime.game_plugin:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/app.py
+        - pokegent/pipeline.py
+        - pokegent/games/gen3/firered/rom/rom_data.py
+        test_paths: []
+        limitations: 'Direct FireRed types; #139 tracks generic plugin.'
+      world.navigation:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        - documented_native_smoke
+        sources:
+        - pokegent/navigation/graph.py
+        - pokegent/navigation/adapter.py
+        - pokegent/actions/field/macros.py
+        test_paths:
+        - tests/test_serving_city_crossing.py
+        limitations: 'Reported Seafoam navigation loop #180; no-goal movement #162.'
+      world.exploration:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/field/builder.py
+        - pokegent/navigation/adapter.py
+        test_paths: []
+        limitations: 'No-objective movement issue #162.'
+      world.interaction:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/field/builder.py
+        - pokegent/actions/menu/dialog/builder.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+      world.pickup:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        - pokegent/actions/field/macros.py
+        test_paths: []
+      world.hidden_items:
+        implementation: gap
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths:
+        - tests/test_field_targets_hidden_flags.py
+        limitations: field.hidden_item explicitly listed as REAL_GAP; do not reveal hidden locations by default.
+      world.field_moves:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/field/builder.py
+        - pokegent/actions/field/macros.py
+        - pokegent/actions/coverage.py
+        test_paths:
+        - tests/test_field_surf_movement.py
+        - tests/test_tm_options.py
+        limitations: 'Fly issue #181; prerequisite issue #168; individual move acceptance still needed.'
+      world.transport:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/field/bike.py
+        - pokegent/actions/special/elevators.py
+        - pokegent/navigation/graph.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+      world.puzzles:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/field/boulder_options.py
+        - pokegent/actions/special/switch_puzzle.py
+        - pokegent/actions/coverage.py
+        test_paths:
+        - tests/test_navigation_puzzle_hoist.py
+        limitations: Ice slide and unknown obstacle are explicit real gaps.
+      world.ice_slide:
+        implementation: gap
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+      world.unknown_obstacle:
+        implementation: gap
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+      world.fishing:
+        implementation: gap
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: 'field.fishing real gap; #176.'
+      world.sweet_scent:
+        implementation: gap
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+      world.encounters:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/games/gen3/firered/rom/wild.py
+        - pokegent/actions/field/builder.py
+        - docs/contracts.md
+        test_paths:
+        - tests/test_wild_match_decision_fallback.py
+        limitations: Grass/Surf facts documented; fishing missing.
+      battle.moves:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/battle/builder.py
+        - pokegent/actions/battle/macros.py
+        - pokegent/actions/battle/verifiers.py
+        test_paths: []
+      battle.switch:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/battle/builder.py
+        - pokegent/actions/battle/macros.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+      battle.items:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/battle/item_facts.py
+        - pokegent/actions/battle/builder.py
+        - pokegent/actions/battle/macros.py
+        test_paths: []
+      battle.damage:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/ruleset/damage.py
+        - pokegent/games/gen3/ruleset/effects.py
+        - pokegent/games/gen3/mechanics/exchange.py
+        test_paths: []
+        limitations: Rule implementation exists; differential validation and completeness unassessed.
+      battle.formats:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        sources:
+        - pokegent/actions/battle/state.py
+        test_paths: []
+        limitations: No format-by-format audit performed.
+      battle.escape:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/battle/builder.py
+        test_paths: []
+        limitations: Builder inventory only for this behavior; verify exact options.
+      battle.capture:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/battle/builder.py
+        - pokegent/actions/battle/catch_facts.py
+        - pokegent/games/gen3/ruleset/catch.py
+        test_paths: []
+        limitations: Ball option and nickname-decline path inspected; full capture scenarios unverified.
+      pokemon.identity:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/games/gen3/firered/reader/mon.py
+        - pokegent/games/gen3/firered/reader/schemas.py
+        - pokegent/games/gen3/firered/rom/species_dex.py
+        test_paths:
+        - tests/games/gen3/firered/test_mon.py
+        - tests/test_species_dex.py
+      pokemon.shiny_status:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/firered/reader/mon.py
+        - pokegent/games/gen3/firered/reader/schemas.py
+        test_paths: []
+        limitations: Explicit shiny surface not established by inspected snippets.
+      pokemon.party:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/menu/start_party/builder.py
+        - pokegent/actions/menu/system_flow/build_pc.py
+        test_paths:
+        - tests/test_party_exit_prompt.py
+        - tests/test_party_recovery_dispatch.py
+        limitations: 'Busy menu issue #165; complete held-item and reorder behavior unassessed.'
+      pokemon.storage:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/menu/system_flow/build_pc.py
+        - pokegent/games/gen3/firered/reader/storage.py
+        test_paths:
+        - tests/games/gen3/firered/test_storage.py
+        limitations: Deposit/withdraw present; comprehensive operations and irreversible release intent not
+          verified.
+      pokemon.evolution:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/menu/system_flow/build_evolution.py
+        - pokegent/actions/menu/system_flow/macros.py
+        test_paths: []
+      pokemon.moves:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/games/gen3/moves/learn.py
+        - pokegent/actions/menu/system_flow/build_evolution.py
+        - pokegent/actions/coverage.py
+        test_paths:
+        - tests/test_tm_options.py
+        limitations: Tutor, relearner, deleter are E4-scope omissions in coverage report.
+      pokemon.leveling:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/mechanics/team_planning.py
+        - pokegent/actions/battle/builder.py
+        - pokegent/navigation/adapter.py
+        test_paths: []
+        limitations: Core training strategy and verified progression scenarios need audit.
+      pokemon.ev_iv:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/firered/reader/mon.py
+        - pokegent/games/gen3/firered/reader/schemas.py
+        test_paths: []
+        limitations: Dedicated training and optimization behavior not established.
+      pokemon.friendship:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/firered/reader/mon.py
+        - pokegent/actions/menu/system_flow/build_evolution.py
+        test_paths: []
+        limitations: Friendship field read; full mechanics unassessed.
+      pokemon.breeding:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/firered/reader/schemas.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Egg identity read; daycare/hatching outside E4 plan, no comprehensive implementation verified.
+      pokemon.trading:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Trade offer outside E4 plan; link support not demonstrated.
+      pokemon.naming:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/menu/system_flow/build_endgame.py
+        - pokegent/actions/battle/builder.py
+        test_paths:
+        - tests/test_intro_save_validation.py
+        limitations: Intro naming and nickname-decline evidence; all nickname paths not verified.
+      strategy.team_optimization:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/games/gen3/mechanics/team_planning.py
+        - pokegent/actions/menu/system_flow/build_pc.py
+        - docs/contracts.md
+        test_paths: []
+        limitations: Facts and storage options exist; comprehensive optimization not demonstrated.
+      strategy.dex_completion:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/goals/dex_fallback.py
+        - pokegent/games/gen3/firered/rom/species_dex.py
+        - docs/contracts.md
+        test_paths:
+        - tests/test_dex_fallback.py
+        - tests/test_species_dex.py
+        limitations: Opt-in fallback and encounter facts; no full dex completion proof.
+      strategy.dex_ui:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Dex menu/list/detail outside E4 plan; distinct from RAM dex counters.
+      strategy.resources:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - test_path
+        sources:
+        - pokegent/goals/shop_feasibility.py
+        - pokegent/goals/shop_stock.py
+        - pokegent/actions/items/options.py
+        test_paths:
+        - tests/test_shop_feasibility.py
+        - tests/test_shop_stock_provider.py
+      inventory.bag:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/items/options.py
+        - pokegent/actions/field/macros.py
+        - pokegent/actions/coverage.py
+        test_paths:
+        - tests/test_field_item_use.py
+        limitations: Some bag management operations outside E4 plan.
+      inventory.shop:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/actions/menu/shop/builder.py
+        - pokegent/actions/menu/shop/macros.py
+        test_paths:
+        - tests/test_shop_feasibility.py
+      inventory.pc_items:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/menu/system_flow/build_pc.py
+        test_paths: []
+        limitations: Specific target-selection limitations in source.
+      inventory.healing:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/menu/dialog/builder.py
+        - pokegent/actions/items/options.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Implementation surface; scenario completeness unverified.
+      inventory.berries:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Berry menus outside E4 plan; applicability depends on title.
+      progression.intro:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        - documented_native_smoke
+        sources:
+        - pokegent/actions/menu/system_flow/build_endgame.py
+        - docs/clean-start.md
+        test_paths:
+        - tests/test_intro_save_validation.py
+        limitations: Native smoke documented; complete intro variants not demonstrated.
+      progression.story:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        - test_path
+        sources:
+        - pokegent/goals/story.py
+        - pokegent/games/gen3/firered/rom/story_generation.py
+        - docs/contracts.md
+        test_paths:
+        - tests/test_story_continuation.py
+        - tests/test_story_facts.py
+        limitations: Authored fallback and conditional story generation; no full campaign proof.
+      progression.elite_four:
+        implementation: partial
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/menu/system_flow/build_endgame.py
+        - docs/contracts.md
+        test_paths: []
+        limitations: 'Endgame scene code exists; #135/#138 campaign acceptance open.'
+      progression.postgame:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/menu/system_flow/build_endgame.py
+        test_paths: []
+        limitations: Endgame code is not evidence of full postgame coverage.
+      progression.side_content:
+        implementation: unknown
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - pokegent/actions/special/register.py
+        - pokegent/actions/coverage.py
+        test_paths: []
+        limitations: Title-specific features require enumeration; no global assertion.
+      progression.title_mechanics:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Future per-title capability extensions; do not imply applicability to FireRed.
+      addon.shiny_hunting:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Specialized extension not audited; no support claim.
+      addon.nuzlocke:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Specialized extension not audited; no support claim.
+      addon.speedrunning:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Specialized extension not audited; no support claim.
+      addon.rng_manipulation:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Specialized extension not audited; no support claim.
+      addon.streaming:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - docs/addons.md
+        - addons/runtime.py
+        - pokegent/addons.py
+        test_paths: []
+        limitations: Existing optional local service; not general third-party add-on API.
+      addon.dashboard:
+        implementation: present
+        evidence:
+        - path_inventory
+        - source_inspected
+        sources:
+        - docs/addons.md
+        - addons/runtime.py
+        - pokegent/addons.py
+        test_paths: []
+        limitations: Existing optional local service; not general third-party add-on API.
+      addon.external_services:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Specialized extension not audited; no support claim.
+      addon.model_training:
+        implementation: unknown
+        evidence: []
+        sources: []
+        test_paths: []
+        limitations: Specialized extension not audited; no support claim.
+  firered_us_rev1:
+    title: FireRed USA Rev 1
+    generation: 3
+    rom_admission: explicitly_unsupported
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    reason: 'Known revision but supported: false, no verified symbols; do not reuse Rev 0 addresses.'
+  firered_other:
+    title: FireRed other revisions/regions
+    generation: 3
+    rom_admission: unassessed
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  leafgreen:
+    title: LeafGreen
+    generation: 3
+    rom_admission: unassessed
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  ruby:
+    title: Ruby
+    generation: 3
+    rom_admission: unassessed
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  sapphire:
+    title: Sapphire
+    generation: 3
+    rom_admission: unassessed
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  emerald:
+    title: Emerald
+    generation: 3
+    rom_admission: unassessed
+    backend_candidate: mGBA
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  red_blue_yellow:
+    title: Red / Blue / Yellow
+    generation: 1
+    rom_admission: unassessed
+    backend_candidate: PyBoy
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  gold_silver_crystal:
+    title: Gold / Silver / Crystal
+    generation: 2
+    rom_admission: unassessed
+    backend_candidate: PyBoy
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  diamond_pearl_platinum:
+    title: Diamond / Pearl / Platinum
+    generation: 4
+    rom_admission: unassessed
+    backend_candidate: DS backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  heartgold_soulsilver:
+    title: HeartGold / SoulSilver
+    generation: 4
+    rom_admission: unassessed
+    backend_candidate: DS backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  black_white:
+    title: Black / White
+    generation: 5
+    rom_admission: unassessed
+    backend_candidate: DS backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  black2_white2:
+    title: Black 2 / White 2
+    generation: 5
+    rom_admission: unassessed
+    backend_candidate: DS backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  xy_oras:
+    title: X / Y / Omega Ruby / Alpha Sapphire
+    generation: 6
+    rom_admission: unassessed
+    backend_candidate: 3DS backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  sm_usum:
+    title: Sun / Moon / Ultra Sun / Ultra Moon
+    generation: 7
+    rom_admission: unassessed
+    backend_candidate: 3DS backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  lets_go:
+    title: Let’s Go Pikachu / Eevee
+    generation: 7
+    rom_admission: unassessed
+    backend_candidate: Switch backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  swsh_bdsp_pla:
+    title: Sword / Shield / Brilliant Diamond / Shining Pearl / Legends Arceus
+    generation: 8
+    rom_admission: unassessed
+    backend_candidate: Switch backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  sv_lza:
+    title: Scarlet / Violet / Legends Z-A
+    generation: 9
+    rom_admission: unassessed
+    backend_candidate: Switch backend candidate
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
+  spinoffs_hacks:
+    title: Other titles, spin-offs and ROM hacks
+    generation: null
+    rom_admission: unassessed
+    backend_candidate: individual research
+    default_capability_status: unknown
+    reason: No support established in inspected baseline. Grouped candidates must be split into exact title/region/revision
+      before claims.
