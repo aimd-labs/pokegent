@@ -1,0 +1,531 @@
+schema_version: 1
+reviewed_on: '2026-11-24'
+notes:
+- No source commit pin is implied by README blob hashes or metadata; pin commits during detailed audits.
+- License signals are GitHub metadata or README signals, not legal clearance.
+- Candidate URLs and claims require verification; do not treat this list as an approved dependency list.
+- Existing source-lock.md remains authoritative for code already incorporated.
+- Registry includes original 13 user seeds, additional metadata-checked sources and provisional candidates.
+repositories:
+- repository: cyanheads/pokeapi-mcp-server
+  url: https://github.com/cyanheads/pokeapi-mcp-server
+  origin: user_seed
+  category: knowledge
+  license_signal: Apache-2.0
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P1
+  research_target: External MCP knowledge; version fidelity and offline fallback
+- repository: 40Cakes/pokebot-gen3
+  url: https://github.com/40Cakes/pokebot-gen3
+  origin: user_seed
+  category: mechanics
+  license_signal: GPL-3.0
+  review_status: initial_inspection
+  inspection: metadata; README retrieval failed
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: Gen 3 RAM, navigation, mechanics and hunting modes
+- repository: wyanido/pokebot-nds
+  url: https://github.com/wyanido/pokebot-nds
+  origin: user_seed
+  category: mechanics
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: ADAPT
+  priority: P1
+  research_target: DS mechanics, language differences; archived 2025-11
+- repository: johnnieb333/Pokebot-Profiles
+  url: https://github.com/johnnieb333/Pokebot-Profiles
+  origin: user_seed
+  category: fixtures
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Scenario inventory; do not copy saves or states
+- repository: pret/pokefirered
+  url: https://github.com/pret/pokefirered
+  origin: user_seed
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: FireRed/LeafGreen symbols; existing source-lock pin is authoritative
+- repository: pret/pokeruby
+  url: https://github.com/pret/pokeruby
+  origin: user_seed
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Ruby/Sapphire behavior and differences
+- repository: pret/pokeemerald
+  url: https://github.com/pret/pokeemerald
+  origin: user_seed
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: Emerald variant behavior
+- repository: NousResearch/pokemon-agent
+  url: https://github.com/NousResearch/pokemon-agent
+  origin: user_seed
+  category: agent
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: ADAPT
+  priority: P0
+  research_target: Upstream divergence, PyBoy and sessions; existing provenance
+- repository: Clad3815/gpt-play-pokemon-firered
+  url: https://github.com/Clad3815/gpt-play-pokemon-firered
+  origin: user_seed
+  category: agent
+  license_signal: NOASSERTION
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: mGBA socket bridge, fog-of-war, state
+- repository: christianmat/jev-pokemon
+  url: https://github.com/christianmat/jev-pokemon
+  origin: user_seed
+  category: system_one
+  license_signal: GPL-2.0
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: Self-reported Gen 1 completed run, legal decisions, loop protection
+- repository: anxkhn/JevPlaysPokemon
+  url: https://github.com/anxkhn/JevPlaysPokemon
+  origin: user_seed
+  category: system_one
+  license_signal: GPL-3.0
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: Showdown and FireRed battle benchmark
+- repository: 2389-research/jev-plays-pokemon
+  url: https://github.com/2389-research/jev-plays-pokemon
+  origin: user_seed
+  category: agent
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: ADAPT
+  priority: P1
+  research_target: PyBoy harness; manual intro
+- repository: daniel4x/JevEmon
+  url: https://github.com/daniel4x/JevEmon
+  origin: user_seed
+  category: system_one
+  license_signal: GPL-3.0
+  review_status: initial_inspection
+  inspection: README and metadata
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: Reachable destinations and encounter replanning; partial journey
+- repository: smogon/pokemon-showdown
+  url: https://github.com/smogon/pokemon-showdown
+  origin: expanded_research
+  category: battle
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P0
+  research_target: Generation-aware battle simulator
+- repository: smogon/damage-calc
+  url: https://github.com/smogon/damage-calc
+  origin: expanded_research
+  category: battle
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P0
+  research_target: Damage differential testing
+- repository: pkmn/ps
+  url: https://github.com/pkmn/ps
+  origin: expanded_research
+  category: battle
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P0
+  research_target: Modular Showdown packages
+- repository: PokeAPI/pokeapi
+  url: https://github.com/PokeAPI/pokeapi
+  origin: expanded_research
+  category: knowledge
+  license_signal: BSD-3-Clause
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P1
+  research_target: Versioned knowledge and local-first strategy
+- repository: kwsch/PKHeX
+  url: https://github.com/kwsch/PKHeX
+  origin: expanded_research
+  category: mechanics
+  license_signal: NOASSERTION
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P0
+  research_target: Save data structures and legality; no save editing in default runtime
+- repository: Admiral-Fish/PokeFinder
+  url: https://github.com/Admiral-Fish/PokeFinder
+  origin: expanded_research
+  category: mechanics
+  license_signal: GPL-3.0
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: RNG and encounter mechanics
+- repository: hsahovic/poke-env
+  url: https://github.com/hsahovic/poke-env
+  origin: expanded_research
+  category: benchmark
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P1
+  research_target: Python battle benchmark interface
+- repository: pret/pokered
+  url: https://github.com/pret/pokered
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Red/Blue disassembly
+- repository: pret/pokecrystal
+  url: https://github.com/pret/pokecrystal
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Crystal disassembly
+- repository: pret/pokeplatinum
+  url: https://github.com/pret/pokeplatinum
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Platinum decompilation
+- repository: pret/pokeheartgold
+  url: https://github.com/pret/pokeheartgold
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: not detected
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: HGSS decompilation
+- repository: mgba-emu/mgba
+  url: https://github.com/mgba-emu/mgba
+  origin: expanded_research
+  category: backend
+  license_signal: MPL-2.0
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P0
+  research_target: Current GBA backend
+- repository: Baekalfen/PyBoy
+  url: https://github.com/Baekalfen/PyBoy
+  origin: expanded_research
+  category: backend
+  license_signal: NOASSERTION
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: DEPEND
+  priority: P1
+  research_target: GB/GBC backend
+- repository: TASEmulators/BizHawk
+  url: https://github.com/TASEmulators/BizHawk
+  origin: expanded_research
+  category: backend
+  license_signal: NOASSERTION
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Multi-system frame and scripting interface
+- repository: melonDS-emu/melonDS
+  url: https://github.com/melonDS-emu/melonDS
+  origin: expanded_research
+  category: backend
+  license_signal: GPL-3.0
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: DS backend research
+- repository: azahar-emu/azahar
+  url: https://github.com/azahar-emu/azahar
+  origin: expanded_research
+  category: backend
+  license_signal: GPL-3.0
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P2
+  research_target: 3DS backend research
+- repository: PokemonAutomation/Arduino-Source
+  url: https://github.com/PokemonAutomation/Arduino-Source
+  origin: expanded_research
+  category: automation
+  license_signal: MIT
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P2
+  research_target: Hardware/visual controller automation
+- repository: kwsch/SysBot.NET
+  url: https://github.com/kwsch/SysBot.NET
+  origin: expanded_research
+  category: automation
+  license_signal: AGPL-3.0
+  review_status: initial_inspection
+  inspection: GitHub metadata only
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P2
+  research_target: Switch remote automation
+- repository: pret/pokeyellow
+  url: https://github.com/pret/pokeyellow
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Yellow variants
+- repository: pret/pokegold
+  url: https://github.com/pret/pokegold
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Gold/Silver
+- repository: pret/pokediamond
+  url: https://github.com/pret/pokediamond
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Diamond/Pearl
+- repository: Project-Holon/aletheia
+  url: https://github.com/Project-Holon/aletheia
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Gen 5 decompilation candidate
+- repository: Project-Holon/eidos
+  url: https://github.com/Project-Holon/eidos
+  origin: expanded_research
+  category: backend
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Experimental native port candidate
+- repository: pret/pmd-red
+  url: https://github.com/pret/pmd-red
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Mystery Dungeon Red candidate
+- repository: pret/pmd-sky
+  url: https://github.com/pret/pmd-sky
+  origin: expanded_research
+  category: reverse_engineering
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Mystery Dungeon Sky candidate
+- repository: sethkarten/pokeagent-speedrun
+  url: https://github.com/sethkarten/pokeagent-speedrun
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Emerald harness
+- repository: xndrewlee/pokeagent-speedrun
+  url: https://github.com/xndrewlee/pokeagent-speedrun
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: MCP and mGBA harness fork
+- repository: Ben-Schneider-code/pokeagent-speedrun
+  url: https://github.com/Ben-Schneider-code/pokeagent-speedrun
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Lifelong learning candidate
+- repository: PWhiddy/PokemonRedExperiments
+  url: https://github.com/PWhiddy/PokemonRedExperiments
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: RL exploration
+- repository: amcheste/pokemon-red-ai
+  url: https://github.com/amcheste/pokemon-red-ai
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Pixel and symbolic observations
+- repository: drubinstein/pokemonred_puffer
+  url: https://github.com/drubinstein/pokemonred_puffer
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Parallel RL
+- repository: CalebDeLeeuwMisfits/PokemonLLMAgentBenchmark
+  url: https://github.com/CalebDeLeeuwMisfits/PokemonLLMAgentBenchmark
+  origin: expanded_research
+  category: benchmark
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: LLM benchmark
+- repository: PokemonAutomation/sys-botbase-cpp
+  url: https://github.com/PokemonAutomation/sys-botbase-cpp
+  origin: expanded_research
+  category: backend
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Switch input/memory interface candidate
+- repository: u93132/ShinyHunterUSUM
+  url: https://github.com/u93132/ShinyHunterUSUM
+  origin: expanded_research
+  category: automation
+  license_signal: unverified
+  review_status: candidate
+  inspection: not independently confirmed for this baseline
+  source_commit: null
+  provisional_integration: REFERENCE
+  priority: P2
+  research_target: 3DS visual shiny hunting candidate
+other_references:
+- name: PokéAgent Challenge
+  url: https://pokeagentchallenge.com/
+  review_status: candidate
+  research_target: Benchmark methodology and rules; verify current eligibility.
