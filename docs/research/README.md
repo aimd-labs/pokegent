@@ -11,6 +11,8 @@ This directory coordinates research before implementation. The project goal is a
 
 ## Completed research slices (proposals)
 
+- [R04: NousResearch upstream divergence](agent-frameworks/nous-upstream.md), [34-file crosswalk](agent-frameworks/nous-upstream-crosswalk.json) and [agent/backend/session integration proposal](../architecture/agent-session-integration.md). Selected source comparison with exact pins, including Clad3815; no code adoption or game-support promotion.
+
 - [R03: Jev/System One comparison](system-one/jev-comparison.md), [decision-routing architecture proposal](../architecture/decision-routing.md) and [evaluation case catalog](system-one/system-one-evaluation.json). Pinned source evidence, no runtime changes or model calls; review before implementation.
 
 - [R02: PokéBot Gen3 source audit](game-mechanics/pokebot-gen3.md) and [capability crosswalk](game-mechanics/pokebot-gen3-capabilities.json). Exact upstream pin, selected source evidence, ordinary mechanics vs policies, no copied GPL code.
