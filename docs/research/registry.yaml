@@ -301,23 +301,25 @@ repositories:
   origin: expanded_research
   category: backend
   license_signal: MPL-2.0
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  review_status: source_inspected
+  inspection: Pinned tree and selected backend source; no execution
+  source_commit: 431935616c0e216d650b25b2ea0c0acccd359038
+  provisional_integration: REFERENCE
   priority: P0
   research_target: Current GBA backend
+  research_report: docs/architecture/game-plugin-contract.md
 - repository: Baekalfen/PyBoy
   url: https://github.com/Baekalfen/PyBoy
   origin: expanded_research
   category: backend
-  license_signal: NOASSERTION
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  license_signal: LGPL-3.0 (root text reviewed)
+  review_status: source_inspected
+  inspection: Pinned tree and selected backend source; no execution
+  source_commit: 350e96fff43ae8bff076c0f90a364b410cb4b930
+  provisional_integration: REFERENCE
   priority: P1
   research_target: GB/GBC backend
+  research_report: docs/architecture/game-plugin-contract.md
 - repository: TASEmulators/BizHawk
   url: https://github.com/TASEmulators/BizHawk
   origin: expanded_research
@@ -347,23 +349,25 @@ repositories:
   origin: expanded_research
   category: backend
   license_signal: GPL-3.0
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected backend source; no execution
+  source_commit: 4a147c509571a3d16a06abe679fe1339dbbdbfd7
   provisional_integration: REFERENCE
   priority: P2
   research_target: 3DS backend research
+  research_report: docs/architecture/game-plugin-contract.md
 - repository: PokemonAutomation/Arduino-Source
   url: https://github.com/PokemonAutomation/Arduino-Source
   origin: expanded_research
   category: automation
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected backend source; no execution
+  source_commit: 1b7089e293bd17878ae44e4442f22435555f7cc1
   provisional_integration: REFERENCE
   priority: P2
   research_target: Hardware/visual controller automation
+  research_report: docs/architecture/game-plugin-contract.md
 - repository: kwsch/SysBot.NET
   url: https://github.com/kwsch/SysBot.NET
   origin: expanded_research
