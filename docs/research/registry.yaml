@@ -168,34 +168,37 @@ repositories:
   origin: expanded_research
   category: battle
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  review_status: source_inspected
+  inspection: Pinned tree and selected source inspection; no execution
+  source_commit: e7f50cd7bcb36348c631534a97ae8323b8189541
+  provisional_integration: REFERENCE
   priority: P0
   research_target: Generation-aware battle simulator
+  research_report: docs/research/game-mechanics/battle-intelligence.md
 - repository: smogon/damage-calc
   url: https://github.com/smogon/damage-calc
   origin: expanded_research
   category: battle
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  review_status: source_inspected
+  inspection: Pinned tree and selected source inspection; no execution
+  source_commit: abdce0c64597284c8c463b7f71a38dc4dc55cd10
+  provisional_integration: REFERENCE
   priority: P0
   research_target: Damage differential testing
+  research_report: docs/research/game-mechanics/battle-intelligence.md
 - repository: pkmn/ps
   url: https://github.com/pkmn/ps
   origin: expanded_research
   category: battle
   license_signal: MIT
   review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  inspection: Pinned tree and README inspection; no execution
+  source_commit: 2a0a161c4ca3cae4f0c7d02e31bcfcb542263601
+  provisional_integration: REFERENCE
   priority: P0
   research_target: Modular Showdown packages
+  research_report: docs/research/game-mechanics/battle-intelligence.md
 - repository: PokeAPI/pokeapi
   url: https://github.com/PokeAPI/pokeapi
   origin: expanded_research
@@ -211,13 +214,14 @@ repositories:
   url: https://github.com/kwsch/PKHeX
   origin: expanded_research
   category: mechanics
-  license_signal: NOASSERTION
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  license_signal: GPL-3.0 (root LICENSE reviewed)
+  review_status: source_inspected
+  inspection: Pinned tree and selected source inspection; no execution
+  source_commit: a5311f9f55a84376fd2e2499b25d9fb9640d9f2d
   provisional_integration: REFERENCE
   priority: P0
   research_target: Save data structures and legality; no save editing in default runtime
+  research_report: docs/research/game-mechanics/battle-intelligence.md
 - repository: Admiral-Fish/PokeFinder
   url: https://github.com/Admiral-Fish/PokeFinder
   origin: expanded_research
@@ -234,12 +238,13 @@ repositories:
   origin: expanded_research
   category: benchmark
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
-  provisional_integration: DEPEND
+  review_status: source_inspected
+  inspection: Pinned tree and selected source inspection; no execution
+  source_commit: bab3673909666f68814a239dfa2a957c1f5c07aa
+  provisional_integration: REFERENCE
   priority: P1
   research_target: Python battle benchmark interface
+  research_report: docs/research/game-mechanics/battle-intelligence.md
 - repository: pret/pokered
   url: https://github.com/pret/pokered
   origin: expanded_research
