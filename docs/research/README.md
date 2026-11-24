@@ -9,6 +9,11 @@ This directory coordinates research before implementation. The project goal is a
 - [Gap analysis](gap-analysis.md): prioritized findings and existing issue links.
 - [Roadmap](../../ROADMAP.md): proposed dependency-ordered work packages.
 
+## Completed research slices (proposals)
+
+- [R02: PokéBot Gen3 source audit](game-mechanics/pokebot-gen3.md) and [capability crosswalk](game-mechanics/pokebot-gen3-capabilities.json). Exact upstream pin, selected source evidence, ordinary mechanics vs policies, no copied GPL code.
+- [Open issue review — 2026-11-24](issue-review-2026-11-24.md): snapshot of 22 issues, coordination and proposed priorities; not a live board.
+
 ## Research workflow
 
 1. Register source URL, repository identity, license signal, scope, and inspection level. Before a detailed audit pin the exact source commit; a README or metadata check alone is not a code audit.

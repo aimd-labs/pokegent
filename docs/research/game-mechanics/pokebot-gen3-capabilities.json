@@ -1,0 +1,733 @@
+{
+  "schema_version": 1,
+  "work_package": "R02",
+  "reviewed_on": "2026-11-24",
+  "pokegent_baseline": "c73774285e5e164d01629ca14a5e8e551e03493f",
+  "foundation_commit": "4dab290cd8d1e8d4aa3ed19d98e67619a27a33a0",
+  "reference_repository": "https://github.com/40Cakes/pokebot-gen3",
+  "reference_commit": "f14ab79db960315db02333928ba444f9d425b6fc",
+  "license": "GPL-3.0",
+  "integration": "REFERENCE",
+  "scope": "Selected source-level inspection, source path inventory, and documented/native test declarations; no upstream code executed; no compatibility status promotion.",
+  "evidence_definitions": {
+    "source_inspected": "Selected implementation/entry points inspected; some listed paths only inventoried, as noted in findings.",
+    "path_inventory": "File presence only.",
+    "not_established": "Equivalent mechanism not established; not evidence of absence."
+  },
+  "entries": [
+    {
+      "id": "R02-01",
+      "priority": "P1",
+      "capability_ids": [
+        "runtime.backend",
+        "runtime.state",
+        "runtime.scene",
+        "runtime.sessions",
+        "runtime.game_plugin"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/roms.py#L78-L174",
+        "modules/game.py#L28-L187",
+        "modules/memory.py#L118-L218",
+        "modules/tasks.py#L14-L176",
+        "modules/state_cache.py#L21-L112",
+        "modules/main.py#L76-L142",
+        "modules/libmgba.py#L96-L163",
+        "tests/README.md"
+      ],
+      "pokegent_sources": [
+        "pokegent/emulator.py",
+        "pokegent/games/gen3/firered/reader/snapshot_sources.py",
+        "pokegent/references/rom_profiles.yaml",
+        "pokegent/pipeline.py",
+        "pokegent/app.py"
+      ],
+      "issues": [
+        139,
+        143,
+        138
+      ],
+      "findings": "ROM family, language and revision selection; symbol/task and save-block decoding; cache aging/reset; frame controller.",
+      "recommendation": "Retain actor and exact hash admission; isolate profile/reader selection behind #139, then prove one second title with private native tests. Never inherit offsets or language patches without evidence.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-02",
+      "priority": "P1",
+      "capability_ids": [
+        "runtime.execution",
+        "runtime.objectives"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/main.py#L76-L142",
+        "modules/modes/_interface.py#L24-L205",
+        "modules/modes/util/tasks_scripts.py#L11-L162",
+        "modules/modes/util/walking.py#L314-L406"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/_exec/executor.py",
+        "pokegent/loop.py",
+        "pokegent/goals/source.py"
+      ],
+      "issues": [
+        132,
+        133,
+        165
+      ],
+      "findings": "Frame-driven generators/listeners and task-specific waits; no equivalent revisioned objective contract established.",
+      "recommendation": "Use event boundaries as behavioral reference only. Preserve single input writer, bounded waits (frames AND wall time), fresh legality, verified postconditions and explicit objective intent.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-03",
+      "priority": "P1",
+      "capability_ids": [
+        "runtime.agent",
+        "runtime.system_one",
+        "runtime.hybrid"
+      ],
+      "reference_evidence": "not_established",
+      "reference_sources": [
+        "Readme.md",
+        "modules/modes/_interface.py#L24-L205",
+        "modules/battle_strategies/_interface.py#L8-L103"
+      ],
+      "pokegent_sources": [
+        "addons/system_one/hybrid.py",
+        "docs/system-one.md",
+        "pokegent/server.py"
+      ],
+      "issues": [
+        132,
+        134,
+        135,
+        138
+      ],
+      "findings": "Bot policies select scripted actions; this audit did not establish an equivalent general LLM/external-choice protocol.",
+      "recommendation": "Retain Pokegent's typed frame API. Use deterministic mechanics only after a legal choice; evaluate routing and model modes separately under R03/R09.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-04",
+      "priority": "P1",
+      "capability_ids": [
+        "runtime.telemetry"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/encounter.py#L86-L209",
+        "modules/fishing.py#L14-L45",
+        "modules/stats.py#L591-L825",
+        "modules/stats.py#L1339-L1435"
+      ],
+      "pokegent_sources": [
+        "pokegent/events.py",
+        "pokegent/ledger.py",
+        "pokegent/ledger_ingest.py"
+      ],
+      "issues": [
+        133,
+        137,
+        146,
+        148
+      ],
+      "findings": "Encounter/fishing observations, deduplication, phase summaries and persisted statistics.",
+      "recommendation": "Add typed, public-safe outcome facts to existing events/ledger when necessary. No parallel database or raw Pokémon records; distinguish observation from verified outcome and reset/replay duplicates.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-05",
+      "priority": "P0",
+      "capability_ids": [
+        "world.navigation",
+        "world.exploration",
+        "world.unknown_obstacle"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/map.py#L525-L570",
+        "modules/map_path.py#L620-L764",
+        "modules/modes/util/walking.py#L115-L225",
+        "modules/modes/util/walking.py#L314-L406",
+        "tests/test_pathfinding.py#L16-L96"
+      ],
+      "pokegent_sources": [
+        "pokegent/navigation/graph.py",
+        "pokegent/navigation/adapter.py",
+        "pokegent/actions/field/builder.py",
+        "pokegent/actions/field/macros.py"
+      ],
+      "issues": [
+        180,
+        162,
+        178,
+        133,
+        106
+      ],
+      "findings": "Directional/elevation-aware local pathfinding, live object occupancy, destination warp handling, timeout and replan.",
+      "recommendation": "Keep world graph and static-artifact design; record exact source/entry/landing and failed edge with current evidence, bound retries/cycles, regenerate path after interruptions; prove offered route edge consistency. Do not claim a Seafoam fix without capture.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-06",
+      "priority": "P1",
+      "capability_ids": [
+        "world.field_moves"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/modes/util/higher_level_actions.py#L50-L107",
+        "modules/region_map.py#L1-L32",
+        "modules/map_path.py#L684-L722",
+        "modules/menuing.py#L804-L900"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/field/fly.py",
+        "pokegent/actions/field/builder.py#L2033-L2096",
+        "pokegent/games/gen3/firered/reader/capabilities.py"
+      ],
+      "issues": [
+        181,
+        168,
+        139
+      ],
+      "findings": "Fly badge, move, visited destination and region checks; cursor RAM and task completion; field-move gates differ by game.",
+      "recommendation": "Distinguish legal capability from route usefulness and objective policy. Diagnose missing proof; verify the live Fly cursor against pinned pret source/local ROM before widening launch coverage.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-07",
+      "priority": "P1",
+      "capability_ids": [
+        "world.fishing"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/modes/fishing.py#L13-L51",
+        "modules/modes/util/higher_level_actions.py#L109-L150",
+        "modules/modes/_listeners.py#L309-L343",
+        "modules/fishing.py#L14-L45"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/coverage.py#L217-L232",
+        "pokegent/games/gen3/firered/rom/wild.py",
+        "pokegent/actions/field/builder.py"
+      ],
+      "issues": [
+        176,
+        132,
+        133
+      ],
+      "findings": "Rod selection/registration, task-phase reactions, encounter/got-away/no-bite outcomes.",
+      "recommendation": "Add one bounded rod/target action through FieldBuilder + executor, independently verify task semantics; legitimate failed attempt is a typed game outcome, not an infrastructure failure.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-08",
+      "priority": "P1",
+      "capability_ids": [
+        "world.sweet_scent",
+        "world.encounters"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/modes/sweet_scent.py#L9-L28",
+        "modules/map.py#L1826-L2019",
+        "modules/map.py#L2028-L2299",
+        "tests/test_map.py#L102-L334",
+        "modules/fishing.py#L48-L85"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/coverage.py",
+        "pokegent/games/gen3/firered/rom/wild.py",
+        "pokegent/goals/dex_fallback.py"
+      ],
+      "issues": [
+        176,
+        139
+      ],
+      "findings": "Raw and effective wild encounters with repel/lead ability effects; encounter-triggering move; RSE Feebas tile model.",
+      "recommendation": "Separate static table, current availability and conditional effective distribution. Core supports normal encounters, not necessarily hidden-state shortcuts. Validate title-specific mechanics before exposing claims.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-09",
+      "priority": "P1",
+      "capability_ids": [
+        "world.interaction",
+        "world.pickup",
+        "world.hidden_items"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/map.py#L642-L713",
+        "modules/modes/util/higher_level_actions.py#L514-L568",
+        "modules/modes/_listeners.py#L233-L255"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/field/targets.py",
+        "pokegent/actions/field/builder.py",
+        "pokegent/actions/coverage.py"
+      ],
+      "issues": [
+        139,
+        168
+      ],
+      "findings": "Background event classification, facing requirements, NPC interaction and pickup-related hooks.",
+      "recommendation": "Keep hidden item facts out of default agent-visible state until discovered under player-knowledge policy; distinguish visible pickup from normal hidden-item search. Full hidden-item action not established.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-10",
+      "priority": "P1",
+      "capability_ids": [
+        "world.transport",
+        "world.puzzles",
+        "world.ice_slide"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/map_path.py#L589-L764",
+        "modules/modes/puzzle_solver.py#L71-L107",
+        "modules/modes/util/higher_level_actions.py#L569-L655",
+        "tests/test_pathfinding.py#L99-L157"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/field/surf/",
+        "pokegent/actions/field/bike.py",
+        "pokegent/actions/special/",
+        "pokegent/navigation/graph.py",
+        "pokegent/actions/coverage.py"
+      ],
+      "issues": [
+        180,
+        168,
+        139
+      ],
+      "findings": "Waypoint actions for water, bike, special terrain and selected puzzle scripts; native test declarations.",
+      "recommendation": "Generalize movement semantics through game adapters rather than route scripts. Audit ice specifically against the target ROM; no proof that the reference resolves every ice puzzle.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-11",
+      "priority": "P1",
+      "capability_ids": [
+        "battle.moves",
+        "battle.switch",
+        "battle.items",
+        "battle.damage",
+        "battle.formats",
+        "battle.escape",
+        "battle.capture"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/battle_state.py#L221-L467",
+        "modules/battle_strategies/_interface.py#L71-L186",
+        "modules/battle_strategies/_util.py#L44-L295",
+        "modules/battle_strategies/_util.py#L296-L521",
+        "modules/battle_strategies/catch.py#L41-L124",
+        "modules/battle_strategies/default.py#L148-L206"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/battle/",
+        "pokegent/games/gen3/ruleset/",
+        "pokegent/games/gen3/mechanics/exchange.py"
+      ],
+      "issues": [
+        132,
+        134,
+        139
+      ],
+      "findings": "Singles/doubles state and explicit targets, escape/catch/damage estimates and Safari-specific actions.",
+      "recommendation": "Preserve existing calculators and exact-action choice. Compare behavioral cases against pret/Showdown/damage-calc in R06; validate independent formula cases, target legality, battle format and uncertainty. Do not adopt deterministic battle policy as mandatory AI strategy.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-12",
+      "priority": "P1",
+      "capability_ids": [
+        "pokemon.identity",
+        "pokemon.shiny_status",
+        "pokemon.friendship"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/pokemon.py#L871-L1122",
+        "modules/pokemon.py#L1240-L1310",
+        "modules/pokemon.py#L1342-L1400"
+      ],
+      "pokegent_sources": [
+        "pokegent/games/gen3/firered/reader/mon.py#L203-L295",
+        "pokegent/games/gen3/firered/reader/schemas.py",
+        "pokegent/actions/battle/catch_facts.py"
+      ],
+      "issues": [],
+      "findings": "Individual identity, checksum, nature/gender, EV/IV, friendship, shiny status; derived traits.",
+      "recommendation": "Add version-aware, validated derived facts at a legal observation boundary; verify known vectors, egg visibility, unknown/checksum failures, and privacy/redaction. Hunting decisions remain separate.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-13",
+      "priority": "P1",
+      "capability_ids": [
+        "pokemon.party",
+        "pokemon.storage",
+        "inventory.pc_items",
+        "inventory.bag"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/pokemon_party.py#L14-L101",
+        "modules/pokemon_storage.py#L60-L139",
+        "modules/modes/util/pc_interaction.py#L27-L87",
+        "modules/modes/util/pc_interaction.py#L488-L515",
+        "modules/modes/util/items.py#L22-L148"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/menu/system_flow/build_pc.py",
+        "pokegent/actions/items/options.py",
+        "pokegent/games/gen3/firered/reader/storage.py"
+      ],
+      "issues": [
+        165,
+        139
+      ],
+      "findings": "Stable identity selection, box/party/item workflows, registration, release checks.",
+      "recommendation": "Audit capability gaps without weakening irreversible-action intent. Verify actual identity/slot and quantity changes, safe cancellation and no last healthy release/deposit. No automatic release policy.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-14",
+      "priority": "P1",
+      "capability_ids": [
+        "pokemon.evolution",
+        "pokemon.moves",
+        "pokemon.naming"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/battle_strategies/_interface.py#L26-L44",
+        "modules/battle_strategies/default.py#L25-L103",
+        "modules/plugin_interface.py#L112-L123",
+        "modules/plugin_interface.py#L196-L206",
+        "tests/test_battle_evolution.py",
+        "tests/test_battle_move_learning.py"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/menu/system_flow/build_evolution.py",
+        "pokegent/actions/menu/system_flow/build_endgame.py",
+        "pokegent/actions/battle/builder.py",
+        "pokegent/games/gen3/moves/learn.py"
+      ],
+      "issues": [
+        165,
+        137
+      ],
+      "findings": "Allow/stop evolution, replace/decline learning, nickname policy hook. Tests explicitly inspect evolution/move results.",
+      "recommendation": "Use test sequences including resume, final acknowledgement and wrong-menu control. Nickname hook is not proof of arbitrary name-entry support. Preserve explicit irreversible intent.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-15",
+      "priority": "P1",
+      "capability_ids": [
+        "pokemon.leveling",
+        "pokemon.ev_iv",
+        "strategy.team_optimization",
+        "strategy.resources"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/pokemon.py#L593-L640",
+        "modules/pokemon.py#L1084-L1109",
+        "modules/modes/ev_train.py#L24-L53",
+        "modules/modes/ev_train.py#L105-L198",
+        "modules/modes/level_grind.py#L23-L114",
+        "modules/battle_strategies/_util.py#L522-L599"
+      ],
+      "pokegent_sources": [
+        "pokegent/games/gen3/mechanics/team_planning.py",
+        "pokegent/games/gen3/mechanics/exchange.py",
+        "pokegent/goals/",
+        "pokegent/actions/menu/system_flow/build_pc.py"
+      ],
+      "issues": [
+        134,
+        139
+      ],
+      "findings": "Target EV and encounter yield checks, level grinding and resource thresholds, battle rotation heuristics.",
+      "recommendation": "Core planning facts for levels, EV targets, matchup, resources and tradeoffs; no mandatory grind loop. Validate EV cap, gain modifiers and exact RAM postconditions. Team optimization is broader than one battle strategy.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-16",
+      "priority": "P1",
+      "capability_ids": [
+        "pokemon.breeding"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/daycare.py#L9-L142",
+        "modules/modes/daycare.py#L64-L288",
+        "modules/modes/_listeners.py#L367-L435"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/coverage.py",
+        "pokegent/games/gen3/firered/reader/mon.py"
+      ],
+      "issues": [],
+      "findings": "Compatibility, parent data, egg-ready and hatching sequence; title-specific variants.",
+      "recommendation": "Split inspect daycare, compatibility, deposit/withdraw parent, collect egg and hatch event. FireRed unlock and capacity must be proven; no default release of non-target offspring.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-17",
+      "priority": "P2",
+      "capability_ids": [
+        "pokemon.trading",
+        "strategy.dex_ui"
+      ],
+      "reference_evidence": "not_established",
+      "reference_sources": [
+        "modules/pokedex.py#L8-L94",
+        "modules/modes/util/pc_interaction.py#L27-L87"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/coverage.py",
+        "pokegent/games/gen3/firered/reader/reader.py"
+      ],
+      "issues": [],
+      "findings": "Dex reading and storage exist; complete trade protocol or interactive dex UI not established by inspected sources.",
+      "recommendation": "Ordinary core scope. Research game-specific NPC trade and link capability separately; do not infer support from readers.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-18",
+      "priority": "P1",
+      "capability_ids": [
+        "strategy.dex_completion"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/pokedex.py#L8-L94",
+        "modules/map.py#L1884-L2299",
+        "modules/daycare.py#L9-L142",
+        "modules/encounter.py#L118-L156"
+      ],
+      "pokegent_sources": [
+        "pokegent/goals/dex_fallback.py#L19-L68",
+        "pokegent/games/gen3/firered/rom/wild.py",
+        "pokegent/actions/battle/catch_facts.py"
+      ],
+      "issues": [
+        176,
+        139
+      ],
+      "findings": "Dex state and multiple acquisition mechanics, but no general dependency-complete dex planner established.",
+      "recommendation": "Replace land-only 1–151 fallback limitations incrementally with per-game acquisition graph; distinguish catch, gift, evolve, breed, trade, version exclusives, event and unverified/unsupported routes.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-19",
+      "priority": "P1",
+      "capability_ids": [
+        "inventory.shop",
+        "inventory.healing"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/modes/util/higher_level_actions.py#L172-L196",
+        "modules/modes/util/higher_level_actions.py#L301-L513",
+        "modules/modes/level_grind.py#L49-L90"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/menu/shop/builder.py",
+        "pokegent/goals/shop_feasibility.py",
+        "pokegent/actions/menu/dialog/"
+      ],
+      "issues": [
+        137,
+        133
+      ],
+      "findings": "Menu-driven buying/selling, quantities and healing trips.",
+      "recommendation": "Compare pre/post quantity, money and HP; preserve protected items and current shop stock. Reuse existing shop code and incident tests, not a new bot policy.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-20",
+      "priority": "P2",
+      "capability_ids": [
+        "inventory.berries"
+      ],
+      "reference_evidence": "path_inventory",
+      "reference_sources": [
+        "modules/berry_trees.py",
+        "modules/modes/util/berry_tree_interaction.py",
+        "modules/modes/berry_blend.py"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/coverage.py",
+        "pokegent/actions/items/options.py"
+      ],
+      "issues": [],
+      "findings": "Berry growth/interaction and blending modules exist; details not audited here.",
+      "recommendation": "Ordinary mechanics; title-specific state and clock evidence first, optional farming policy later.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-21",
+      "priority": "P1",
+      "capability_ids": [
+        "progression.intro"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/modes/util/soft_reset.py#L100-L138",
+        "tests/test_mode_starter.py",
+        "tests/README.md"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/menu/system_flow/build_endgame.py",
+        "tests/test_intro_save_validation.py"
+      ],
+      "issues": [
+        135,
+        138
+      ],
+      "findings": "Reset-to-title and starter scenarios; native test suite starts from states.",
+      "recommendation": "Test fresh boot and intro independently; no claim of an autonomous cold-to-credits run from these focused scenarios.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-22",
+      "priority": "P1",
+      "capability_ids": [
+        "progression.story",
+        "progression.elite_four"
+      ],
+      "reference_evidence": "not_established",
+      "reference_sources": [
+        "Readme.md",
+        "modules/modes/puzzle_solver.py#L71-L107",
+        "tests/README.md"
+      ],
+      "pokegent_sources": [
+        "pokegent/goals/story.py",
+        "pokegent/games/gen3/firered/rom/story_generation.py",
+        "pokegent/actions/menu/system_flow/build_endgame.py"
+      ],
+      "issues": [
+        135,
+        138,
+        106
+      ],
+      "findings": "Specialized scenarios and puzzle solutions, not a verified general campaign framework in inspected evidence.",
+      "recommendation": "Retain existing story/objective source and verified milestones; independent repeated RAM-backed campaigns required.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-23",
+      "priority": "P2",
+      "capability_ids": [
+        "progression.postgame",
+        "progression.side_content",
+        "progression.title_mechanics"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/modes/puzzle_solver.py",
+        "modules/modes/safari.py#L78-L267",
+        "modules/modes/roamer_reencounter.py#L32-L174",
+        "modules/modes/feebas.py#L123-L236",
+        "modules/modes/game_corner.py",
+        "modules/modes/berry_blend.py"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/special/",
+        "pokegent/actions/coverage.py"
+      ],
+      "issues": [
+        139
+      ],
+      "findings": "Selected legendary/puzzle/roamer/Safari and other title-specific scenario surfaces; Game Corner and berry blender are inventory-level references only.",
+      "recommendation": "Normal side-content actions are core; add game-dependent capability IDs and explicit admission/verification, do not ship hardcoded routes or claim complete postgame.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-24",
+      "priority": "P2",
+      "capability_ids": [
+        "addon.shiny_hunting",
+        "addon.rng_manipulation"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/encounter.py#L86-L156",
+        "modules/modes/static_soft_resets.py#L94-L138",
+        "modules/modes/util/soft_reset.py#L100-L175",
+        "modules/modes/feebas.py#L123-L236",
+        "tests/test_mode_spin.py#L13-L61"
+      ],
+      "pokegent_sources": [
+        "pokegent/actions/_exec/executor.py",
+        "docs/addons.md"
+      ],
+      "issues": [],
+      "findings": "Encounter criteria, repeat hunting, reset modes, RNG sequence/test helpers.",
+      "recommendation": "Optional hunting policy selects legal core actions and protects target, budget, saves and abort behavior. RNG manipulation separately opt-in; test-only RNG writes or debug writes never enter normal executor.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-25",
+      "priority": "P2",
+      "capability_ids": [
+        "addon.streaming",
+        "addon.dashboard",
+        "addon.external_services"
+      ],
+      "reference_evidence": "source_inspected",
+      "reference_sources": [
+        "modules/plugin_interface.py#L12-L206",
+        "modules/plugins.py#L21-L181",
+        "modules/web/docs/event_stream.md",
+        "modules/built_in_plugins/discord_integration.py",
+        "modules/built_in_plugins/obs.py"
+      ],
+      "pokegent_sources": [
+        "pokegent/addons.py",
+        "addons/runtime.py",
+        "docs/addons.md",
+        "pokegent/dashboard/"
+      ],
+      "issues": [],
+      "findings": "Lifecycle and observation hooks; OBS/Discord/web surfaces identified (transport implementations not audited).",
+      "recommendation": "Design a read-only observer API and separately admitted policy extension API; no direct emulator input, untrusted plugin execution or public exposure of local/private data.",
+      "integration": "REFERENCE"
+    },
+    {
+      "id": "R02-26",
+      "priority": "P2",
+      "capability_ids": [
+        "addon.nuzlocke",
+        "addon.speedrunning",
+        "addon.model_training"
+      ],
+      "reference_evidence": "not_established",
+      "reference_sources": [
+        "Readme.md",
+        "modules/modes/_interface.py#L24-L205"
+      ],
+      "pokegent_sources": [
+        "docs/addons.md",
+        "pokegent/ledger_splits.py"
+      ],
+      "issues": [],
+      "findings": "No complete challenge-rule, speedrun or model-training framework established by this audit.",
+      "recommendation": "Future R09/R11 work; retain ordinary mechanics in core and specialized policy/experimentation optional.",
+      "integration": "REFERENCE"
+    }
+  ]
+}

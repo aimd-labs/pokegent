@@ -23,12 +23,14 @@ repositories:
   origin: user_seed
   category: mechanics
   license_signal: GPL-3.0
-  review_status: initial_inspection
-  inspection: metadata; README retrieval failed
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree inventory and selected source/test inspection; no native run
+  source_commit: f14ab79db960315db02333928ba444f9d425b6fc
   provisional_integration: REFERENCE
   priority: P0
   research_target: Gen 3 RAM, navigation, mechanics and hunting modes
+  research_report: docs/research/game-mechanics/pokebot-gen3.md
+  capability_crosswalk: docs/research/game-mechanics/pokebot-gen3-capabilities.json
 - repository: wyanido/pokebot-nds
   url: https://github.com/wyanido/pokebot-nds
   origin: user_seed
