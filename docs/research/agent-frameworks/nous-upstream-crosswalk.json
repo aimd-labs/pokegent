@@ -1,0 +1,565 @@
+{
+  "schema_version": 1,
+  "work_package": "R04",
+  "status": "proposed_source_comparison",
+  "reviewed_on": "2026-11-24",
+  "upstream": {
+    "repository": "NousResearch/pokemon-agent",
+    "commit": "f8a03e4a8bc58f1d9dda6d677a7436cc832a57a9",
+    "tree": "0ad2312e9662d9003ec62ee36e6b995b9d252a06",
+    "license": "MIT",
+    "files": 34
+  },
+  "baseline": {
+    "repository": "aimd-labs/pokegent",
+    "commit": "c73774285e5e164d01629ca14a5e8e551e03493f",
+    "tree": "cfd1fc9830dd53dfbc29c248f3568d9737c9f080",
+    "files": 485
+  },
+  "comparison_method": "Pinned recursive blob inventory and selected source comparison. Cross-repository compare API returned 404; no proven common ancestor or historical diff. Path differences and blob equality are not provenance proof. Current source-lock remains authoritative.",
+  "entries": [
+    {
+      "upstream_path": ".gitignore",
+      "upstream_blob": "ad7735e8206cfd55611cef553b512882675816c6",
+      "upstream_bytes": 265,
+      "relative_candidate": ".gitignore",
+      "relative_candidate_blob": "805593907b4c72a17212fbee324d4752c26d8c18",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "changed",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        ".gitignore"
+      ],
+      "recommendation": "Keep current private game data and credential exclusions; compare patterns in R12, not replace."
+    },
+    {
+      "upstream_path": "LICENSE",
+      "upstream_blob": "5700b997827973cb0eb6d84a2782bb08a5872434",
+      "upstream_bytes": 1070,
+      "relative_candidate": "LICENSE",
+      "relative_candidate_blob": "c235170297fd1b207d70a0acefa35a1ca4faab55",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "source-lock.md"
+      ],
+      "recommendation": "MIT attribution retained for both organizations; current source-lock is authoritative."
+    },
+    {
+      "upstream_path": "README.md",
+      "upstream_blob": "36af25f972a4a61df5f6d8e16264b202bef2ec53",
+      "upstream_bytes": 13495,
+      "relative_candidate": "README.md",
+      "relative_candidate_blob": "44134e8c597d439dfd8e3d6664bc38b9ff50f28d",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "README.md",
+        "docs/clean-start.md",
+        "docs/connect-your-agent.md"
+      ],
+      "recommendation": "Current supported Rev0 setup is narrower but explicit. Upstream feature claim conflicts with Phase2 stub."
+    },
+    {
+      "upstream_path": "pokemon_agent/__init__.py",
+      "upstream_blob": "1a835c55ac576f508baf8fa76f02672bef06001e",
+      "upstream_bytes": 81,
+      "relative_candidate": "pokegent/__init__.py",
+      "relative_candidate_blob": "f215d16f40634475f18c7cbed77b1fb6812bed9f",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/__init__.py"
+      ],
+      "recommendation": "Current package namespace; no compatibility alias needed without demand."
+    },
+    {
+      "upstream_path": "pokemon_agent/autopilot.py",
+      "upstream_blob": "0de9469352e5bc12a806b6e4fe298b9c432cc745",
+      "upstream_bytes": 11139,
+      "relative_candidate": "pokegent/autopilot.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "source",
+      "pokegent_paths": [
+        "ops/hermes/owner_status.py",
+        "ops/hermes/owner_heartbeat.py",
+        "skill/pokegent/SKILL.md",
+        "examples/choose_inspected_frame.py"
+      ],
+      "recommendation": "Persistent Hermes integration now separate owner and choice paths. Reintroduce optional client only via guarded frame and objective API, not raw action driver."
+    },
+    {
+      "upstream_path": "pokemon_agent/cli.py",
+      "upstream_blob": "daadea6e8a80c6ee56649c365f85f5afb6d168aa",
+      "upstream_bytes": 5054,
+      "relative_candidate": "pokegent/cli.py",
+      "relative_candidate_blob": "0178e0d1e03ebfee1e37bc1f98e9c32e71a61258",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/cli.py"
+      ],
+      "recommendation": "Run/step/objective/ledger commands supersede serve/play; info extension detection not game admission."
+    },
+    {
+      "upstream_path": "pokemon_agent/collision.py",
+      "upstream_blob": "285c9f59b10c93a18cd4a059f05ff8024f2ff977",
+      "upstream_bytes": 6294,
+      "relative_candidate": "pokegent/collision.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_game_specific",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/games/gen3/firered/maps/world.py",
+        "pokegent/navigation/graph.py"
+      ],
+      "recommendation": "Gen1 visible block collision reader missing. Reimplement verified Gen1 geometry; local tile table not approved for copying."
+    },
+    {
+      "upstream_path": "pokemon_agent/dashboard/__init__.py",
+      "upstream_blob": "c6c267e94f4d2ac0c2076afd01504dcdb80caef9",
+      "upstream_bytes": 166,
+      "relative_candidate": "pokegent/dashboard/__init__.py",
+      "relative_candidate_blob": "cc4e0f832071eb4bcbab5978741facc3c6fd68e3",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/dashboard/__init__.py"
+      ],
+      "recommendation": "Keep optional local dashboard."
+    },
+    {
+      "upstream_path": "pokemon_agent/dashboard/history.py",
+      "upstream_blob": "357f9250aaffe19f57596378f12e6809eee294ca",
+      "upstream_bytes": 8611,
+      "relative_candidate": "pokegent/dashboard/history.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/events.py",
+        "pokegent/history.py",
+        "pokegent/dashboard/records.py",
+        "pokegent/ledger.py"
+      ],
+      "recommendation": "Use typed event/ledger history, not inferred narrative milestones."
+    },
+    {
+      "upstream_path": "pokemon_agent/dashboard/mount.py",
+      "upstream_blob": "ea859ec1df2896146a0950b6a6e7ef4223ff22ed",
+      "upstream_bytes": 1532,
+      "relative_candidate": "pokegent/dashboard/mount.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/dashboard/server.py",
+        "addons/runtime.py"
+      ],
+      "recommendation": "Split listener architecture supersedes combined server mounting."
+    },
+    {
+      "upstream_path": "pokemon_agent/dashboard/static/app.js",
+      "upstream_blob": "52805a429874a14b36be9d3644b4a8b098e6cc80",
+      "upstream_bytes": 20677,
+      "relative_candidate": "pokegent/dashboard/static/app.js",
+      "relative_candidate_blob": "6a0e70849f8357efe53a5ba8346be7a54c09d83b",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/dashboard/static/app.js",
+        "pokegent/dashboard/fallback.html"
+      ],
+      "recommendation": "UI changed; audit named-session UX separately; no claim of full UI comparison."
+    },
+    {
+      "upstream_path": "pokemon_agent/dashboard/static/index.html",
+      "upstream_blob": "7ceb23e7c27bce0aa65c28ee3517e6e496247cfb",
+      "upstream_bytes": 8027,
+      "relative_candidate": "pokegent/dashboard/static/index.html",
+      "relative_candidate_blob": "eeed29fff13a87d770fbcdf0ad8725e37a5ca4fe",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/dashboard/static/index.html",
+        "pokegent/dashboard/fallback.html"
+      ],
+      "recommendation": "Dashboard surface present; do not restore mutating game buttons by default."
+    },
+    {
+      "upstream_path": "pokemon_agent/dashboard/static/style.css",
+      "upstream_blob": "f64bf5b68bf2ec2b3c64e81082305ecc85cf8112",
+      "upstream_bytes": 18102,
+      "relative_candidate": "pokegent/dashboard/static/style.css",
+      "relative_candidate_blob": "283687d16d34ff385057442efeb8385886f8f565",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/dashboard/static/style.css"
+      ],
+      "recommendation": "Presentation layer, not core game support."
+    },
+    {
+      "upstream_path": "pokemon_agent/emulator.py",
+      "upstream_blob": "8d77eb44c9ae44b438a7d025a82e6733d590b54b",
+      "upstream_bytes": 12639,
+      "relative_candidate": "pokegent/emulator.py",
+      "relative_candidate_blob": "0e489674ec91891ddd8eb03a546e0baf3dffe0e9",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/emulator.py",
+        "tests/emulator/test_emulator_actor.py"
+      ],
+      "recommendation": "Actor, clocks, atomic reads, mGBA implementation and state validation stronger; PyBoy incomplete actor compatibility."
+    },
+    {
+      "upstream_path": "pokemon_agent/memory/__init__.py",
+      "upstream_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "upstream_bytes": 0,
+      "relative_candidate": "pokegent/memory/__init__.py",
+      "relative_candidate_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/memory/__init__.py"
+      ],
+      "recommendation": "Package shell only."
+    },
+    {
+      "upstream_path": "pokemon_agent/memory/firered.py",
+      "upstream_blob": "d047d46c84f0c5f09d5808e5fbed2f664fc8fc64",
+      "upstream_bytes": 5858,
+      "relative_candidate": "pokegent/memory/firered.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/games/gen3/firered/reader/reader.py",
+        "pokegent/games/gen3/firered/reader/mon.py",
+        "pokegent/games/gen3/firered/rom/rom_data.py"
+      ],
+      "recommendation": "Upstream skeleton; current verified decoder and profile path, do not restore stub."
+    },
+    {
+      "upstream_path": "pokemon_agent/memory/reader.py",
+      "upstream_blob": "78f7d709517139c632537037bf9a434bf35047d9",
+      "upstream_bytes": 3514,
+      "relative_candidate": "pokegent/memory/reader.py",
+      "relative_candidate_blob": "84ac5e66d498a452a27111863bc5d666fc9685d7",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/memory/reader.py",
+        "pokegent/pipeline.py"
+      ],
+      "recommendation": "Legacy dictionary reader abstraction useful conceptually, insufficient typed snapshot authority."
+    },
+    {
+      "upstream_path": "pokemon_agent/memory/red.py",
+      "upstream_blob": "84322663a881c7da7e721cd6b6e34809a08016d6",
+      "upstream_bytes": 31995,
+      "relative_candidate": "pokegent/memory/red.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_game_specific",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/games/gen3/firered/reader/schemas.py",
+        "pokegent/references/rom_profiles.yaml"
+      ],
+      "recommendation": "Gen1 reader absent. Review MIT generic parsing separately from game tables; use independently verified ROM-specific data, not direct import."
+    },
+    {
+      "upstream_path": "pokemon_agent/overlay.py",
+      "upstream_blob": "a360f7c951c98952edc5e18d6143ec758601beff",
+      "upstream_bytes": 6027,
+      "relative_candidate": "pokegent/overlay.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_operator_feature",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/dashboard/stream/frames.py",
+        "pokegent/server.py"
+      ],
+      "recommendation": "Annotated screen can help external agent/operator but is optional evidence, not legality."
+    },
+    {
+      "upstream_path": "pokemon_agent/pathfinding.py",
+      "upstream_blob": "a139ff60a6f0dc487d4d2a4d6a99f0e30e41bd03",
+      "upstream_bytes": 6785,
+      "relative_candidate": "pokegent/pathfinding.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/navigation/graph.py",
+        "pokegent/navigation/planner.py"
+      ],
+      "recommendation": "Preserve global route/verification; upstream local A* assumes walkable when no map supplied, reject unknown instead."
+    },
+    {
+      "upstream_path": "pokemon_agent/server.py",
+      "upstream_blob": "8877b87a7320865c6163c6f99e48bb64d2df002b",
+      "upstream_bytes": 33847,
+      "relative_candidate": "pokegent/server.py",
+      "relative_candidate_blob": "8a4693025317adf0671f68657273e5ed5adae2f2",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/server.py",
+        "pokegent/dashboard/server.py",
+        "docs/server.md"
+      ],
+      "recommendation": "Raw mutable endpoints intentionally replaced by loopback decision bridge and observers."
+    },
+    {
+      "upstream_path": "pokemon_agent/sessions.py",
+      "upstream_blob": "2004710624e78f681193e583a40daf9ceae92813",
+      "upstream_bytes": 6198,
+      "relative_candidate": "pokegent/sessions.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_operator_feature",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/app.py",
+        "pokegent/supervisor.py",
+        "pokegent/live.py",
+        "pokegent/ledger.py"
+      ],
+      "recommendation": "Named playthrough catalog, explicit checkpoint selection and agent continuity useful; do not port legacy CRUD or ownership."
+    },
+    {
+      "upstream_path": "pokemon_agent/state/__init__.py",
+      "upstream_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "upstream_bytes": 0,
+      "relative_candidate": "pokegent/state/__init__.py",
+      "relative_candidate_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "pokegent/state/__init__.py"
+      ],
+      "recommendation": "Package shell only."
+    },
+    {
+      "upstream_path": "pokemon_agent/state/builder.py",
+      "upstream_blob": "d76c2ac488c08d45f2b4de14cd0010b774737b9f",
+      "upstream_bytes": 6652,
+      "relative_candidate": "pokegent/state/builder.py",
+      "relative_candidate_blob": "7c74fb3de1ddca4415bf0af9ca46dd61e5ae62f5",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pokegent/state/builder.py",
+        "pokegent/games/gen3/firered/reader/snapshot_sources.py"
+      ],
+      "recommendation": "Dictionary assembly compatibility/display utility; not substitute for atomic typed snapshots."
+    },
+    {
+      "upstream_path": "pyproject.toml",
+      "upstream_blob": "625df51b71e49dcf94b289935b4424c171749f08",
+      "upstream_bytes": 2020,
+      "relative_candidate": "pyproject.toml",
+      "relative_candidate_blob": "17b438885fc291522010c00424ded787393e0887",
+      "relative_candidate_state": "different",
+      "exact_blob_matches": [],
+      "disposition": "retained_evolved",
+      "evidence": "source",
+      "pokegent_paths": [
+        "pyproject.toml",
+        ".github/workflows/ci.yml"
+      ],
+      "recommendation": "Python 3.11 and optional native/dependency groups now explicit; audit legacy extras separately."
+    },
+    {
+      "upstream_path": "skill/SKILL.md",
+      "upstream_blob": "8b15845fd8646ca8a171e1413f04a4e7231a9b44",
+      "upstream_bytes": 9495,
+      "relative_candidate": "skill/SKILL.md",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "source",
+      "pokegent_paths": [
+        "skill/pokegent/SKILL.md",
+        "skill/pokegent/review-delivery.md",
+        "docs/connect-your-agent.md"
+      ],
+      "recommendation": "Owner-review skill replaces raw-input player skill; add separate safe choice-client guide if needed."
+    },
+    {
+      "upstream_path": "test_collision.py",
+      "upstream_blob": "1e8cc6f249f1d35f88e45889a90a81cc4ab40eb5",
+      "upstream_bytes": 2106,
+      "relative_candidate": "test_collision.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_game_specific",
+      "evidence": "test_source",
+      "pokegent_paths": [
+        "tests/test_field_guard_projection.py"
+      ],
+      "recommendation": "Gen1 geometry scenario inspiration; no copied data; existing test path is not equivalent coverage."
+    },
+    {
+      "upstream_path": "test_facing.py",
+      "upstream_blob": "b4432e4e1ca9952a793ac86d9afb1030f7d012f3",
+      "upstream_bytes": 2676,
+      "relative_candidate": "test_facing.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "unassessed_test",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "tests/emulator/test_emulator_input.py"
+      ],
+      "recommendation": "Review native facing test behavior later, regenerate synthetic and private fixtures."
+    },
+    {
+      "upstream_path": "test_imports.py",
+      "upstream_blob": "c45eb5aaacc38980e1741372f5dc151c92056e59",
+      "upstream_bytes": 483,
+      "relative_candidate": "test_imports.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "inventory",
+      "pokegent_paths": [
+        "tests/games/gen3/test_imports.py"
+      ],
+      "recommendation": "Current import suite is ROM-free; Gen1 import check when adapter added."
+    },
+    {
+      "upstream_path": "test_movement.py",
+      "upstream_blob": "80421eb3e6306543a98741758569e37b87e2e93f",
+      "upstream_bytes": 6908,
+      "relative_candidate": "test_movement.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_game_specific",
+      "evidence": "entry_point",
+      "pokegent_paths": [
+        "tests/emulator/test_emulator_input.py",
+        "tests/test_field_planned_prefix.py"
+      ],
+      "recommendation": "Native Gen1 movement script uses local ROM; scenario reference only."
+    },
+    {
+      "upstream_path": "test_movement2.py",
+      "upstream_blob": "1df90e13110acbcf45fd0fc8540a8d9d4f218e80",
+      "upstream_bytes": 5982,
+      "relative_candidate": "test_movement2.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "unassessed_test",
+      "evidence": "inventory",
+      "pokegent_paths": [],
+      "recommendation": "Inventory only; assess movement cases in Gen1 research."
+    },
+    {
+      "upstream_path": "test_server.py",
+      "upstream_blob": "e5a27aa319cac5ab6bcc69db95ca324a409f569e",
+      "upstream_bytes": 6245,
+      "relative_candidate": "test_server.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "replaced",
+      "evidence": "entry_point",
+      "pokegent_paths": [
+        "tests/test_agent_onboarding.py",
+        "tests/test_step_choose_frame_id.py",
+        "tests/test_loopback_hosts.py"
+      ],
+      "recommendation": "Legacy API/native script not current contract; safe bridge tests replace raw actions."
+    },
+    {
+      "upstream_path": "test_species_mapping.py",
+      "upstream_blob": "17d042319ef73210c40763761e7435fbbfabf0fd",
+      "upstream_bytes": 2198,
+      "relative_candidate": "test_species_mapping.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_game_specific",
+      "evidence": "test_source",
+      "pokegent_paths": [
+        "tests/test_species_dex.py"
+      ],
+      "recommendation": "Gen1 internal index != National Dex; bijection/unknown and monotype tests inspire new version-specific checks."
+    },
+    {
+      "upstream_path": "test_timing.py",
+      "upstream_blob": "0d91e3302eb0ad1d193d14c3723fe554538bfd01",
+      "upstream_bytes": 4711,
+      "relative_candidate": "test_timing.py",
+      "relative_candidate_blob": null,
+      "relative_candidate_state": "absent",
+      "exact_blob_matches": [],
+      "disposition": "missing_game_specific",
+      "evidence": "entry_point",
+      "pokegent_paths": [
+        "tests/emulator/test_emulator_actor.py",
+        "tests/test_realtime_decision_idle.py"
+      ],
+      "recommendation": "Native timing script starts local ROM; derive independent timing/held-input tests."
+    }
+  ],
+  "notes": "Equivalent paths indicate relevant replacement/related test, not necessarily full parity or direct derivation. Inventory includes all 34 upstream files; selected source inspection only, no code copied, no tests run."
+}

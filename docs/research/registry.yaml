@@ -91,23 +91,27 @@ repositories:
   origin: user_seed
   category: agent
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
-  provisional_integration: ADAPT
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/test inspection; no execution
+  source_commit: f8a03e4a8bc58f1d9dda6d677a7436cc832a57a9
+  provisional_integration: REFERENCE
   priority: P0
   research_target: Upstream divergence, PyBoy and sessions; existing provenance
+  research_report: docs/research/agent-frameworks/nous-upstream.md
+  adaptation_note: Selected generic MIT code may be considered after per-file provenance and data-rights review
+  file_crosswalk: docs/research/agent-frameworks/nous-upstream-crosswalk.json
 - repository: Clad3815/gpt-play-pokemon-firered
   url: https://github.com/Clad3815/gpt-play-pokemon-firered
   origin: user_seed
   category: agent
-  license_signal: NOASSERTION
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
+  license_signal: CC-BY-NC-4.0 (root LICENSE reviewed)
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/test inspection; no execution
+  source_commit: 9619b101d607ee79b68e1274174ac3b6eeb6ff06
   provisional_integration: REFERENCE
   priority: P1
   research_target: mGBA socket bridge, fog-of-war, state
+  research_report: docs/research/agent-frameworks/nous-upstream.md
 - repository: christianmat/jev-pokemon
   url: https://github.com/christianmat/jev-pokemon
   origin: user_seed
