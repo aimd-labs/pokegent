@@ -19,6 +19,10 @@ The goal is a complete Pokémon tool for arbitrary agents, not a fixed walkthrou
 | R11 | P2 | Add-on extension research | Policies use public core capabilities; shiny, Nuzlocke, speedrun, RNG, streaming integrations |
 | R12 | P0/P1 | OSS maintenance | Existing issues for reproducibility, security, contribution ownership, release/compatibility evidence |
 
+## Initial research delivery status (2026-11-24)
+
+All twelve initial documentation packages have been prepared as a stacked review proposal. See [senior review index](docs/research/oss-maintenance.md#senior-review-index) for each incremental PR and outstanding validation. This is not completion of implementation, exhaustive source audits, native acceptance or a release gate. No support statuses are promoted. Review and merge in order, retarget/rebase as necessary; maintainer owns merge and deployment.
+
 ## Milestones (no calendar promises)
 
 1. **Research foundation:** R01 initial mapping, R02–R07 research notes pinned to source revisions; prioritize current live blockers in parallel with research.

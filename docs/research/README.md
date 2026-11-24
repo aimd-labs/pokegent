@@ -11,6 +11,17 @@ This directory coordinates research before implementation. The project goal is a
 
 ## Completed research slices (proposals)
 
+- [R05: Profiles/decompilation](game-mechanics/decompilation-profiles.md) — Five selected source pins; no new ROM admission.
+- [R06: Battle/PKHeX](game-mechanics/battle-intelligence.md) — Independent oracle/test design; no executed vectors.
+- [R07: Knowledge layer](knowledge-sources/knowledge-layer.md) — Local-first authority; no hosted API calls.
+- [R08: Nintendo DS](emulator-backends/nds-automation.md) — Selected DS references; no backend choice.
+- [R09: Evaluation](../benchmarks/evaluation-protocol.md) — Manifest proposal, no benchmark result.
+- [R10: GamePlugin/backends](../architecture/game-plugin-contract.md) — Contract proposal, no runtime change.
+- [R11: Add-ons](../architecture/addon-extension-contract.md) — Observer/policy/integration proposal, no activation.
+- [R12: OSS maintenance](oss-maintenance.md) — Governance and handoff proposal; settings unchanged.
+
+[Senior review / implementation handoff](oss-maintenance.md#senior-review-index). All research packages are proposals; see ROADMAP for dependencies and acceptance. No compatibility status is promoted.
+
 - [R04: NousResearch upstream divergence](agent-frameworks/nous-upstream.md), [34-file crosswalk](agent-frameworks/nous-upstream-crosswalk.json) and [agent/backend/session integration proposal](../architecture/agent-session-integration.md). Selected source comparison with exact pins, including Clad3815; no code adoption or game-support promotion.
 
 - [R03: Jev/System One comparison](system-one/jev-comparison.md), [decision-routing architecture proposal](../architecture/decision-routing.md) and [evaluation case catalog](system-one/system-one-evaluation.json). Pinned source evidence, no runtime changes or model calls; review before implementation.
