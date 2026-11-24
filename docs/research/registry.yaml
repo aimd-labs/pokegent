@@ -469,12 +469,13 @@ repositories:
   origin: expanded_research
   category: benchmark
   license_signal: unverified
-  review_status: candidate
-  inspection: not independently confirmed for this baseline
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected evaluation source; no execution
+  source_commit: ff23387d1c6eb2a8e742e404d3afb8e817ff7548
   provisional_integration: REFERENCE
   priority: P1
   research_target: MCP and mGBA harness fork
+  research_report: docs/benchmarks/evaluation-protocol.md
 - repository: Ben-Schneider-code/pokeagent-speedrun
   url: https://github.com/Ben-Schneider-code/pokeagent-speedrun
   origin: expanded_research
@@ -491,23 +492,25 @@ repositories:
   origin: expanded_research
   category: benchmark
   license_signal: unverified
-  review_status: candidate
-  inspection: not independently confirmed for this baseline
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected evaluation source; no execution
+  source_commit: 5fa47ef0575f35a22b1b50367b7f317bcf815747
   provisional_integration: REFERENCE
   priority: P1
   research_target: RL exploration
+  research_report: docs/benchmarks/evaluation-protocol.md
 - repository: amcheste/pokemon-red-ai
   url: https://github.com/amcheste/pokemon-red-ai
   origin: expanded_research
   category: benchmark
   license_signal: unverified
-  review_status: candidate
-  inspection: not independently confirmed for this baseline
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected evaluation source; no execution
+  source_commit: cc1cf3cea73677a569aca4441a5c8c19e44a773a
   provisional_integration: REFERENCE
   priority: P1
   research_target: Pixel and symbolic observations
+  research_report: docs/benchmarks/evaluation-protocol.md
 - repository: drubinstein/pokemonred_puffer
   url: https://github.com/drubinstein/pokemonred_puffer
   origin: expanded_research
@@ -557,3 +560,15 @@ other_references:
   url: https://pokeagentchallenge.com/
   review_status: candidate
   research_target: Benchmark methodology and rules; verify current eligibility.
+- repository: sethkarten/pokechamp
+  url: https://github.com/sethkarten/pokechamp
+  origin: research_expansion
+  category: benchmark
+  license_signal: MIT (metadata or root text)
+  review_status: source_inspected
+  inspection: Pinned tree and selected evaluation source; no execution
+  source_commit: f5c359e166625bc1d2955aeaf9c90188b1243550
+  provisional_integration: REFERENCE
+  priority: P1
+  research_target: Evaluation evidence and metrics
+  research_report: docs/benchmarks/evaluation-protocol.md

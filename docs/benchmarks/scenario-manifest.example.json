@@ -1,0 +1,36 @@
+{
+  "schema_version": "pokegent-evaluation/1",
+  "attempt_id": "synthetic-example-001",
+  "campaign_id": "synthetic-example",
+  "scenario_family": "stale-frame",
+  "layer": "L0",
+  "source_commit": "c73774285e5e164d01629ca14a5e8e551e03493f",
+  "artifact_sha256": null,
+  "game_profile": null,
+  "rom_sha256": null,
+  "initial_state_sha256": null,
+  "fixture_id": "synthetic-example-not-executable",
+  "backend": "fake",
+  "backend_version": "example",
+  "host": "example",
+  "config_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "profile_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "prompt_sha256": null,
+  "decider_mode": "mock",
+  "knowledge_policy": "synthetic",
+  "preparation": "synthetic",
+  "seed_lineage": "example-only",
+  "objective_id": "stale-frame-refusal",
+  "required_probes": [
+    "zero-unauthorized-inputs"
+  ],
+  "budgets": {
+    "wall_seconds": 10,
+    "action_decisions": 1,
+    "provider_requests": 0
+  },
+  "provider_ids": [],
+  "status": "planned",
+  "operator_interventions": 0,
+  "result_receipt_sha256": null
+}
