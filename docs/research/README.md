@@ -3,6 +3,7 @@
 This directory coordinates research before implementation. The project goal is an agent-agnostic framework covering ordinary Pokémon game mechanics across titles, with optional specialized policies and external integrations. The runtime contracts remain normative; research notes and roadmap entries are proposals unless accepted through review.
 
 - [Architecture baseline](../architecture/current-state.md): pinned current-state audit.
+- [Senior disposition](senior-disposition.md): accepted principles, deferred implementations and status language.
 - [Reference registry](registry.yaml): candidates, provenance and intended research use.
 - [Capability taxonomy](../capabilities/taxonomy.yaml): ordinary gameplay/core vs optional extension scope.
 - [Compatibility](../capabilities/compatibility.yaml): per-title evidence; never infer support from emulator availability.

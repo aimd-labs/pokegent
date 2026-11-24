@@ -29,7 +29,7 @@ No core mechanic becomes optional merely because it is outside Elite Four. GameP
 
 Three distinct roles; no arbitrary Python import/plugin sandbox claim:
 1. Observer: immutable redacted events/telemetry, opt-in media and bounded queue; slow/unavailable service drops or buffers within limit, never blocks emulator. Observer cannot propose or execute input.
-2. Policy: explicit configured scope, reads current public legal options and objective/progress, proposes a legal choice or objective revision through existing router and CAS. Can add *policy* constraints/ranking, never convert illegal/unknown into legal or rewrite game facts. Policy veto reason distinct from engine legality; no silent override or changing the underlying verified option.
+2. Policy: explicit configured scope, reads current public legal options and objective/progress, and may only *request* a legal choice or objective revision through the authorized agent or operator; it cannot write the objective CAS directly, create its own authorization or satisfy irreversible intent. Explicit consent in the current objective remains required. Policy can add *policy* constraints/ranking, never convert illegal/unknown into legal or rewrite game facts. Policy veto reason distinct from engine legality; no silent override or changing the underlying verified option.
 3. Integration: external service/client, separate credentials/network/authorization, same safe observation/proposal interface. Read-only default. No incoming chat command executes raw input or activates unreviewed policy.
 
 Proposed manifest: stable addon ID/version/contract version, compatible exact game profiles + required capabilities, role, permitted scopes, observation/knowledge policy, configuration schema and budgets, external endpoints, explicit user consent, evidence/review version. Activate only after required capability checks; missing or unknown => reject activation or degraded read-only mode. Ordinary core and all three deciders work with no optional add-ons. Built-in reviewed policies first; third-party loading/packaging/isolation separate security ADR. No automatic downloads, network, shell, RAM write, raw controller or state path access from a plugin. Private manifest and checkpoint references inert. State/lease/epoch and policy identity must invalidate stale proposals. Multiple policies conflict => explicit configured arbitration or pause; no competing input writers.
@@ -57,7 +57,7 @@ Streaming/TTS/Discord: observer receives bounded public-safe facts and narration
 | A01 | all add-ons off | all ordinary core functions/modes unchanged; no network dependency |
 | A02 | unsupported capability/profile | explicit admission refusal, no input |
 | A03 | slow/failing observer | bounded queue/drop, no execution backpressure |
-| A04 | malicious/stale proposal | refuse, no raw input or game-state mutation |
+| A04 | malicious/stale proposal, including an attempt to set an irreversible objective or intent | refuse, no raw input or game-state mutation |
 | A05 | conflicting policies | explicit policy arbitration or pause, no second writer |
 | A06 | shiny visible/nonmatch/unknown | valid classification, unknown stops, verified unique attempt count |
 | A07 | target match and failed catch | protect target; distinguish actual capture, failed catch, stop |

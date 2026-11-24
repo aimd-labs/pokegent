@@ -1,6 +1,7 @@
 {
   "schema_version": "pokegent-evaluation/1",
   "attempt_id": "synthetic-example-001",
+  "segment_id": "synthetic-example-001-segment-1",
   "campaign_id": "synthetic-example",
   "scenario_family": "stale-frame",
   "layer": "L0",
@@ -16,6 +17,7 @@
   "config_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "profile_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "prompt_sha256": null,
+  "adapter_sha256": null,
   "decider_mode": "mock",
   "knowledge_policy": "synthetic",
   "preparation": "synthetic",
