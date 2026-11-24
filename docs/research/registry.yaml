@@ -37,12 +37,13 @@ repositories:
   origin: user_seed
   category: mechanics
   license_signal: MIT
-  review_status: initial_inspection
-  inspection: README and metadata
-  source_commit: null
-  provisional_integration: ADAPT
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/README; no execution
+  source_commit: d73aee2bb96ca19384f9d47b5a4554ca248ee3ce
+  provisional_integration: REFERENCE
   priority: P1
   research_target: DS mechanics, language differences; archived 2025-11
+  research_report: docs/research/emulator-backends/nds-automation.md
 - repository: johnnieb333/Pokebot-Profiles
   url: https://github.com/johnnieb333/Pokebot-Profiles
   origin: user_seed
@@ -276,23 +277,25 @@ repositories:
   origin: expanded_research
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/README; no execution
+  source_commit: 485c400f9d7bad10d906d556ba23e5e46d5b3e5e
   provisional_integration: REFERENCE
   priority: P1
   research_target: Platinum decompilation
+  research_report: docs/research/emulator-backends/nds-automation.md
 - repository: pret/pokeheartgold
   url: https://github.com/pret/pokeheartgold
   origin: expanded_research
   category: reverse_engineering
   license_signal: not detected
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/README; no execution
+  source_commit: 8946577385ef0e3b1a29f2f56c03db20fd675cb0
   provisional_integration: REFERENCE
   priority: P1
   research_target: HGSS decompilation
+  research_report: docs/research/emulator-backends/nds-automation.md
 - repository: mgba-emu/mgba
   url: https://github.com/mgba-emu/mgba
   origin: expanded_research
@@ -320,23 +323,25 @@ repositories:
   origin: expanded_research
   category: backend
   license_signal: NOASSERTION
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/README; no execution
+  source_commit: 05259649a55cd790ceeb9451344ef08db40c1080
   provisional_integration: REFERENCE
   priority: P1
   research_target: Multi-system frame and scripting interface
+  research_report: docs/research/emulator-backends/nds-automation.md
 - repository: melonDS-emu/melonDS
   url: https://github.com/melonDS-emu/melonDS
   origin: expanded_research
   category: backend
   license_signal: GPL-3.0
-  review_status: initial_inspection
-  inspection: GitHub metadata only
-  source_commit: null
+  review_status: source_inspected
+  inspection: Pinned tree and selected source/README; no execution
+  source_commit: ff972523f8a70e877dd054439876c3c8c6b79197
   provisional_integration: REFERENCE
   priority: P1
   research_target: DS backend research
+  research_report: docs/research/emulator-backends/nds-automation.md
 - repository: azahar-emu/azahar
   url: https://github.com/azahar-emu/azahar
   origin: expanded_research
@@ -408,12 +413,13 @@ repositories:
   origin: expanded_research
   category: reverse_engineering
   license_signal: unverified
-  review_status: candidate
-  inspection: not independently confirmed for this baseline
-  source_commit: null
+  review_status: initial_inspection
+  inspection: Pinned commit; truncated tree, not source-audited
+  source_commit: 50731dd699fb0fb3f881cd028a67d8f6aa649a88
   provisional_integration: REFERENCE
   priority: P1
   research_target: Gen 5 decompilation candidate
+  research_report: docs/research/emulator-backends/nds-automation.md
 - repository: Project-Holon/eidos
   url: https://github.com/Project-Holon/eidos
   origin: expanded_research
