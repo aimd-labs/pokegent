@@ -157,6 +157,23 @@ def _party_count(snapshot: Any) -> int:
     return sum(1 for member in getattr(snapshot, "party", ()) if member is not None)
 
 
+def _battle_capable(mon: Any) -> bool | None:
+    """True only when the decoded HP proves a non-egg member can still battle.
+
+    ``False`` is a proven non-battler (egg or zero HP). ``None`` means the HP evidence is
+    unreadable or inconsistent, so it must never be counted as a healthy party member.
+    """
+    if mon is None or bool(getattr(mon, "is_egg", False)):
+        return False
+    hp = getattr(mon, "hp", None)
+    max_hp = getattr(mon, "max_hp", None)
+    if not isinstance(hp, int) or not isinstance(max_hp, int) or max_hp <= 0 or hp < 0:
+        return None
+    if hp > max_hp:
+        return None
+    return hp > 0
+
+
 def _resolved_menu(options: SystemFlowOptions, method: str, snapshot: Any):
     count = _menu_count(snapshot)
     resolver = options.menus
@@ -643,22 +660,35 @@ def pc_main(
                 int(storage.current_box),
             )
             destination_slot = _first_empty_slot(storage, deposit_box)
+        party_count = _party_count(snapshot)
         for slot, mon in enumerate(snapshot.party):
+            if mon is None:
+                continue
             facts = facts_for(mon)
-            legal = (
-                Legality.LEGAL
-                if _party_count(snapshot) > 1 and destination_slot is not None
-                else Legality.UNAVAILABLE
+            capable = _battle_capable(mon)
+            another_capable = any(
+                _battle_capable(other) is True
+                for other in snapshot.party
+                if other is not None and other is not mon
             )
-            reason = (
-                None
-                if legal.chooseable
-                else (
-                    "cannot deposit the last party Pokemon"
-                    if _party_count(snapshot) <= 1
-                    else "PC storage unreadable"
-                )
-            )
+            if party_count <= 1:
+                legal = Legality.UNAVAILABLE
+                reason = "cannot deposit the last party Pokemon"
+            elif destination_slot is None:
+                legal = Legality.UNAVAILABLE
+                reason = "PC storage unreadable"
+            elif capable is not False and not another_capable:
+                # The target is (or may be) battle-capable and no other member proves one
+                # remains: depositing it could leave the party with no usable Pokemon.
+                if capable is True:
+                    legal = Legality.UNAVAILABLE
+                    reason = "cannot deposit the last battle-capable party Pokemon"
+                else:
+                    legal = Legality.UNKNOWN
+                    reason = "party HP is unreadable: cannot prove another battle-capable Pokemon"
+            else:
+                legal = Legality.LEGAL
+                reason = None
             facts["destination_box"] = deposit_box
             facts["destination_slot"] = destination_slot
             args = {"pid": int(mon.personality), "operation": 1}
