@@ -392,9 +392,9 @@ class StartPartyBuilder:
                 **_facts(ctx, entry, novelty=novelty),
             },
             executor_ref=R.REF_SELECT if legality.chooseable else None,
-            # REF_SELECT confirms the highlighted entry; the item id is carried by the
-            # cursor contract and is not an executor argument.
-            executor_args={},
+            # A give option names the verified bag item so the registered macro can drive the
+            # bag after confirming the cursor entry; other selections carry no arguments.
+            executor_args={"item_id": item_id} if item_id is not None else {},
             postcondition_ref=R.POST_EXPECTED if legality.chooseable else None,
             verb=_verb(scene, entry),
             risk=Risk.LOW,
