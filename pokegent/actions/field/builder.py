@@ -914,16 +914,19 @@ class FieldBuilder:
                 )
                 + "."
             )
-        if navigation_plan is not None and self.navigation is not None:
-            navigation_block = self.navigation.blocked_route(navigation_plan)
-            if navigation_block is not None:
-                context["blocked_route"] = navigation_block
+        navigation_block = (
+            self.navigation.blocked_route(navigation_plan, snapshot=snap)
+            if navigation_plan is not None and self.navigation is not None
+            else None
+        )
+        if navigation_block is not None:
+            context["blocked_route"] = navigation_block
         if navigation_plan is not None and navigation_plan.unmet and self.navigation is not None:
-            context["blocked_route"] = self.navigation.blocked_route(navigation_plan) or (
+            context["blocked_route"] = navigation_block or (
                 "blocked: needs " + " and ".join(route_blockers(navigation_plan.unmet))
             )
         if navigation_plan is not None and navigation_plan.cost is None and resolved is not None:
-            context["blocked_route"] = "blocked: " + (
+            context["blocked_route"] = navigation_block or "blocked: " + (
                 "needs " + " and ".join(route_blockers(navigation_plan.unmet))
                 if navigation_plan.unmet
                 else (
