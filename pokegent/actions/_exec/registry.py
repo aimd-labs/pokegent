@@ -70,6 +70,10 @@ class ExecutorSpec:
     #: macros express the input-ready boundary with their own WaitUntil RAM gate, so the generic
     #: post-step busy wait must pass the observation into the generator instead of pre-empting it.
     macro_manages_busy: bool = False
+    #: Verify an E_INTERRUPTED_SCENE handoff with the action's postcondition.  Actions whose
+    #: terminal scene can already be present before their own proof (a free field, a battle)
+    #: set this False: an interrupt then stays INTERRUPTED instead of becoming APPLIED.
+    verify_on_interrupt: bool = True
 
     def __post_init__(self) -> None:
         if not REF_RE.match(self.ref):
