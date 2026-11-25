@@ -20,6 +20,9 @@ _CHUNK = 64 * 1024
 _PREFIX = 4096
 _MAX_RECORD = 2 * 1024 * 1024
 _ID = re.compile(r"^[^|]+\|([0-9]+)\|([0-9]+)\|([0-9a-f]{64})\|([0-9]+)$")
+# Issue #146: runs from before #116 emitted this exact undotted type. Ingest only; the
+# stored envelope, content hash and producer/EventEnvelope contract stay unchanged.
+_LEGACY_EVENT_TYPES = {"plan_budget_exceeded": "navigation.plan_budget_exceeded"}
 
 
 class IngestError(ValueError):
@@ -89,8 +92,9 @@ def _event(raw: bytes, run_id: str) -> tuple[dict[str, Any], str]:
     expected_id = f"{run_id}:{value['seq']}"
     if value["id"] != expected_id:
         raise IngestError("event id does not match run_id and seq")
-    if not isinstance(value["type"], str) or not re.fullmatch(
-        r"[a-z][a-z_]*(?:\.[a-z][a-z_]*)+", value["type"]
+    if not isinstance(value["type"], str) or (
+        value["type"] not in _LEGACY_EVENT_TYPES
+        and not re.fullmatch(r"[a-z][a-z_]*(?:\.[a-z][a-z_]*)+", value["type"])
     ):
         raise IngestError("event type is malformed")
     if (
@@ -296,7 +300,7 @@ def _reconcile_objective(
 def _project_event(
     db: sqlite3.Connection, segment_id: str, source_ref: str, event: dict[str, Any]
 ) -> None:
-    typ = event["type"]
+    typ = _LEGACY_EVENT_TYPES.get(event["type"], event["type"])
     eid, at = event["id"], _stamp(event["observed_at"])
     if typ == "runtime.started":
         db.execute(

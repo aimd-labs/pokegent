@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -429,6 +430,110 @@ def test_missing_summary_values_preserve_known_runtime_facts(ledger, tmp_path):
         "clear",
         "done",
         12.5,
+    )
+
+
+def _digest(value):
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    ).hexdigest()
+
+
+def _ledger_counts(db):
+    return tuple(
+        db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in ("runs", "ingest_sources", "ingested_events", "incidents", "battles")
+    )
+
+
+def test_legacy_undotted_plan_budget_event_projects_incident(ledger, tmp_path):
+    legacy = envelope(kind="plan_budget_exceeded")
+    source = tmp_path / "events.jsonl"
+    source.write_bytes(line(legacy))
+
+    assert ingest(ledger, [source]) == 1
+    assert ledger.execute("SELECT kind,source_ref,source_event_id FROM incidents").fetchone() == (
+        "plan_budget_exceeded",
+        "events.jsonl",
+        "upstream:1",
+    )
+    assert ledger.execute("SELECT content_sha256 FROM ingested_events").fetchone()[0] == _digest(
+        legacy
+    )
+    # The raw line keeps its original legacy spelling; only projection uses the canonical name.
+    assert json.loads(source.read_bytes())["type"] == "plan_budget_exceeded"
+
+    assert ingest(ledger, [source]) == 0
+    assert ledger.execute("SELECT count(*) FROM incidents").fetchone()[0] == 1
+    assert ledger.execute("SELECT count(*) FROM ingested_events").fetchone()[0] == 1
+
+
+def test_legacy_boundary_resumes_without_rewriting_source(ledger, tmp_path):
+    source = tmp_path / "events.jsonl"
+    legacy_bytes = line(envelope(1, kind="plan_budget_exceeded"))
+    source.write_bytes(legacy_bytes)
+    assert ingest(ledger, [source], max_lines=1) == 1
+
+    source.write_bytes(legacy_bytes + line(envelope(2, kind="navigation.plan_budget_exceeded")))
+    assert ingest(ledger, [source]) == 1
+    assert source.read_bytes().startswith(legacy_bytes)
+    assert ledger.execute("SELECT kind FROM incidents ORDER BY id").fetchall() == [
+        ("plan_budget_exceeded",),
+        ("plan_budget_exceeded",),
+    ]
+    assert ledger.execute("SELECT count(*) FROM ingested_events").fetchone()[0] == 2
+
+
+@pytest.mark.parametrize(
+    "bad_type",
+    [
+        "plan_budget_exceededd",
+        "plan_budget",
+        "navigation.plan_budget_exceeded ",
+        42,
+        True,
+        ["plan_budget_exceeded"],
+        {"name": "plan_budget_exceeded"},
+    ],
+)
+def test_unrelated_or_malformed_type_rolls_back_whole_run(ledger, tmp_path, bad_type):
+    source = tmp_path / "events.jsonl"
+    seed = line(envelope(1, kind="runtime.started"))
+    source.write_bytes(seed)
+    assert ingest(ledger, [source]) == 1
+    counts = _ledger_counts(ledger)
+    cursor = ledger.execute("SELECT byte_offset FROM ingest_sources").fetchone()[0]
+
+    appended = line(envelope(2, kind="battle.won")) + line({**envelope(3), "type": bad_type})
+    source.write_bytes(seed + appended)
+    with pytest.raises(IngestError, match="event type is malformed"):
+        ingest(ledger, [source])
+
+    assert _ledger_counts(ledger) == counts
+    assert ledger.execute("SELECT byte_offset FROM ingest_sources").fetchone()[0] == cursor
+
+
+def test_legacy_event_rewritten_to_dotted_with_same_id_conflicts(ledger, tmp_path):
+    source = tmp_path / "events.jsonl"
+    source.write_bytes(line(envelope(1, kind="plan_budget_exceeded")))
+    assert ingest(ledger, [source]) == 1
+
+    rewritten = tmp_path / "events-000001.jsonl"
+    rewritten.write_bytes(line(envelope(1, kind="navigation.plan_budget_exceeded")))
+    with pytest.raises(IngestError, match="content conflict"):
+        ingest(ledger, [rewritten])
+    assert ledger.execute("SELECT count(*) FROM incidents").fetchone()[0] == 1
+    assert ledger.execute("SELECT count(*) FROM ingested_events").fetchone()[0] == 1
+
+
+def test_dotted_plan_budget_event_projection_unchanged(ledger, tmp_path):
+    source = tmp_path / "events.jsonl"
+    source.write_bytes(line(envelope(kind="navigation.plan_budget_exceeded")))
+    assert ingest(ledger, [source]) == 1
+    assert ledger.execute("SELECT kind,source_ref,source_event_id FROM incidents").fetchone() == (
+        "plan_budget_exceeded",
+        "events.jsonl",
+        "upstream:1",
     )
 
 
