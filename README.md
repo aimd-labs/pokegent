@@ -47,13 +47,25 @@ services or ROM. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and
 
 | Scope | Documented as tested | Not verified |
 | --- | --- | --- |
-| ROM-free checks | CPython 3.11 on GitHub Actions `ubuntu-latest` (Ubuntu 26.04) and the six native-helper tests on Ubuntu 24.04 | macOS, Windows, other Python versions |
+| ROM-free checks | CPython 3.11 on GitHub Actions `ubuntu-latest` and `ubuntu-24.04` at `77a1a2e8` ([run 45531183848](https://github.com/aimd-labs/pokegent/actions/runs/45531183848)); the `ubuntu-latest` image version is not recorded in public run metadata | macOS, Windows, other Python versions; the exact image behind `ubuntu-latest` |
 | Native/emulator path | Ubuntu 24.04 amd64, CPython 3.11, `mgba==0.10.2`, `libmgba0.10t64=0.10.2+dfsg-1.1build3` | Other systems, architectures and minimal images |
 | Game data | FireRed USA Rev 0; local setup reached the first field and three RAM-verified movements | Other ROM revisions, full-game coverage |
 
 The [native setup](docs/native-install.md) and [clean-start](docs/clean-start.md) guides
 carry the source pins and limits behind these rows. Setup success alone is not gameplay proof,
 and synthetic checks do not establish the full compatibility matrix.
+
+### Supported-version policy
+
+Version ranges in `pyproject.toml` (Python `>=3.11,<3.12` and the dependency ranges)
+declare what installation accepts; they are not claims that every accepted version was
+tested. Only the combinations in the table are tested, and each row's cited run, commit or
+document is its evidence. An editable checkout is identified by its actual source commit
+and package origin, not by a package version string alone; evidence should name both.
+Everything outside the table, including other operating systems, Python versions,
+architectures and ROM revisions, is unverified or unsupported even where code paths exist
+or `source-lock.md` lists upstream sources. ROM-free checks and native binding imports are
+not gameplay proof, and no row claims complete campaign reliability.
 
 ## Optional: emulator play with your own ROM
 
