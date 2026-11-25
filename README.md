@@ -28,7 +28,9 @@ git clone https://github.com/aimd-labs/pokegent.git
 cd pokegent
 uv venv --python 3.11 --seed
 . .venv/bin/activate
-uv pip install -e '.[dev,stream]' pytest
+uv pip install --require-hashes -r requirements-public-checks.lock
+uv pip install --no-deps -e .
+python -m pip check
 ruff check .
 python -m compileall -q pokegent addons tools tests
 python tests/games/gen3/test_imports.py
@@ -42,6 +44,14 @@ synthetic memory and data. `check_rom_data.py` rejects committed game data.
 Installation and the packaging tests may download Python packages through pip build
 isolation, so use a package index or a warm cache. They need no credentials, game
 services or ROM. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and review path.
+
+`requirements-public-checks.lock` pins the ROM-free `public-checks` environment (base, `dev`
+and `stream` extras) with hashes. It was generated once with uv 0.13.8 for CPython 3.11 from
+the command in [CONTRIBUTING.md](CONTRIBUTING.md#locked-public-checks-environment); the
+`--no-deps` edit install keeps the declared ranges subject to `pip check`. This is a Linux
+CPython 3.11 lock and covers only the `public-checks` job; `public-startup-latency` and
+`native-helper` keep their existing dependency commands, and it is not a native or
+cross-platform claim.
 
 ## Tested combinations
 
