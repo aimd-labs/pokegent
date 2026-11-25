@@ -20,6 +20,7 @@ from pokegent.actions.field import fishing, fly
 from pokegent.actions.field.boulder_options import PC_BOULDER
 from pokegent.actions.items import EffectClass, ItemCatalog
 from pokegent.games.gen3.firered.maps.map_schema import MapState
+from pokegent.games.gen3.firered.reader.menu_decoders import decode_start_menu
 
 
 def _key(state: MapState) -> tuple[int, int]:
@@ -175,6 +176,21 @@ def facing(ctx: VerifyContext) -> bool:
 
 def script_done(ctx: VerifyContext) -> bool:
     return ctx.scene.scene_id != E.TRAINER_VISION
+
+
+def start_menu_open(ctx: VerifyContext) -> bool:
+    """The START menu is open and the shared decoder proves an input-ready cursor."""
+    ui = ctx.after.ui
+    if (
+        ctx.scene.scene_id != "menu.start"
+        or ctx.scene.busy
+        or ui is None
+        or not ui.valid
+        or ui.field.fade_active is not False
+    ):
+        return False
+    model = decode_start_menu(ctx.after)
+    return model is not None and model.selected_key is not None
 
 
 def bike_on(ctx: VerifyContext) -> bool:
@@ -455,6 +471,7 @@ def verifier_specs(*, item_catalog: ItemCatalog | None = None) -> list[VerifierS
         VerifierSpec(B.PC_AT_TILE, at_tile, max_frames=30, max_wall_s=10.0),
         VerifierSpec(B.PC_FACING, facing, max_frames=30, max_wall_s=10.0),
         VerifierSpec(B.PC_SCRIPT_DONE, script_done, max_frames=60, max_wall_s=10.0),
+        VerifierSpec(B.PC_MENU_OPEN, start_menu_open, max_frames=180, max_wall_s=15.0),
         VerifierSpec("field.bike_on", bike_on, max_frames=180, max_wall_s=15.0),
         VerifierSpec("field.bike_off", bike_off, max_frames=180, max_wall_s=15.0),
         VerifierSpec("field.flash_done", flash_done, max_frames=900, max_wall_s=45.0),

@@ -515,6 +515,15 @@ class FieldMacros:
                 macro_manages_busy=True,
             ),
             ExecutorSpec(
+                B.OPEN_START,
+                ExecutionKind.MACRO,
+                self.open_start_menu,
+                allowed_scenes=frozenset({E.FREE, "menu.start"}),
+                max_inputs=1,
+                max_frames=240,
+                settle_frames=120,
+            ),
+            ExecutorSpec(
                 B.TOGGLE_BIKE,
                 ExecutionKind.MACRO,
                 self.toggle_bike,
@@ -1365,6 +1374,32 @@ class FieldMacros:
             obs = yield Advance(frames=8)
             start = cls._start_menu(obs.snapshot)
         return obs
+
+    def open_start_menu(self, ctx):
+        """Press START once, then stop at the decoder-proven, input-ready START menu."""
+        from pokegent.games.gen3.firered.reader.menu_decoders import decode_start_menu
+
+        def menu_ready(current) -> bool:
+            ui = current.snapshot.ui
+            if (
+                current.scene.scene_id != "menu.start"
+                or current.scene.busy
+                or ui is None
+                or not ui.valid
+                or ui.field.fade_active is not False
+            ):
+                return False
+            model = decode_start_menu(current.snapshot)
+            return model is not None and model.selected_key is not None
+
+        yield from self._open_start(ctx)
+        return (
+            yield WaitUntil(
+                menu_ready,
+                max_frames=90,
+                failure_reason="open_start did not reach a decoded input-ready START menu",
+            )
+        )
 
     @classmethod
     def _select_start(cls, ctx, wanted: int):
