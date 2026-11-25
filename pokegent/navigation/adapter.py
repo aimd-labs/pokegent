@@ -150,14 +150,14 @@ class NavigationAdapter:
                 resolved,
             )
             if objective_frame_budget_exhausted():
-                return None
+                return self._abandon(cache_key)
         wild_maps = getattr(resolved, "navigation_map_keys", frozenset())
         if wild_maps:
             plan = self.planner.plan_to_maps(
                 start, wild_maps, capabilities, live=state
             )
             if objective_frame_budget_exhausted():
-                return None
+                return self._abandon(cache_key)
             if plan is not None:
                 target = plan.target
             else:
@@ -177,7 +177,7 @@ class NavigationAdapter:
                     start, target, capabilities, live=state
                 )
                 if objective_frame_budget_exhausted():
-                    return None
+                    return self._abandon(cache_key)
                 if decision is not None:
                     plan = NavigationPlan(
                         start,
@@ -191,16 +191,16 @@ class NavigationAdapter:
         elif target is not None:
             plan = train_plan or self.planner.plan(start, target, capabilities, live=state)
             if objective_frame_budget_exhausted():
-                return None
+                return self._abandon(cache_key)
         else:
             plan = None
         if plan is not None:
             plan = self._route_to_corridor_frontier(plan, target, capabilities, state)
             if objective_frame_budget_exhausted():
-                return None
+                return self._abandon(cache_key)
             plan = self._route_to_boulder_prerequisite(plan, target, capabilities, state)
             if objective_frame_budget_exhausted():
-                return None
+                return self._abandon(cache_key)
             plan = self._stage_boulder_action(plan, target)
             # A target NPC is a destination *within* the target map.  The live map can
             # temporarily make its adjacent tile unwalkable (another event object may be
@@ -214,7 +214,7 @@ class NavigationAdapter:
                     live=state,
                 )
                 if objective_frame_budget_exhausted():
-                    return None
+                    return self._abandon(cache_key)
                 plan = NavigationPlan(
                     map_plan.start,
                     target,
@@ -243,10 +243,11 @@ class NavigationAdapter:
                     ),
                 )
             plan = self._route_to_counted_trainer(plan, capabilities, state)
+            if objective_frame_budget_exhausted():
+                return self._abandon(cache_key)
             self._remember_plan(cache_key, plan)
             return plan
-        self._remember_plan(cache_key, None)
-        return None
+        return self._abandon(cache_key)
 
     def _route_to_corridor_frontier(self, plan, target, capabilities, live):
         """Keep progress up to, but never through, the first closed corridor transition.
@@ -283,9 +284,19 @@ class NavigationAdapter:
             blocked_route_fact=blocked_route_fact,
         )
 
+    def _abandon(self, key: tuple[object, ...] | None) -> None:
+        """Remember only the exact UNKNOWN of an abandoned bounded search.
+
+        The key is already a complete live-input identity, and the planner is deterministic, so
+        the same request with the same allowance cannot find a route on the next frame.  A
+        partial ``NavigationPlan`` must never be admitted as a route or no-path proof.
+        """
+        self._remember_plan(key, None)
+        return None
+
     def _remember_plan(self, key: tuple[object, ...] | None, plan: NavigationPlan | None) -> None:
         work = objective_frame_budget_state()
-        if work is not None and work[1]:
+        if work is not None and work[1] and plan is not None:
             return
         if key is None or self._plan_cache_size == 0:
             return

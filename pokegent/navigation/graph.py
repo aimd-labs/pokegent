@@ -1057,6 +1057,41 @@ class NavigationGraph:
             )
         return tuple(edges)
 
+    def _live_open_tile(
+        self,
+        state: MapState,
+        live: MapState | None,
+        map_key: tuple[int, int],
+        x: int,
+        y: int,
+    ) -> bool:
+        """Whether RAM proves this local tile open on the actual current grid.
+
+        ``_state_for`` may overlay a modeled ON_LOAD branch onto a copy of the live state
+        for toggle planning.  Only the unmodified current snapshot is local evidence: a
+        static map, a modeled copy, an unverified map header or an unreadable tile keeps
+        the static barrier requirement.
+        """
+        if live is None or state is not live:
+            return False
+        if not live.identity.identity_verified:
+            return False
+        if (live.identity.group, live.identity.number) != map_key:
+            return False
+        player = live.player
+        if player is None or not player.position_consistent:
+            return False
+        if not live.in_grid(x, y):
+            return False
+        block = live.raw_block(x, y)
+        metatile = block & K.MAPGRID_METATILE_ID_MASK
+        if metatile == K.MAPGRID_UNDEFINED or block & K.MAPGRID_COLLISION_MASK:
+            return False
+        if metatile not in live.grid.attribute_map:
+            return False
+        behavior = live.attributes(x, y) & K.ATTR_BEHAVIOR_MASK
+        return self.provider.behavior_info(behavior).kind != "unknown"
+
     def _step_edge(
         self,
         state: MapState,
@@ -1089,7 +1124,11 @@ class NavigationGraph:
         if info.waterfall and direction != "N":
             return None
         barrier = self._on_load_barriers.get(node.map_key, {}).get((nx, ny))
-        if barrier is not None and not all(capabilities.has(key) for key in barrier):
+        if (
+            barrier is not None
+            and not all(capabilities.has(key) for key in barrier)
+            and not self._live_open_tile(state, live, node.map_key, nx, ny)
+        ):
             barrier_key = "&".join(barrier)
             need = requirement(
                 barrier_key,
