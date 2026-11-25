@@ -16,6 +16,51 @@ _MOVE_CAPABILITIES = {
     "flash": (I.MOVE_FLASH, K.BADGE_BOULDER, "Flash and Boulder Badge"),
 }
 
+#: Obstacle requirement key -> capability owner kind (Rock Smash key is ``rock_smash``).
+_FIELD_MOVE_KINDS = {
+    "cut": "cut",
+    "rock_smash": "smash",
+    "strength": "strength",
+    "flash": "flash",
+}
+
+
+def _section_readable(snapshot: StateSnapshot, section: str) -> bool:
+    """Positive, configured read confidence for one section (absent means unknown)."""
+    health = getattr(snapshot, "health", None)
+    confidence = getattr(health, "confidence", None) if health is not None else None
+    if not confidence:
+        return False
+    value = confidence.get(section)
+    if value is None:
+        return False
+    try:
+        return float(value) == 1.0
+    except (TypeError, ValueError):
+        return False
+
+
+def missing_field_move_fact(snapshot: StateSnapshot, key: str) -> dict[str, object] | None:
+    """Structured proven gap of an unmet field move; ``None`` when absence is not proved."""
+    if key not in _FIELD_MOVE_KINDS:
+        return None
+    capability = field_capability(snapshot, _FIELD_MOVE_KINDS[key])
+    if not capability.known:
+        return None
+    if not _section_readable(snapshot, "party") or not _section_readable(snapshot, "player"):
+        return None
+    badges = frozenset(snapshot.player.badges) if snapshot.player is not None else frozenset()
+    has_badge = capability.badge is not None and capability.badge in badges
+    has_carrier = bool(capability.carrier_species)
+    if has_carrier and has_badge:
+        return None
+    return {
+        "move": capability.name,
+        "badge": capability.badge_name,
+        "carrier_missing": not has_carrier,
+        "badge_missing": not has_badge,
+    }
+
 
 def from_snapshot(
     snapshot: StateSnapshot,
