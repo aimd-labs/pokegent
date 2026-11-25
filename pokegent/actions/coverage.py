@@ -93,6 +93,13 @@ FOLDED: dict[str, CoverageDisposition] = {
         "ExecutorSpec:system_flow.pc_menu_choice",
         "pc.main",
     ),
+    **_folded(
+        ("field.fishing",),
+        "rod use macro owns the fishing state and verifies the bounded fishing outcome "
+        "(battle or settled field)",
+        "ExecutorSpec:field.fish",
+        "field.free",
+    ),
 }
 
 _FIELD_FOLDED_REFS = {
@@ -221,7 +228,6 @@ REAL_GAPS: dict[str, CoverageDisposition] = {
         "pokegent.actions.field.detect:FieldDetector",
     )
     for sid in (
-        "field.fishing",
         "field.hidden_item",
         "field.ice_slide",
         "field.sweet_scent",
