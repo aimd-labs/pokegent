@@ -57,6 +57,7 @@ from pokegent.history import DEFAULT_KEEP, MAX_KEEP, DecisionHistory
 from pokegent.options.diagnostics import bounded_pause_reasons
 from pokegent.options.models import (
     AgentHandoffTimeout,
+    ChoiceResult,
     Decider,
     DeciderTimeout,
     DecisionFrame,
@@ -1606,6 +1607,9 @@ class Runner:
                 if isinstance(exc, AgentHandoffTimeout):
                     # A bounded hybrid agent handoff expired with no authorized default.
                     # Pause before any System One attribution or another wait.
+                    last_decision = getattr(self.decider, "last_decision", None)
+                    if isinstance(last_decision, dict):
+                        self._emit_shadow_observation(shown, last_decision, None)
                     return RunStatus.SAFE_PAUSE
                 last_error = exc
                 self._emit(
@@ -1684,6 +1688,9 @@ class Runner:
                         continue
                     if self.stop_event.is_set():
                         return RunStatus.INTERRUPTED
+                    last_decision = getattr(self.decider, "last_decision", None)
+                    if isinstance(last_decision, dict):
+                        self._emit_shadow_observation(shown, last_decision, None)
                     break
                 self._emit(
                     EventType.DECISION_SYSTEMONE_INVALID,
@@ -1692,6 +1699,9 @@ class Runner:
                     outcome=ErrorCode.E_DECIDER_FAILED.value,
                     details={"error": f"{type(exc).__name__}: {exc}"},
                 )
+                last_decision = getattr(self.decider, "last_decision", None)
+                if isinstance(last_decision, dict):
+                    self._emit_shadow_observation(shown, last_decision, None)
                 break
         if self.stop_event.is_set():
             return RunStatus.INTERRUPTED
@@ -1750,6 +1760,7 @@ class Runner:
         decided_by = last_decision.get("decided_by") or (
             "agent" if result.provider_id in {"agent", "external"} else "system1"
         )
+        self._emit_shadow_observation(frame, last_decision, result)
         if decided_by == "agent":
             self.counters.agent_frames += 1
         if decided_by == "route" and last_decision.get("vetoed_by") == "route_step":
@@ -1836,6 +1847,53 @@ class Runner:
                 details={"attempts": outage_attempt},
             )
         return frame, result.option_id
+
+    def _emit_shadow_observation(
+        self,
+        frame: DecisionFrame,
+        last_decision: Mapping[str, Any],
+        chosen: ChoiceResult | None,
+    ) -> None:
+        """Emit the Runner-owned observation for a recorded zero-authority shadow claim."""
+        shadow = last_decision.get("shadow")
+        if not isinstance(shadow, Mapping):
+            return
+        observed_id = shadow.get("decision_id")
+        if not isinstance(observed_id, str):
+            return
+        ok = shadow.get("outcome") == "ok"
+        agreement: bool | None = None
+        if ok and chosen is not None and self._same_shadow_frame(shadow, frame):
+            agreement = chosen.option_id == shadow.get("option_id")
+        self._emit(
+            EventType.DECISION_SYSTEMONE_COMPLETED,
+            scene_id=shadow.get("scene_id") or frame.scene_id,
+            request_id=observed_id,
+            provider=shadow.get("provider_id") or None,
+            outcome="observed" if ok else "failed",
+            details={
+                "option_id": shadow.get("option_id"),
+                "model_id": shadow.get("model_id"),
+                "provider_id": shadow.get("provider_id"),
+                "confidence": shadow.get("confidence"),
+                "measured_ms": shadow.get("measured_ms"),
+                "accepted": False,
+                "authority": "shadow",
+                "agreement": agreement,
+                "accuracy": "unknown",
+                "agent_option_id": chosen.option_id if chosen is not None else None,
+            },
+        )
+
+    @staticmethod
+    def _same_shadow_frame(shadow: Mapping[str, Any], frame: DecisionFrame) -> bool:
+        return (
+            shadow.get("decision_id") == frame.decision_id
+            and shadow.get("snapshot_seq") == frame.snapshot_seq
+            and shadow.get("state_fingerprint") == frame.state_fingerprint
+            and shadow.get("goal_id") == frame.goal_id
+            and shadow.get("goal_revision") == frame.goal_revision
+        )
 
     @staticmethod
     def _is_system1_transient(exc: Exception) -> bool:

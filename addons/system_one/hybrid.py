@@ -183,7 +183,11 @@ class HybridDecider:
         force_agent_after_repeats: int = 2,
         autoplay: str = "off",
         events: EventSink | None = None,
+        shadow: bool = False,
     ) -> None:
+        if not isinstance(shadow, bool):
+            raise ValueError("hybrid.shadow must be a boolean")
+        self.shadow = shadow
         self._thresholds = self._validate_thresholds(escalate_below_confidence)
         if override_window_s < 0:
             raise ValueError("hybrid.override_window_s must be non-negative")
@@ -300,6 +304,8 @@ class HybridDecider:
             except AgentHandoffTimeout as exc:
                 self._emit_handoff_expired(frame, reason, "recovery_window", exc)
                 raise
+        if self.shadow:
+            return self._decide_shadow(frame)
         scope = (frame.scene_id, frame.state_fingerprint)
         # Offering or discarding a choice is not an executed action. Only result accounting
         # updates the streak, including after a forced agent choice has actually completed.
@@ -464,12 +470,77 @@ class HybridDecider:
             )
         return result
 
+    def _decide_shadow(self, frame: DecisionFrame) -> ChoiceResult:
+        """One observational System One call, then the independent agent choice.
+
+        The claim or failure stays in ``last_decision`` bound to this frame; it is never put
+        in the agent offer, applied as a default, or allowed to veto/substitute the agent.
+        """
+        started = time.monotonic()
+        observed: dict[str, Any] = {
+            "decision_id": frame.decision_id,
+            "scene_id": frame.scene_id,
+            "snapshot_seq": frame.snapshot_seq,
+            "state_fingerprint": frame.state_fingerprint,
+            "goal_id": frame.goal_id,
+            "goal_revision": frame.goal_revision,
+            "option_id": None,
+            "provider_id": None,
+            "model_id": None,
+            "confidence": None,
+            "measured_ms": None,
+            "outcome": "failed",
+            "error_class": None,
+        }
+        try:
+            claim = self.system1.decide(frame)
+        except ProviderConfigurationError:
+            raise
+        except Exception as exc:
+            observed["error_class"] = type(exc).__name__
+        else:
+            valid = (
+                isinstance(claim, ChoiceResult)
+                and (claim.decision_id is None or claim.decision_id == frame.decision_id)
+                and claim.option_id in frame.chooseable_ids()
+            )
+            if valid:
+                observed.update(
+                    option_id=claim.option_id,
+                    provider_id=claim.provider_id or None,
+                    model_id=claim.model_id or None,
+                    confidence=claim.confidence,
+                    outcome="ok",
+                )
+            else:
+                observed["error_class"] = "InvalidResponse"
+        observed["measured_ms"] = round((time.monotonic() - started) * 1000, 3)
+        self.last_decision = {
+            "decided_by": "agent",
+            "escalated": True,
+            "escalation_reason": "shadow",
+            "shadow": observed,
+        }
+        try:
+            return self.external.offer(
+                frame,
+                metadata=None,
+                default=None,
+                wait_timeout=self.agent_handoff_timeout_s,
+                interruptible_wait=True,
+                handoff_timeout=True,
+                handoff={"ownership": "shadow", "timeout_s": self.agent_handoff_timeout_s},
+            )
+        except AgentHandoffTimeout as exc:
+            self._emit_handoff_expired(frame, "shadow", "shadow", exc)
+            raise
+
     def deterministic_route_step(self, frame: DecisionFrame) -> ChoiceResult | None:
         """Admit one uniquely proven warp/edge step before the provider; every residual case
         keeps the existing decider/veto path. The shortcut never selects or reclassifies the
         generic face/swap UI options and never fabricates a confidence.
         """
-        if self._no_progress_recovery or self._stuck or self.override_window_s > 0:
+        if self.shadow or self._no_progress_recovery or self._stuck or self.override_window_s > 0:
             return None
         scope = (frame.scene_id, frame.state_fingerprint)
         if (
