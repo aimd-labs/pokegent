@@ -6,7 +6,9 @@ version ranges in pyproject.toml. Do not add dependencies without a concrete nee
 ```sh
 uv venv --python 3.11 --seed
 . .venv/bin/activate
-uv pip install -e '.[dev,stream]' pytest
+uv pip install --require-hashes -r requirements-public-checks.lock
+uv pip install --no-deps -e .
+python -m pip check
 ruff check .
 python -m compileall -q pokegent addons tools tests
 python tests/games/gen3/test_imports.py
@@ -22,6 +24,51 @@ outside the repository.
 
 `uv venv --seed` installs `pip`, which the wheel-building tests call. If you use another
 environment manager, make sure `python -m pip --version` works inside the activated environment.
+
+## Locked public-checks environment
+
+`requirements-public-checks.lock` is generated, not hand-edited. It pins the base, `dev` and
+`stream` dependencies with hashes for CPython 3.11, generated with uv 0.13.8:
+
+```sh
+uv pip compile pyproject.toml --extra dev --extra stream --python-version 3.11 \
+  --universal --generate-hashes --no-emit-package pokegent -o requirements-public-checks.lock
+```
+
+The lock covers the `public-checks` job on Linux CPython 3.11. It is not a native, other-Python
+or cross-platform claim; `public-startup-latency` and `native-helper` keep their own commands.
+CI installs it with `--require-hashes`, then installs the project with `--no-deps -e .` and runs
+`pip check`, so runtime ranges and metadata stay consistent.
+
+To update a dependency deliberately, work from the checkout and keep the regenerated lock in a
+fresh scratch directory so the repository file only changes when you accept the diff:
+
+```sh
+scratch=$(mktemp -d)
+cp requirements-public-checks.lock "$scratch/"
+uv pip compile pyproject.toml --extra dev --extra stream --python-version 3.11 \
+  --universal --generate-hashes --no-emit-package pokegent \
+  --upgrade-package pytest -o "$scratch/requirements-public-checks.lock"
+diff -u requirements-public-checks.lock "$scratch/requirements-public-checks.lock"
+```
+
+The lock header records the scratch output path, so expect that one line to differ; any other
+hunk is a dependency change. If the package is already at the newest allowed version, the diff
+has no dependency change; report that instead of inventing a version change. For a real update,
+install the scratch lock in a fresh Python 3.11 environment, then install the editable checkout
+and check it:
+
+```sh
+uv venv --python 3.11 --seed "$scratch/venv"
+"$scratch/venv/bin/python" -m pip install --require-hashes \
+  -r "$scratch/requirements-public-checks.lock"
+"$scratch/venv/bin/python" -m pip install --no-deps -e .
+"$scratch/venv/bin/python" -m pip check
+"$scratch/venv/bin/python" -c 'import pokegent'
+```
+
+Commit the regenerated lock with the reason for the update, and do not add unrelated upgrade
+churn.
 
 ## Reproducible wheel
 
