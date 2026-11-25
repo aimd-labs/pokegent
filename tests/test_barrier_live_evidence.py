@@ -256,3 +256,30 @@ def test_unknown_live_facts_are_not_treated_as_solved():
     )
     assert static_edges
     assert all(edge.kind == "gate" and not edge.available for edge in static_edges)
+
+
+def test_live_open_proof_runs_only_for_an_unmet_live_barrier(monkeypatch):
+    graph = _graph("var:16548:100")
+    state = _state(player=True)
+    calls = []
+
+    def counting(state_arg, live_arg, map_key, x, y):
+        calls.append((map_key, x, y))
+        return True
+
+    monkeypatch.setattr(graph, "_live_open_tile", counting)
+
+    # No barrier on the map: an ordinary walk must not probe live geometry.
+    graph._on_load_barriers = {KEY: {}}
+    _east_edges(graph, state, live=state, include_unmet=True)
+    assert calls == []
+
+    # A barrier whose requirement is already met needs no live-open proof either.
+    graph._on_load_barriers = {KEY: {BARRIER: ("var:16548:100",)}}
+    met = CapabilityState(vars=((16548, 100),))
+    _east_edges(graph, state, live=state, include_unmet=True, capabilities=met)
+    assert calls == []
+
+    # An unmet live barrier still takes the guarded proof path.
+    _east_edges(graph, state, live=state, include_unmet=True)
+    assert calls == [(KEY, *BARRIER)]

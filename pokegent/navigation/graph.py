@@ -1124,11 +1124,10 @@ class NavigationGraph:
         if info.waterfall and direction != "N":
             return None
         barrier = self._on_load_barriers.get(node.map_key, {}).get((nx, ny))
-        live_open = self._live_open_tile(state, live, node.map_key, nx, ny)
         if (
             barrier is not None
-            and not live_open
             and not all(capabilities.has(key) for key in barrier)
+            and not self._live_open_tile(state, live, node.map_key, nx, ny)
         ):
             barrier_key = "&".join(barrier)
             need = requirement(
