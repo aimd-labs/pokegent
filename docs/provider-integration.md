@@ -200,6 +200,18 @@ estimates, `option_order`), `stages[]` (`name`, `request_id`, `path`, `criteria_
 `decision_id`; split train/test by run/map/save state, never within one family (spec 16.3).
 No secrets, executor references or argument values are written.
 
+Offline report over one or more existing files (read-only; no provider call, no file writes):
+
+```bash
+python tools/calibration_report.py runs/<run-id>/system_one_calibration.jsonl
+```
+
+It validates schema 1, separates source files/runs/scenes/providers/models and prints JSON counts of
+response outcomes, attempts, truncation, stage identity and `measured_ms` p50/p95. `ok` is only a
+valid model response: the report carries `accuracy: null`, `labels: none` and
+`eligibility: not_evaluated`, so it cannot be used as a reliability or admission result. Malformed,
+unsupported or over-limit input exits nonzero without a report.
+
 ## Stub server and checks
 
 ```bash
