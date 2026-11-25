@@ -24,6 +24,23 @@ A successful interaction postcondition alone does not establish state change. Th
 pass normal frame and executor validation. `battle.opponent_knowledge` (`guide` by default or
 `fair_play`), `field.menus`, and `output.run_dir`.
 
+`hybrid.shadow` (default `false`) is an opt-in observational mode for
+`decider: hybrid`. Before each ordinary agent decision it makes one bounded System One call
+using the existing timeout, retry, rate and breaker controls. That claim or failure is kept
+private, never sent to the agent and never applied. The agent still chooses independently;
+the runner records one `decision.systemone.completed` observation with
+`authority=shadow`, `accepted=false`, `accuracy=unknown`, the real provider/model identity and
+measured time, plus `agreement` only when both choices share the same offered frame. Shadow
+adds one provider call's latency and cost before every agent prompt. Agreement is not evidence
+of accuracy, which remains unknown and unevaluated. Unknown scenes, no-progress recovery and
+every other decider or mode keep their existing behavior.
+
+```yaml
+decider: hybrid
+hybrid:
+  shadow: true
+```
+
 `run.on_objective_done` accepts `hold` (default: stay alive without input and poll for a new
 objective), `pause` (stop with `WAITING_OBJECTIVE`, exit 3), or `continue`. With `continue`, fresh
 completion at a safe boundary atomically clears only the matching objective ID and revision,

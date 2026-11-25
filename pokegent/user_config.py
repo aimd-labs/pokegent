@@ -26,7 +26,8 @@ _CONSUMED_KEYS = {
     }),
     "hybrid": frozenset({"escalate_below_confidence", "override_window_s",
                           "escalate_on_no_progress", "escalate_unknown_scene",
-                          "force_agent_after_repeats", "agent_handoff_timeout_s"}),
+                          "force_agent_after_repeats", "agent_handoff_timeout_s",
+                          "shadow"}),
     "battle": frozenset({"opponent_knowledge"}),
     "field": frozenset({"menus"}),
     "output": frozenset({"run_dir"}),
@@ -67,6 +68,7 @@ DEFAULTS: dict[str, Any] = {
         "escalate_unknown_scene": True,
         "force_agent_after_repeats": 2,
         "agent_handoff_timeout_s": 300.0,
+        "shadow": False,
     },
     "battle": {"opponent_knowledge": "guide"},
     "field": {"menus": True},
@@ -285,6 +287,10 @@ def load_user_config(
         or handoff_timeout <= 0
     ):
         raise ValueError("hybrid.agent_handoff_timeout_s must be a positive finite number")
+    if not isinstance(hybrid["shadow"], bool):
+        raise ValueError("hybrid.shadow must be a boolean")
+    if hybrid["shadow"] and result["decider"] != "hybrid":
+        raise ValueError("hybrid.shadow requires decider hybrid")
     if result["battle"]["opponent_knowledge"] not in {"guide", "fair_play"}:
         raise ValueError("battle.opponent_knowledge must be guide|fair_play")
     return result

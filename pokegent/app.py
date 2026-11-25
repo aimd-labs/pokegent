@@ -1032,6 +1032,10 @@ def build_decider(
     if kind == "hybrid":
         from addons.system_one.hybrid import HybridDecider
 
+        settings = config_raw.get("hybrid") or {}
+        shadow = settings.get("shadow", False) if isinstance(settings, Mapping) else False
+        if not isinstance(shadow, bool):
+            raise AppError("hybrid decider: hybrid.shadow must be a boolean")
         system_one = config_raw.get("system_one")
         system_one_env = bool(os.environ.get("SYSTEM1_BASE_URL"))
         configured = system_one_env
@@ -1044,6 +1048,10 @@ def build_decider(
                 or system_one_env
             )
         if not configured:
+            if shadow:
+                raise AppError(
+                    "hybrid decider: hybrid.shadow requires a configured system_one provider"
+                )
             return build_decider(
                 "agent",
                 config_raw=config_raw,
@@ -1056,6 +1064,10 @@ def build_decider(
                 autoplay=autoplay,
             )
         if isinstance(system_one, Mapping) and system_one.get("enabled") is False:
+            if shadow:
+                raise AppError(
+                    "hybrid decider: hybrid.shadow requires system_one.enabled"
+                )
             return build_decider(
                 "agent",
                 config_raw=config_raw,
@@ -1077,7 +1089,6 @@ def build_decider(
             external_port=external_port,
             external_timeout=external_timeout,
         )
-        settings = config_raw.get("hybrid") or {}
         try:
             decider = HybridDecider(
                 system1,
@@ -1091,6 +1102,7 @@ def build_decider(
                 escalate_unknown_scene=settings.get("escalate_unknown_scene", True),
                 force_agent_after_repeats=settings.get("force_agent_after_repeats", 2),
                 events=events,
+                shadow=shadow,
             )
         except (OSError, ValueError) as exc:
             if system1_close:
