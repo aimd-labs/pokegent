@@ -16,7 +16,7 @@ from pokegent.games.gen3.firered.maps.map_schema import WarpInfo
 from pokegent.goals.models import Objective
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
 from pokegent.loop import Runner, RunnerConfig, RunStatus
-from pokegent.navigation.adapter import NavigationAdapter
+from pokegent.navigation.adapter import NavigationAdapter, NavigationLookup
 from pokegent.navigation.models import (
     NavigationEdge,
     NavigationNode,
@@ -89,7 +89,7 @@ def _draft(*, party=PARTY, wall=False, objects=()):
     graph = _FakeGraph(names={(0, 0): "DemoMap", (1, 2): "DestMap"})
     graph.scripted_warp_arrival = lambda *_a, **_k: None
     adapter = NavigationAdapter(graph)
-    adapter.plan = lambda *_a, **_k: plan
+    adapter.plan_result = lambda *_a, **_k: NavigationLookup(plan)
     builder = FieldBuilder(field_menu=True, navigation=adapter, objectives=lambda _: resolved)
     snap = snapshot().model_copy(update={"map": state, "party": tuple(party)})
     return builder.build(

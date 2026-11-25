@@ -129,7 +129,9 @@ def test_perceiver_retry_reuses_abandoned_unknown(monkeypatch):
     assert graph.calls == calls_after_first
     assert first.kind is second.kind
     # The unknown stays unknown: it is never turned into a route or a no-path proof.
-    assert adapter._plan_cache and all(plan is None for plan in adapter._plan_cache.values())
+    assert adapter._plan_cache and all(
+        not hasattr(entry, "cost") for entry in adapter._plan_cache.values()
+    )
 
 
 def test_same_request_reuses_only_the_unknown_result():
@@ -142,7 +144,9 @@ def test_same_request_reuses_only_the_unknown_result():
     assert adapter.plan(_snapshot(state), _resolved(), objective_budget=1) is None
     assert graph.calls == calls_after_first
     assert calls_after_first > 0
-    assert all(plan is None for plan in adapter._plan_cache.values())
+    assert all(
+        not hasattr(entry, "cost") for entry in adapter._plan_cache.values()
+    )
 
 
 def test_objective_revision_retries_the_abandoned_search():
