@@ -14,6 +14,7 @@ from pokegent.options.models import (
     AgentHandoffTimeout,
     ChoiceResult,
     DecisionFrame,
+    Legality,
     Option,
     Risk,
 )
@@ -34,6 +35,14 @@ NAVIGATION_ID_PREFIXES = frozenset({"warp", "edge", "fly", "tile"})
 #: warp options). Everything else (items, bicycle, NPC, heal, trainer, dialog) is not a
 #: navigation choice, so its off-route marking never justifies a route-step replacement.
 NAVIGATION_TARGET_KINDS = frozenset({"warp", "edge", "fly", "tile"})
+
+#: Only a door/ladder warp or a map edge is a proven immediate route step for pre-provider
+#: admission; fly and tile-walk options still wait for the decider. Each kind must also own the
+#: exact producer executor/postcondition pair.
+ROUTE_STEP_SHAPES = {
+    "warp": ("field.enter_warp", "field.warp_done"),
+    "edge": ("field.travel_edge", "field.edge_done"),
+}
 
 #: Escalation reason used when the only route step is high risk but not irreversible.
 ROUTE_STEP_RISK_ESCALATION = "high_risk_route_step"
@@ -65,6 +74,66 @@ def _navigation(option: Option) -> bool:
     return (
         option.id.split(":", 1)[0] in NAVIGATION_ID_PREFIXES
         or kind in NAVIGATION_TARGET_KINDS
+    )
+
+
+def _route_step_kind(option: Option) -> str | None:
+    """The exact producer kind only when the id prefix and target kind agree."""
+    target = option.facts.get("target")
+    kind = target.get("kind") if isinstance(target, Mapping) else None
+    prefix = option.id.split(":", 1)[0]
+    return kind if prefix == kind and kind in ROUTE_STEP_SHAPES else None
+
+
+def _warp_or_edge(option: Option) -> bool:
+    """Whether the option is a consistently shaped door/ladder warp or map edge."""
+    return _route_step_kind(option) is not None
+
+
+def _route_step_shape(option: Option) -> bool:
+    """The option owns the exact executor/postcondition pair for its route step kind."""
+    kind = _route_step_kind(option)
+    if kind is None:
+        return False
+    executor, postcondition = ROUTE_STEP_SHAPES[kind]
+    return option.executor_ref == executor and option.postcondition_ref == postcondition
+
+
+def _non_competing(option: Option) -> bool:
+    """A default face/swap control or a plain off-route warp/edge exit; never route-selected.
+
+    The face/swap exemption is only the exact default-producer shape: legal, low risk,
+    reversible and owning its documented executor.
+    """
+    if option.legality is not Legality.LEGAL or option.risk is Risk.HIGH or _irreversible(option):
+        return False
+    target = option.facts.get("target")
+    kind = target.get("kind") if isinstance(target, Mapping) else None
+    steps = option.facts.get("steps")
+    if option.risk is Risk.LOW and (
+        (
+            option.id.startswith("face:")
+            and kind == "face"
+            and isinstance(steps, int)
+            and not isinstance(steps, bool)
+            and steps == 0
+            and option.executor_ref == "field.face"
+        )
+        or (
+            option.id.startswith("swap:")
+            and option.facts.get("party_order") is True
+            and option.executor_ref == "field.swap_party"
+        )
+    ):
+        return True
+    return (
+        _route_step_shape(option)
+        and _off_route(option)
+        and not _next_route_step(option)
+        and option.facts.get("on_route") is not True
+        and option.facts.get("serves_goal") is not True
+        and option.facts.get("route_needs") is None
+        and option.facts.get("blocked_choice") is None
     )
 
 
@@ -387,6 +456,73 @@ class HybridDecider:
             )
         return result
 
+    def deterministic_route_step(self, frame: DecisionFrame) -> ChoiceResult | None:
+        """Admit one uniquely proven warp/edge step before the provider; every residual case
+        keeps the existing decider/veto path. The shortcut never selects or reclassifies the
+        generic face/swap UI options and never fabricates a confidence.
+        """
+        if self._no_progress_recovery or self._stuck or self.override_window_s > 0:
+            return None
+        scope = (frame.scene_id, frame.state_fingerprint)
+        if (
+            self._repeat_key is not None
+            and self._repeat_key[:2] == scope
+            and self._repeat_count >= self.force_agent_after_repeats
+        ):
+            return None
+        if frame.goal_id is None or frame.scene_id != "field.free":
+            return None
+        navigation = frame.context.get("navigation")
+        if isinstance(navigation, Mapping) and navigation.get("unmet"):
+            return None
+        if frame.context.get("team_needs"):
+            return None
+        chooseable = frame.chooseable()
+        if any(
+            option.facts.get("route_needs") is not None
+            or option.facts.get("blocked_choice") is not None
+            or option.facts.get("selection_reason") == "repeated_failure"
+            or option.risk is Risk.HIGH
+            or _irreversible(option)
+            for option in chooseable
+        ):
+            return None
+        steps = [
+            option
+            for option in chooseable
+            if _next_route_step(option) and _warp_or_edge(option)
+        ]
+        if len(steps) != 1:
+            return None
+        step = steps[0]
+        if (
+            step.legality is not Legality.LEGAL
+            or step.facts.get("on_route") is not True
+            or step.facts.get("serves_goal") is not True
+            or not _route_step_shape(step)
+        ):
+            return None
+        for option in chooseable:
+            if option.id == step.id:
+                continue
+            if (
+                _next_route_step(option)
+                or option.facts.get("on_route") is True
+                or option.facts.get("serves_goal") is True
+                or not _non_competing(option)
+            ):
+                return None
+        self._decision_id = frame.decision_id
+        self.last_decision = {"decided_by": "route", "escalated": False}
+        return ChoiceResult(
+            option_id=step.id,
+            probabilities={},
+            confidence=None,
+            model_id="route-step",
+            provider_id="route",
+            decision_id=frame.decision_id,
+        )
+
     @staticmethod
     def _route_step_veto(
         frame: DecisionFrame, result: ChoiceResult | None
@@ -523,7 +659,11 @@ class HybridDecider:
             and result.after_hash is not None
             and result.before_hash != result.after_hash
         )
-        if frame.decision_id != self._decision_id or decided_by != "system1" or changed:
+        if (
+            frame.decision_id != self._decision_id
+            or decided_by not in {"system1", "route"}
+            or changed
+        ):
             self._repeat_key = None
             self._repeat_count = 0
         else:

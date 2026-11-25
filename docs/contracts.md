@@ -99,7 +99,11 @@ unchanged. See [decision idle safety](realtime-idle.md) for identity, FireRed ca
    rule 10's single bounded agent window (including wait choices), even when no-progress
    escalation is disabled. A screen requiring A may still exhaust the window and SAFE_PAUSE.
    Other deciders and invalid/unsupported-state handling are unchanged.
-9. Exactly one chooseable option: executed without calling the decider (`decision.forced`).
+9. A singleton chooseable set is not a general bypass: the runner directly executes only a
+   non-unknown-scene forced pure wait (deterministic or autoplay-safe executor, or `inputs == 0`).
+   The legacy `decision.forced` EventType is not emitted by this path. In hybrid mode one
+   uniquely proven consistent legal warp/edge next route step may execute before the provider
+   (`decision.route`, action source `route`); residual cases keep the post-provider veto.
 10. The same (scene, option, fingerprint) attempted `no_progress_limit` times inside
     `no_progress_window` iterations: `progress.stuck` + escalation.
     Hybrid may route the first no-progress verdict to its agent for one bounded recovery window
