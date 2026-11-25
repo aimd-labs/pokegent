@@ -18,6 +18,7 @@ from pokegent.options.models import (
     Legality,
     Option,
     Risk,
+    StaleDecision,
 )
 from pokegent.user_config import load_user_config
 
@@ -91,11 +92,13 @@ class Bridge:
 
     port = 19760
 
-    def __init__(self, *, choice="walk", expire=False, fail=None, refreshed=None):
+    def __init__(self, *, choice="walk", expire=False, fail=None, refreshed=None,
+                 probabilities=None):
         self.choice = choice
         self.expire = expire
         self.fail = fail
         self.refreshed = refreshed
+        self.probabilities = probabilities or {}
         self.offers = []
 
     def bind_agent_request(self, callback):
@@ -115,12 +118,16 @@ class Bridge:
             raise self.fail
         return ChoiceResult(
             option_id=self.choice,
+            probabilities=self.probabilities,
             provider_id="agent",
             decision_id=(self.refreshed or offered).decision_id,
         )
 
     def take_decided_frame(self):
         return self.refreshed
+
+    def discard_stale_decision(self):
+        pass
 
 
 def _system1(*, option_id="sign", confidence=0.1, model_id="model-x"):
@@ -311,6 +318,69 @@ def test_shadow_agent_failure_keeps_observation_without_agreement(monkeypatch):
         shadow=True,
     )
     assert runner(decider, events)._decide(frame()) is RunStatus.SAFE_PAUSE
+
+    completed = events.of_type(EventType.DECISION_SYSTEMONE_COMPLETED)
+    assert len(completed) == 1
+    assert completed[0].outcome == "observed"
+    assert completed[0].details["agreement"] is None
+    assert completed[0].details["accepted"] is False
+    assert completed[0].details["authority"] == "shadow"
+    assert not events.of_type(EventType.DECISION_AGENT_COMPLETED)
+
+
+def test_shadow_provider_malformed_probabilities_is_a_failed_observation(monkeypatch):
+    def decide(_frame):
+        return ChoiceResult(
+            option_id="sign",
+            probabilities={"bogus": 0.5},
+            provider_id="system1",
+            model_id="model-x",
+        )
+
+    decider, _ = hybrid(
+        monkeypatch, system1=SimpleNamespace(decide=decide), shadow=True
+    )
+    assert decider.decide(frame()).option_id == "walk"
+    shadow = decider.last_decision["shadow"]
+    assert shadow["outcome"] == "failed"
+    assert shadow["error_class"] == "InvalidResponse"
+    assert shadow["option_id"] is None
+
+
+def test_shadow_agent_stale_keeps_one_observation(monkeypatch):
+    events = MemoryEventLog("synthetic")
+    bridge = Bridge()
+    monkeypatch.setattr("addons.system_one.hybrid.ExternalDecider", lambda *a, **k: bridge)
+
+    class StalingHybrid(HybridDecider):
+        def decide(self, offered):
+            super().decide(offered)
+            raise StaleDecision("synthetic stale")
+
+    decider = StalingHybrid(
+        _system1(), port=19760, external_timeout=1, events=events, shadow=True
+    )
+    assert runner(decider, events)._decide(frame()) is None
+
+    completed = events.of_type(EventType.DECISION_SYSTEMONE_COMPLETED)
+    assert len(completed) == 1
+    assert completed[0].outcome == "observed"
+    assert completed[0].details["agreement"] is None
+    assert completed[0].details["accepted"] is False
+    assert completed[0].details["authority"] == "shadow"
+    assert not events.of_type(EventType.DECISION_AGENT_COMPLETED)
+
+
+def test_shadow_malformed_agent_choice_keeps_one_observation(monkeypatch):
+    events = MemoryEventLog("synthetic")
+    decider, _ = hybrid(
+        monkeypatch,
+        system1=_system1(),
+        bridge=Bridge(probabilities={"bogus": 0.5}),
+        events=events,
+        shadow=True,
+    )
+    assert runner(decider, events)._decide(frame()) is None
 
     completed = events.of_type(EventType.DECISION_SYSTEMONE_COMPLETED)
     assert len(completed) == 1

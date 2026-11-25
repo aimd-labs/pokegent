@@ -17,6 +17,7 @@ from pokegent.options.models import (
     Legality,
     Option,
     Risk,
+    check_choice,
 )
 from pokegent.server import ExternalDecider
 
@@ -501,8 +502,7 @@ class HybridDecider:
         else:
             valid = (
                 isinstance(claim, ChoiceResult)
-                and (claim.decision_id is None or claim.decision_id == frame.decision_id)
-                and claim.option_id in frame.chooseable_ids()
+                and check_choice(frame, claim) is None
             )
             if valid:
                 observed.update(

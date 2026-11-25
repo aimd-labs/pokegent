@@ -1593,6 +1593,9 @@ class Runner:
                 self._decision_stales[key] = self._decision_stales.get(key, 0) + 1
                 self.counters.stale_decisions += 1
                 self.coverage.stale(frame.scene_id)
+                last_decision = getattr(self.decider, "last_decision", None)
+                if isinstance(last_decision, dict):
+                    self._emit_shadow_observation(shown, last_decision, None)
                 discard = getattr(self.decider, "discard_stale_decision", None)
                 if callable(discard):
                     discard()
@@ -1728,6 +1731,9 @@ class Runner:
 
         problem = check_choice(frame, result, allow_all=result.provider_id in {"agent", "external"})
         if problem is not None:
+            last_decision = getattr(self.decider, "last_decision", None)
+            if isinstance(last_decision, dict):
+                self._emit_shadow_observation(frame, last_decision, None)
             self.counters.invalid_choices += 1
             self._invalid_choice_streak += 1
             self._emit(
