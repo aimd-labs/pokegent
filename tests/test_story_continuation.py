@@ -13,6 +13,7 @@ from pokegent.games.gen3.firered.maps.map_schema import (
 )
 from pokegent.goals.models import Objective
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
+from pokegent.options.models import Legality
 from pokegent.options.registry import BuildContext
 from pokegent.state.scenes import SceneResult
 
@@ -106,7 +107,15 @@ def test_field_builder_budget_exhaustion_keeps_local_options(monkeypatch):
         scene=SceneResult(scene_id='field.free', confidence=1, detector='test'),
         goal_id=objective.objective_id)
     actual = builder.build(ctx).options
-    assert actual == talk_options(state)
+    # The bounded search adds exactly one non-chooseable diagnostic; every local option the
+    # frame offered before exhaustion is unchanged and still chooseable.
+    expected = talk_options(state)
+    assert [o for o in actual if o.id != 'diag:route_budget'] == list(expected)
+    budget = [o for o in actual if o.id == 'diag:route_budget']
+    assert len(budget) == 1
+    assert not budget[0].chooseable
+    assert budget[0].legality is Legality.UNAVAILABLE
+    assert budget[0].facts == {'reason': 'objective route search budget exhausted'}
 
 
 def test_actual_trigger_surface_offer_inactive_and_unknown_refusal():
