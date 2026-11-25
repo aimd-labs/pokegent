@@ -61,8 +61,12 @@ def _validate(record: dict[str, Any], path: str, line: int) -> dict[str, Any]:
     sequence = _field(record, "record_seq", path, line)
     measured = _present(record, "measured_ms", path, line)
     truncated = _present(record, "truncated", path, line)
-    if (not isinstance(measured, (int, float)) or isinstance(measured, bool)
-            or not math.isfinite(measured) or measured < 0):
+    try:
+        finite = (isinstance(measured, (int, float)) and not isinstance(measured, bool)
+                  and math.isfinite(measured))
+    except OverflowError:
+        finite = False
+    if not finite or measured < 0:
         _fail(path, line, "measured_ms")
     if not isinstance(truncated, bool):
         _fail(path, line, "truncated")
@@ -155,11 +159,14 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
             stratum["truncated"] += int(fields["truncated"])
             stratum["samples"].append(fields["measured_ms"])
             present = [model for model in fields["stage_models"] if model]
-            if not fields["stage_models"] or len(present) != len(fields["stage_models"]):
+            distinct = set(present)
+            if (not fields["stage_models"] or len(present) != len(fields["stage_models"])
+                    or fields["model_id"] is None):
                 stratum["identity_missing"] += 1
-            if len(set(present)) > 1:
+            if len(distinct) > 1 or (fields["model_id"] is not None and distinct
+                                     and fields["model_id"] not in distinct):
                 stratum["identity_mixed"] += 1
-            stratum["stage_models"].update(present)
+            stratum["stage_models"].update(distinct)
             seq_key = (source, fields["run_id"])
             state = sequence_state.setdefault(
                 seq_key, {"duplicates": 0, "non_monotonic": 0, "seen": set(), "high": None})

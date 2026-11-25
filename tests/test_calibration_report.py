@@ -248,6 +248,46 @@ def test_null_and_mixed_stage_identities_are_counted_truthfully(tmp_path):
     assert by_run["run-a"]["distinct_stage_models"] == 2
 
 
+def test_top_level_identity_gaps_and_conflicts_are_disclosed(tmp_path):
+    path = tmp_path / "identity-top.jsonl"
+    produced(path, [
+        record(model_id=None, stages=[{"model_id": "m1"}], measured_ms=1.0),
+        record(run_id="run-conflict", model_id="m3", stages=[{"model_id": "m1"}],
+               measured_ms=2.0),
+        record(run_id="run-hier", model_id="m2", stages=[{"model_id": "m1"},
+                                                         {"model_id": "m2"}],
+               measured_ms=3.0),
+        record(run_id="run-flat", model_id="m1", stages=[{"model_id": "m1"}],
+               measured_ms=4.0),
+    ])
+
+    report = report_of(run_cli(path))
+
+    by_run = {stratum["run_id"]: stratum for stratum in report["strata"]}
+    assert (by_run["run-a"]["identity_missing"], by_run["run-a"]["identity_mixed"]) == (1, 0)
+    assert (by_run["run-conflict"]["identity_missing"],
+            by_run["run-conflict"]["identity_mixed"]) == (0, 1)
+    assert (by_run["run-hier"]["identity_missing"],
+            by_run["run-hier"]["identity_mixed"]) == (0, 1)
+    assert (by_run["run-flat"]["identity_missing"],
+            by_run["run-flat"]["identity_mixed"]) == (0, 0)
+
+
+def test_huge_int_measured_ms_is_rejected_as_a_field_error(tmp_path):
+    value = 10 ** 400
+    path = tmp_path / "huge-int.jsonl"
+    raw(path, [record(schema=1, record_seq=1, measured_ms=value)])
+
+    result = run_cli(path)
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert "field measured_ms" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "OverflowError" not in result.stderr
+    assert str(value) not in result.stderr
+
+
 def test_output_has_allowlisted_fields_and_no_planted_secrets(tmp_path):
     path = tmp_path / "synthetic.jsonl"
     produced(path, [record(future_additive={"ignored": "ADDITIVE_SECRET"})])
