@@ -309,13 +309,14 @@ def test_decide_returns_the_vetoed_step_without_waiting_for_the_agent(
 
     assert result.option_id == ladder.id
     assert external.offers == []
-    assert decider.last_decision == {
-        "decided_by": "system1",
-        "escalated": False,
-        "vetoed_by": "route_step",
-        "system1_option_id": "warp:1:3:1",
-        "system1_confidence": 0.76,
-    }
+    assert decider.last_decision["decided_by"] == "route"
+    assert decider.last_decision["escalated"] is False
+    assert decider.last_decision["vetoed_by"] == "route_step"
+    assert decider.last_decision["system1_option_id"] == "warp:1:3:1"
+    assert decider.last_decision["system1_confidence"] == 0.76
+    assert decider.last_decision["system1_provider_id"] == "mock"
+    assert decider.last_decision["system1_model_id"] == "mock"
+    assert decider.last_decision["system1_measured_ms"] >= 0
 
 
 def test_non_navigation_pick_keeps_the_confidence_gate(

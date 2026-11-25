@@ -1437,6 +1437,7 @@ class Runner:
                     },
                 )
                 return self._act(frame, route_choice.option_id, source="route")
+        self._route_owned_decision = None
         chosen = self._decide(frame)
         if isinstance(chosen, RunStatus):
             return chosen
@@ -1444,7 +1445,8 @@ class Runner:
             return None
         frame, option_id = chosen
         self.counters.decided += 1
-        return self._act(frame, option_id, source="decider")
+        source = "route" if self._route_owned_decision == frame.decision_id else "decider"
+        return self._act(frame, option_id, source=source)
 
     @staticmethod
     def _player_position(snapshot: StateSnapshot) -> tuple[int, int, int, int, int] | None:
@@ -1750,45 +1752,80 @@ class Runner:
         )
         if decided_by == "agent":
             self.counters.agent_frames += 1
-        self._emit(
-            EventType.DECISION_AGENT_COMPLETED
-            if decided_by == "agent"
-            else EventType.DECISION_SYSTEMONE_COMPLETED,
-            scene_id=frame.scene_id,
-            request_id=frame.decision_id,
-            provider=result.provider_id or None,
-            outcome="accepted",
-            details={
-                "option_id": result.option_id,
-                "model_id": result.model_id,
-                "latency_ms": result.latency_ms,
-                "measured_ms": round(elapsed_ms, 3),
-                "late": elapsed_ms > frame.deadline_ms,
-                "confidence": result.confidence,
-                "truncated": result.truncated,
-                **(
-                    {"decided_by": last_decision["decided_by"]}
-                    if last_decision.get("decided_by")
-                    else {}
-                ),
-                # A hybrid route-step veto replaces the System One claim; say so, and keep the
-                # claim that was not followed in the event instead of a fabricated confidence.
-                **(
-                    {"vetoed_by": last_decision["vetoed_by"]}
-                    if last_decision.get("vetoed_by")
-                    else {}
-                ),
-                **(
-                    {
-                        "system1_option_id": last_decision.get("system1_option_id"),
-                        "system1_confidence": last_decision.get("system1_confidence"),
-                    }
-                    if "system1_option_id" in last_decision
-                    and (decided_by == "agent" or last_decision.get("vetoed_by"))
-                    else {}
-                ),
-            },
-        )
+        if decided_by == "route" and last_decision.get("vetoed_by") == "route_step":
+            # The runner owns this route-owned decision's completion evidence: reject the real
+            # off-route claim with its own identity/timing, then accept the route step. No
+            # accepted System One completion is emitted for the substituted choice.
+            self._route_owned_decision = frame.decision_id
+            real_option_id = last_decision.get("system1_option_id")
+            self._emit(
+                EventType.DECISION_SYSTEMONE_COMPLETED,
+                scene_id=frame.scene_id,
+                request_id=frame.decision_id,
+                provider=last_decision.get("system1_provider_id") or None,
+                outcome="rejected",
+                details={
+                    "option_id": real_option_id,
+                    "model_id": last_decision.get("system1_model_id"),
+                    "confidence": last_decision.get("system1_confidence"),
+                    "measured_ms": last_decision.get("system1_measured_ms"),
+                    "vetoed_by": "route_step",
+                },
+            )
+            step = frame.get(result.option_id)
+            self._emit(
+                EventType.DECISION_ROUTE,
+                scene_id=frame.scene_id,
+                request_id=frame.decision_id,
+                provider="route",
+                outcome="accepted",
+                details={
+                    "option_id": result.option_id,
+                    "decided_by": "route",
+                    "executor_ref": getattr(step, "executor_ref", None),
+                    "reason": "route_step_veto",
+                },
+            )
+        else:
+            self._emit(
+                EventType.DECISION_AGENT_COMPLETED
+                if decided_by == "agent"
+                else EventType.DECISION_SYSTEMONE_COMPLETED,
+                scene_id=frame.scene_id,
+                request_id=frame.decision_id,
+                provider=result.provider_id or None,
+                outcome="accepted",
+                details={
+                    "option_id": result.option_id,
+                    "model_id": result.model_id,
+                    "latency_ms": result.latency_ms,
+                    "measured_ms": round(elapsed_ms, 3),
+                    "late": elapsed_ms > frame.deadline_ms,
+                    "confidence": result.confidence,
+                    "truncated": result.truncated,
+                    **(
+                        {"decided_by": last_decision["decided_by"]}
+                        if last_decision.get("decided_by")
+                        else {}
+                    ),
+                    # A hybrid route-step veto replaces the System One claim; say so, and keep
+                    # the claim that was not followed instead of a fabricated confidence.
+                    **(
+                        {"vetoed_by": last_decision["vetoed_by"]}
+                        if last_decision.get("vetoed_by")
+                        else {}
+                    ),
+                    **(
+                        {
+                            "system1_option_id": last_decision.get("system1_option_id"),
+                            "system1_confidence": last_decision.get("system1_confidence"),
+                        }
+                        if "system1_option_id" in last_decision
+                        and (decided_by == "agent" or last_decision.get("vetoed_by"))
+                        else {}
+                    ),
+                },
+            )
         if outage_attempt:
             self._emit(
                 EventType.DECISION_SYSTEMONE_RECOVERED,
