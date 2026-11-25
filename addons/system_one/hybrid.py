@@ -340,12 +340,20 @@ class HybridDecider:
             or (veto_result is None and (confidence is None or confidence <= threshold))
         )
         if not escalate and self.override_window_s <= 0:
-            self.last_decision = {"decided_by": "system1", "escalated": False}
-            if vetoed and system_claim is not None:
+            # The safe veto replacement is the final route-owned choice; the real System One
+            # claim and its measured call stay in this metadata for the runner's events.
+            self.last_decision = {
+                "decided_by": "route" if veto_result is not None else "system1",
+                "escalated": False,
+            }
+            if veto_result is not None and system_claim is not None:
                 self.last_decision.update(
                     vetoed_by="route_step",
                     system1_option_id=system_claim.option_id,
                     system1_confidence=confidence,
+                    system1_provider_id=system_claim.provider_id or None,
+                    system1_model_id=system_claim.model_id or None,
+                    system1_measured_ms=round((time.monotonic() - started) * 1000, 3),
                 )
             return served
 

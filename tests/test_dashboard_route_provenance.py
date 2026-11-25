@@ -6,10 +6,21 @@ The events and frames are synthetic; the runner, event log and viewer consumer a
 import json
 from types import SimpleNamespace
 
-from test_hybrid_route_first import _decider, _draft, _frame
+from test_hybrid_route_first import (
+    FakeExternal,
+    FakeSystem1,
+    _decider,
+    _draft,
+    _exit,
+    _frame,
+    _tactical,
+)
 from test_probe_primitives import snapshot
 
+from addons.system_one import hybrid as hybrid_module
+from addons.system_one.hybrid import HybridDecider
 from pokegent.actions._exec.models import ActionResult
+from pokegent.dashboard.records import ObservedDecider
 from pokegent.dashboard.state import KEEP_DECISIONS, ViewerState
 from pokegent.dashboard.telemetry import build_telemetry
 from pokegent.events import EventType, MemoryEventLog
@@ -144,6 +155,83 @@ def test_route_event_without_its_frame_records_no_decision():
     assert view["decisions"] == []
     assert view["stats"]["decisions"] == 0
     assert view["events"][-1]["type"] == EventType.DECISION_ROUTE.value
+
+
+class _CountingExternal(FakeExternal):
+    """The existing fake agent lane, recording whether it was ever offered a choice."""
+
+    def __init__(self, port, timeout, *, autoplay="off"):
+        super().__init__(port, timeout, autoplay=autoplay)
+        self.offers = []
+
+    def offer(self, frame, **kwargs):
+        self.offers.append({"frame": frame, **kwargs})
+        return super().offer(frame, **kwargs)
+
+
+def test_post_veto_replacement_is_route_owned_with_one_real_decider_call(monkeypatch):
+    """#132: the runner emits the real claim's rejection and the route's acceptance once.
+
+    Pre-call route admission is deliberately ineligible (a high-risk tactical option), but the
+    old safe veto still replaces the off-route model claim. The real provider call, its measured
+    latency sample and the single viewer record all survive the attribution fix.
+    """
+    frame = _frame(_draft(wall=True), options=(_exit(), _tactical()))
+    viewer, events = _viewer()
+    system1 = FakeSystem1(option_id="warp:1:1:1", confidence=0.76)
+    monkeypatch.setattr(hybrid_module, "ExternalDecider", _CountingExternal)
+    decider = HybridDecider(system1, port=0, external_timeout=1)
+    ticks = iter([100.0, 100.012])
+    observed = ObservedDecider(
+        decider,
+        viewer.on_decider_call,
+        on_start=viewer.on_decider_start,
+        clock=lambda: next(ticks),
+    )
+    runner = _runner(frame, observed, events, viewer)
+
+    runner.run()
+
+    assert decider.deterministic_route_step(frame) is None
+    assert len(system1.frames) == 1
+    assert decider.external.offers == []
+    completed = events.of_type(EventType.DECISION_SYSTEMONE_COMPLETED)
+    assert len(completed) == 1
+    rejected = completed[0]
+    assert rejected.outcome == "rejected"
+    assert rejected.provider == "system1"
+    assert rejected.details["option_id"] == "warp:1:1:1"
+    assert rejected.details["model_id"] == "mock"
+    assert rejected.details["confidence"] == 0.76
+    assert rejected.details["measured_ms"] >= 0
+    route_events = events.of_type(EventType.DECISION_ROUTE)
+    assert len(route_events) == 1
+    assert route_events[0].outcome == "accepted"
+    assert route_events[0].details["option_id"] == "warp:0:0:0"
+    assert route_events[0].details["decided_by"] == "route"
+    assert decider.external.results == ["route"]
+    started = events.of_type(EventType.ACTION_STARTED)
+    assert [event.details["source"] for event in started] == ["route"]
+
+    view = viewer.view()
+    assert len(view["decisions"]) == 1
+    decision = view["decisions"][0]
+    assert decision["id"] == route_events[0].request_id
+    assert decision["source"] == "route"
+    assert decision["decided_by"] == "route"
+    assert decision["provider"] == "route"
+    assert decision["selected"] == "warp:0:0:0"
+    assert decision["model"] is None
+    assert decision["confidence"] is None
+    assert decision["probabilities"] == {}
+    # The real decider call stays a real measured sample on that one record.
+    assert decision["latency_ms"] == 12.0
+    assert decision["status"] == "done"
+    assert len(view["picks"]) == 1
+    assert view["stats"]["decisions"] == 1
+    assert view["stats"]["latency_samples"] == 1
+    assert round(view["stats"]["latency_ms_total"], 1) == 12.0
+    assert view["stats"]["decider_errors"] == 0
 
 
 def _decider_call(viewer, frame, *, elapsed_ms=12.0, error=False):

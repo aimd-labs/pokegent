@@ -306,13 +306,34 @@ class ViewerState:
             record["status"] = status
 
     def _route_decision(self, env: EventEnvelope, now: float) -> None:
-        """A proven route step decides without a provider: no model, confidence or latency."""
+        """A route-owned step becomes the final decision.
+
+        A pre-call route step has no provider call, model, confidence or latency. A post-veto
+        replacement follows a real decider call: its already-correlated record keeps the
+        measured latency sample and is updated in place for route ownership.
+        """
         rid = env.request_id
-        if not rid or rid in self._by_id:
+        if not rid:
             return
         frame = self._frames.get(rid)
         option_id = env.details.get("option_id")
         if frame is None or option_id not in frame.chooseable_ids():
+            return
+        existing = self._by_id.get(rid)
+        if existing is not None:
+            # A real decider call already produced this one record and its measured sample;
+            # the post-veto route step now owns the final choice. Update that record in place:
+            # never append another decision, pick or latency sample, and never let the
+            # replacement's marker stand in for a real model identity.
+            existing["source"] = "route"
+            existing["decided_by"] = "route"
+            existing["provider"] = env.provider or "route"
+            existing["model"] = None
+            existing["confidence"] = None
+            existing["probabilities"] = {}
+            existing["selected"] = option_id
+            for row in existing["options"]:
+                row["selected"] = row["key"] == option_id
             return
         goal = self._goal or {}
         record = decision_record(
