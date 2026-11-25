@@ -21,6 +21,8 @@ FLY_MAP_TYPES = frozenset({1, 2, 3, 6})  # town/city/route/ocean route
 FLY_OVERHEAD = 60
 FLY_MIN_SAVING = 80
 FLY_MIN_HOPS = 3
+#: Maximum general (non-route) destinations exposed in one field frame.
+FLY_CHOICE_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,30 @@ def cursor_cell_for_map(map_key: tuple[int, int]) -> tuple[int, int] | None:
     the temporary open-loop executor fail closed for maps whose starting cell is unverified.
     """
     return next((dest.cell for dest in DESTINATIONS if dest.map_key == map_key), None)
+
+
+def offered_destinations(
+    snapshot: StateSnapshot,
+    state: MapState,
+    *,
+    limit: int = FLY_CHOICE_LIMIT,
+) -> tuple[FlyDestination, ...]:
+    """Bounded visited destinations selectable from a launch-proven outdoor map.
+
+    These are general travel choices, not route steps: nothing here proves the destination
+    serves the active objective or saves walking distance.  The current map is excluded and
+    the order is stable (region-map section, then name) so a rebuilt frame exposes the same
+    subset.  An unproven launch map still refuses: only maps with a verified Fly-map cell
+    can open the region map.
+    """
+    if limit < 1 or not capability(snapshot, state)["available"] or not can_launch(state):
+        return ()
+    here = (state.identity.group, state.identity.number)
+    rows = sorted(
+        (dest for dest in visited(snapshot) if dest.map_key != here),
+        key=lambda dest: (dest.mapsec, dest.name),
+    )
+    return tuple(rows[:limit])
 
 
 def launch_cell(state: MapState) -> tuple[int, int] | None:

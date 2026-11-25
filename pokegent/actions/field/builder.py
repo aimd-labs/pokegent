@@ -2033,12 +2033,14 @@ class FieldBuilder:
         dest = None
         cost = None
         tail = 0
+        route_selected = False
         if semantic is not None and semantic.kind == "fly":
             dest_key = semantic.target_dict().get("dest")
             dest = fly.DESTINATIONS_BY_KEY.get(tuple(dest_key)) if dest_key is not None else None
             if dest is not None and navigation_plan is not None:
                 cost = navigation_plan.cost
                 tail = cost - semantic.cost if cost is not None else 0
+            route_selected = dest is not None
         elif resolved is not None and resolved.target.map_key is not None:
             # An explicit Fly destination is itself an executable objective, even when the
             # shortest graph plan currently prefers walking or has no verified route tail.
@@ -2052,6 +2054,7 @@ class FieldBuilder:
             ):
                 dest = requested
                 cost = fly.FLY_OVERHEAD
+                route_selected = True
         # Lightweight builder unit doubles predate the typed map identity; live snapshots must
         # pass the same launch-cell proof used by the executor.
         if (
@@ -2090,6 +2093,48 @@ class FieldBuilder:
                     expected_postcondition=f"Arrive at {T.pretty_map_name(dest.name)}.",
                 )
             )
+        if not route_selected and hasattr(state, "identity") and fly.can_launch(state):
+            # No planner edge or explicit objective selected Fly, but the scene is otherwise
+            # ready.  Expose a small, stable set of visited destinations as general travel
+            # choices.  They are never marked as serving the objective because no route proves
+            # that; a launch map without a verified Fly-map cell still refuses above.
+            for destination in fly.offered_destinations(snap, state):
+                out.append(
+                    Option(
+                        id=f"fly:{destination.name}",
+                        label=f"Fly to {T.pretty_map_name(destination.name)}",
+                        description=(
+                            f"Fly to the visited {T.pretty_map_name(destination.name)} heal "
+                            "location. This is a general travel choice; the current plan does "
+                            "not prove it serves the objective or saves walking."
+                        ),
+                        legality=Legality.LEGAL,
+                        facts={
+                            "destination": destination.name,
+                            "landing": destination.landing,
+                            "fly_cost": fly.FLY_OVERHEAD,
+                            "serves_goal": False,
+                            "visited": True,
+                            "target": {
+                                "kind": "fly",
+                                "dest": list(destination.map_key),
+                            },
+                        },
+                        executor_ref=USE_FLY,
+                        executor_args={
+                            "mapsec": destination.mapsec,
+                            "destination_group": destination.map_key[0],
+                            "destination_number": destination.map_key[1],
+                            "party_slot": fly.carrier_slots(snap)[0],
+                        },
+                        risk=Risk.NORMAL,
+                        postcondition_ref=PC_FLY,
+                        verb="FLY_TO",
+                        expected_postcondition=(
+                            f"Arrive at {T.pretty_map_name(destination.name)}."
+                        ),
+                    )
+                )
         return out
 
     # -- one target -> one option ------------------------------------------------------------------
