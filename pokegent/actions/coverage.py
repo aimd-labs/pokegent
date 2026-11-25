@@ -95,7 +95,8 @@ FOLDED: dict[str, CoverageDisposition] = {
     ),
     **_folded(
         ("field.fishing",),
-        "rod use macro owns the fishing state and verifies the bounded catch result",
+        "rod use macro owns the fishing state and verifies the bounded fishing outcome "
+        "(battle or settled field)",
         "ExecutorSpec:field.fish",
         "field.free",
     ),
