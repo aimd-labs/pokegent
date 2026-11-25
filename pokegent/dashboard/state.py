@@ -191,6 +191,8 @@ class ViewerState:
             self._decision_status(env.request_id, "timeout")
         elif kind == EventType.DECISION_SYSTEMONE_INVALID.value and env.request_id:
             self._decision_status(env.request_id, "invalid")
+        elif kind == EventType.DECISION_ROUTE.value and env.request_id:
+            self._route_decision(env, now)
         if self.decider == "hybrid" and env.request_id:
             record = (
                 self._pending
@@ -301,6 +303,34 @@ class ViewerState:
         record = self._by_id.get(rid)
         if record is not None:
             record["status"] = status
+
+    def _route_decision(self, env: EventEnvelope, now: float) -> None:
+        """A proven route step decides without a provider: no model, confidence or latency."""
+        rid = env.request_id
+        if not rid or rid in self._by_id:
+            return
+        frame = self._frames.get(rid)
+        option_id = env.details.get("option_id")
+        if frame is None or option_id not in frame.chooseable_ids():
+            return
+        goal = self._goal or {}
+        record = decision_record(
+            frame,
+            result=ChoiceResult(option_id=option_id, provider_id=env.provider or ""),
+            source="route",
+            elapsed_ms=None,
+            now=now,
+            status="executing",
+            goal_summary=goal.get("summary"),
+            model=None,
+        )
+        record["decided_by"] = "route"
+        if len(self._decisions) == self._decisions.maxlen:
+            self._by_id.pop(self._decisions[0]["id"], None)
+        self._decisions.append(record)
+        self._by_id[record["id"]] = record
+        self._picks.append((record["ts"], record["scene"], record["selected"]))
+        self.stats["decisions"] += 1
 
     def _highlight(self, now: float, category: str, title: str, text: str) -> None:
         self._highlights.append(
