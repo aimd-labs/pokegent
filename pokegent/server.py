@@ -15,13 +15,13 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from pokegent.dashboard.stream.frames import FrameHub
+from pokegent.options.diagnostics import served_diagnostics
 from pokegent.options.models import (
     OBJECTIVE_RELATION_NOT_SERVING,
     AgentHandoffTimeout,
     ChoiceResult,
     DeciderTimeout,
     DecisionFrame,
-    PayloadLeakError,
     StaleDecision,
     assert_payload_clean,
     sanitize_internal_text,
@@ -39,8 +39,6 @@ FILTERED_REASONS = frozenset(
 )
 NO_EFFECT_HIDDEN_PREFIX = "hidden: repeated with no effect "
 BLOCKED_DIALOG_PREFIX = "blocked by the same dialog "
-MAX_SERVED_DIAGNOSTICS = 32
-MAX_SERVED_DIAGNOSTIC_REASON_CHARS = 240
 _SERVED_DIAGNOSTICS_KEY = "_served_diagnostics"
 _DEFAULT_WAIT = object()
 
@@ -72,40 +70,6 @@ def _filtered_reason(option: Any) -> str:
 MAX_OBJECTIVE_BODY = 16 * 1024
 BODY_READ_TIMEOUT = 5.0
 
-
-def _redact_diagnostic_ids(text: str, frame: DecisionFrame) -> str:
-    """Redact diagnostic ids locally; the shared sanitizer and guard do not cover option ids."""
-    for option_id in sorted(
-        (option.id for option in frame.diagnostics), key=len, reverse=True
-    ):
-        text = text.replace(option_id, "[non-selectable option]")
-    return text
-
-
-def _served_diagnostics(frame: DecisionFrame) -> dict[str, Any]:
-    """Bounded readable rows for diagnostics; explanation only, never selectable identity.
-
-    Reasons are projected through the existing sanitizer and leak guard against the owning
-    frame, so an unrenderable reason stays ``None`` instead of publishing hidden metadata.
-    Diagnostic ids are redacted locally because neither helper covers option identity.
-    """
-    items: list[dict[str, Any]] = []
-    for option in frame.diagnostics[:MAX_SERVED_DIAGNOSTICS]:
-        reason = option.facts.get("reason")
-        text: str | None = None
-        if isinstance(reason, str) and reason.strip():
-            text = _redact_diagnostic_ids(sanitize_internal_text(reason, frame), frame)
-            if len(text) > MAX_SERVED_DIAGNOSTIC_REASON_CHARS:
-                text = text[: MAX_SERVED_DIAGNOSTIC_REASON_CHARS - 3].rstrip() + "..."
-            try:
-                assert_payload_clean(
-                    {"state": {"diagnostic": text}, "instructions": "", "criteria": {}},
-                    frame,
-                )
-            except PayloadLeakError:
-                text = None
-        items.append({"legality": option.legality.value, "reason": text})
-    return {"total": len(frame.diagnostics), "items": items}
 
 
 HANDOFF_SCHEMA = "handoff/1"
@@ -540,7 +504,7 @@ class ExternalDecider:
                 "instructions": payload["instructions"],
                 "options": options,
                 "feedback": self._feedback,
-                _SERVED_DIAGNOSTICS_KEY: _served_diagnostics(frame),
+                _SERVED_DIAGNOSTICS_KEY: served_diagnostics(frame),
             }
             if frame.all_options:
                 all_frame = frame.model_copy(
@@ -702,7 +666,7 @@ class ExternalDecider:
                             {"id": option_id, "criterion": criterion}
                             for option_id, criterion in updated_payload["criteria"].items()
                         ]
-                        self._frame[_SERVED_DIAGNOSTICS_KEY] = _served_diagnostics(frame)
+                        self._frame[_SERVED_DIAGNOSTICS_KEY] = served_diagnostics(frame)
                         if updated_all_options is None:
                             self._frame.pop("all_options", None)
                         else:
@@ -899,13 +863,13 @@ class ExternalDecider:
                 self._condition.wait(remaining)
             if self._frame is not None:
                 result = dict(self._frame)
-                served_diagnostics = result.pop(_SERVED_DIAGNOSTICS_KEY, None)
+                diagnostic_rows = result.pop(_SERVED_DIAGNOSTICS_KEY, None)
                 if not all_options:
                     result.pop("all_options", None)
                 else:
                     result.setdefault("all_options", [])
                 if diagnostics:
-                    result["diagnostics"] = served_diagnostics or {"total": 0, "items": []}
+                    result["diagnostics"] = diagnostic_rows or {"total": 0, "items": []}
                 status_result = (200, result)
             else:
                 status = self._status

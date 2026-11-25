@@ -54,6 +54,7 @@ from pokegent.events import EventSink, EventType
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.goals.source import ObjectiveSession, is_objective_rejection
 from pokegent.history import DEFAULT_KEEP, MAX_KEEP, DecisionHistory
+from pokegent.options.diagnostics import bounded_pause_reasons
 from pokegent.options.models import (
     AgentHandoffTimeout,
     Decider,
@@ -119,6 +120,13 @@ def stop_message(reason: str, details: Mapping[str, Any]) -> str:
     if reason == "provider_configuration":
         return f"stopped: provider configuration requires owner review: {details['error']}"
     if reason == "escalated":
+        reasons = details.get("reasons")
+        if (
+            isinstance(reasons, (list, tuple))
+            and reasons
+            and all(isinstance(item, str) for item in reasons)
+        ):
+            return f"stopped: escalated ({details['kind']}: {'; '.join(reasons)})"
         return f"stopped: escalated ({details['kind']})"
     return f"stopped: {reason}"
 
@@ -1237,6 +1245,7 @@ class Runner:
             self.executor.settle(self.config.settle_frames)
             return None
         self._no_options_streak = 0
+        reasons = bounded_pause_reasons(frame)
         return self._escalate(
             EscalationKind.NO_LEGAL_OPTION,
             frame.scene_id,
@@ -1251,6 +1260,7 @@ class Runner:
                     for o in frame.diagnostics
                 ]
             },
+            pause_details={"reasons": list(reasons)} if reasons else None,
         )
 
     # -- ready: decide and act --------------------------------------------------------------------
@@ -2322,6 +2332,7 @@ class Runner:
         details: Mapping[str, Any],
         *,
         terminal: bool = False,
+        pause_details: Mapping[str, Any] | None = None,
     ) -> RunStatus | None:
         if self.objectives is not None and kind in (EscalationKind.NO_PROGRESS,
                                                     EscalationKind.BUSY_STUCK):
@@ -2361,7 +2372,7 @@ class Runner:
         response = self._ask_sink(request)
         if terminal:
             return RunStatus.SAFE_PAUSE
-        status = self._apply_response(kind, response)
+        status = self._apply_response(kind, response, pause_details=pause_details)
         if status is None and kind in _CANNOT_ACT_KINDS and self.config.scene_escalation_budget:
             key = scene_id or "scene.unknown"
             n = self._scene_escalations[key] = self._scene_escalations.get(key, 0) + 1
@@ -2386,7 +2397,11 @@ class Runner:
             return EscalationResponse(EscalationAction.PAUSE, "sink failed")
 
     def _apply_response(
-        self, kind: EscalationKind, response: EscalationResponse
+        self,
+        kind: EscalationKind,
+        response: EscalationResponse,
+        *,
+        pause_details: Mapping[str, Any] | None = None,
     ) -> RunStatus | None:
         if response.action is EscalationAction.CONTINUE:
             return None
@@ -2396,7 +2411,10 @@ class Runner:
         if self._verdict == "other":
             self._verdict = "escalated"
         if self._stop_reason_override is None:
-            self._stop_reason_override = ("escalated", {"kind": kind.value})
+            details: dict[str, Any] = {"kind": kind.value}
+            if kind is EscalationKind.NO_LEGAL_OPTION and pause_details:
+                details.update(pause_details)
+            self._stop_reason_override = ("escalated", details)
         if bool(
             getattr(self.decider, "supervisor_control", False)
             or getattr(self.decider, "external_control", False)
