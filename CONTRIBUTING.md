@@ -23,6 +23,26 @@ outside the repository.
 `uv venv --seed` installs `pip`, which the wheel-building tests call. If you use another
 environment manager, make sure `python -m pip --version` works inside the activated environment.
 
+## Reproducible wheel
+
+Build from a clean checkout with a fixed source epoch. `SOURCE_DATE_EPOCH` normalizes the ZIP
+timestamps, and the pinned backend in `pyproject.toml` keeps member output stable:
+
+```sh
+epoch=$(git log -1 --format=%ct)
+out=$(mktemp -d)
+SOURCE_DATE_EPOCH=$epoch python -m pip wheel --no-deps -w "$out" .
+ls "$out"  # exactly one pokegent-*.whl
+sha256sum "$out"/pokegent-*.whl
+```
+
+Record the commit, tree, epoch, wheel hash, CPython version and backend version. Rebuild in a
+fresh checkout at the same commit and epoch, then compare the hash. This covers the same
+interpreter and zlib (CPython 3.11.18 here). For other environments, compare unpacked member
+hashes instead of expecting byte-identical ZIP files. The backend is pinned exactly; `wheel`
+stays ranged because the exercised copy is setuptools' vendored one, not a proven standalone
+distribution.
+
 New to the project? Read the [README quick start](README.md#quick-start-install-and-run-the-rom-free-checks),
 run the checks, and comment on an [open issue](https://github.com/aimd-labs/pokegent/issues)
 to confirm scope before a larger change. Focused fixes with a clear reproduction are welcome
