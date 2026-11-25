@@ -1400,6 +1400,34 @@ class Runner:
             self._pending_objective_key = (
                 (objective.objective_id, objective.revision) if objective is not None else None
             )
+            stale_goal = self.objectives is not None and (
+                objective is None
+                or frame.goal_id != objective.objective_id
+                or (frame.goal_revision is not None and frame.goal_revision != objective.revision)
+            )
+        # Hybrid may admit one uniquely proven route step before paying for a provider. The
+        # choice is still validated against this exact frame and executes through the normal
+        # actor; every residual case falls through to the existing decider/veto path.
+        route = getattr(self.decider, "deterministic_route_step", None)
+        if not stale_goal and callable(route):
+            route_choice = route(frame)
+            if route_choice is not None and check_choice(frame, route_choice) is None:
+                step = frame.get(route_choice.option_id)
+                self.counters.decided += 1
+                self._emit(
+                    EventType.DECISION_ROUTE,
+                    scene_id=frame.scene_id,
+                    request_id=frame.decision_id,
+                    provider=route_choice.provider_id or None,
+                    outcome="accepted",
+                    details={
+                        "option_id": route_choice.option_id,
+                        "decided_by": "route",
+                        "executor_ref": getattr(step, "executor_ref", None),
+                        "reason": "deterministic_route_step",
+                    },
+                )
+                return self._act(frame, route_choice.option_id, source="route")
         chosen = self._decide(frame)
         if isinstance(chosen, RunStatus):
             return chosen
@@ -1895,6 +1923,7 @@ class Runner:
     ) -> RunStatus | None:
         if self.stop_event.is_set():
             return RunStatus.INTERRUPTED
+        decision_action = source in {"decider", "route"}
         self._decision_stales.clear()
         if option_id == "bike_on":
             self._last_bike_on_position = (
@@ -1948,7 +1977,7 @@ class Runner:
             )
         self._record_dialog_block(frame, option_id, result, source=source)
         self._record_result(frame, option_id, result)
-        if source == "decider":
+        if decision_action:
             self.history.record(frame, option_id, result, self._goal_key(frame))
         notify = getattr(self.decider, "record_action_result", None)
         clear_autoplay_pending = getattr(self.decider, "clear_autoplay_pending", None)
@@ -1993,7 +2022,7 @@ class Runner:
 
         if result.progressed is True:
             self._finish_no_progress_recovery(clear_loop=result.non_positional_progress is True)
-        if self._hybrid_no_progress_active and source == "decider":
+        if self._hybrid_no_progress_active and decision_action:
             self._hybrid_recovery_decisions += 1
 
         rejected_key = (
@@ -2088,7 +2117,7 @@ class Runner:
             and result.after_hash is not None
             and result.before_hash != result.after_hash
         )
-        if source == "decider" and result.progressed is not True and not text_wait_changed_state:
+        if decision_action and result.progressed is not True and not text_wait_changed_state:
             target_key = option_target_key(option) if option is not None else option_id
             key = (frame.scene_id, option_id, target_key, frame.state_fingerprint)
             if self._note_attempt(key):
@@ -2166,7 +2195,7 @@ class Runner:
         source: str,
     ) -> None:
         """Keep consecutive dialog-only decider outcomes across their forced dialog scenes."""
-        if source != "decider":
+        if source not in {"decider", "route"}:
             return
         if not self._is_dialog_block(result):
             return

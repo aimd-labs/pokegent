@@ -100,6 +100,9 @@ unchanged. See [decision idle safety](realtime-idle.md) for identity, FireRed ca
    escalation is disabled. A screen requiring A may still exhaust the window and SAFE_PAUSE.
    Other deciders and invalid/unsupported-state handling are unchanged.
 9. Exactly one chooseable option: executed without calling the decider (`decision.forced`).
+   In hybrid mode one uniquely proven legal warp/edge next route step may likewise execute
+   before the provider (`decision.route`, action source `route`); every residual route case
+   keeps the post-provider veto.
 10. The same (scene, option, fingerprint) attempted `no_progress_limit` times inside
     `no_progress_window` iterations: `progress.stuck` + escalation.
     Hybrid may route the first no-progress verdict to its agent for one bounded recovery window

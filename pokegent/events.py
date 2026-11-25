@@ -88,6 +88,8 @@ class EventType(str, Enum):
     RUN_RESTARTED = "run.restarted"
     # -- additions to the spec's minimum list -----------------------------------------------------
     DECISION_FORCED = "decision.forced"  # exactly one chooseable option: no decider was called
+    #: Hybrid admitted one proven route step; no decider or provider was called.
+    DECISION_ROUTE = "decision.route"
     ESCALATION_REQUESTED = "escalation.requested"  # the runner asked the escalation sink for help
     BATTLE_WON = "battle.won"
     BATTLE_LOST = "battle.lost"
