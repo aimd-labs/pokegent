@@ -681,19 +681,26 @@ def build_runner(
     """
     config = config or AppConfig()
     shop_observation: Callable[[], Any] | None = None
+    fresh_snapshot: Callable[[], Any] | None = None
     if actor is not None and profile is not None:
         from pokegent.games.gen3.firered.reader.live import LiveReader
         from pokegent.goals.shop_admission import ShopObservation
 
         observation_reader = LiveReader(actor, profile, run_id=config.run_id)
 
-        def shop_observation() -> ShopObservation | None:
+        def fresh_snapshot() -> Any | None:
             """Fresh core-only read from the same actor; never a cached decision snapshot."""
             try:
                 snapshot = observation_reader.read().snapshot
             except Exception:  # an optional admission fact read stays UNKNOWN
                 return None
             if not snapshot.usable or snapshot.rom_profile != profile.profile_id:
+                return None
+            return snapshot
+
+        def shop_observation() -> ShopObservation | None:
+            snapshot = fresh_snapshot()
+            if snapshot is None:
                 return None
             return ShopObservation.from_snapshot(snapshot, rom_sha1=profile.rom.sha1)
 
@@ -708,6 +715,8 @@ def build_runner(
         stuck_after=config.objective_stuck_after,
         shop_observation=shop_observation,
     )
+    if session is not None and fresh_snapshot is not None:
+        session.store.bind_snapshot(fresh_snapshot)
     bind_planning = getattr(decider, "bind_planning", None)
     if callable(bind_planning) and session is not None:
         bind_planning(session.store)
