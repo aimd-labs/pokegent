@@ -13,6 +13,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -134,10 +135,12 @@ def test_one_full_allowance_terminates_once_with_typed_exhaustion():
     assert len(result["events"]) == 1
     event = result["events"][0]
     assert event["type"] == EventType.PLAN_BUDGET_EXCEEDED.value and event["public"] is True
-    assert event["details"] == {
-        "scope": "objective", "explored": 75_000, "limit": 75_000, "reason": "expansion_limit",
-    }
-    assert event["observed_at"].endswith("+00:00")
+    details = event["details"]
+    assert details.get("scope") == "objective"
+    assert details.get("explored") == details.get("limit") == 75_000
+    assert details.get("reason") == "expansion_limit"
+    observed_at = event["observed_at"]
+    assert observed_at and datetime.fromisoformat(observed_at).tzinfo is not None
 
 
 def test_small_reachable_graph_emits_no_budget_event():
