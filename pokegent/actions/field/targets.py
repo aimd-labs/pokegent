@@ -28,6 +28,7 @@ from typing import Any
 
 from pokegent.actions.field import nav as N
 from pokegent.games.gen3.firered.maps import map_constants as K
+from pokegent.games.gen3.firered.maps.map_behaviors import behavior_info
 from pokegent.games.gen3.firered.maps.map_schema import Facing, MapObject, MapState
 from pokegent.games.gen3.firered.maps.obstacles import ROLES, from_object
 
@@ -176,9 +177,20 @@ def warp_target(state: MapState, nav: N.Navigator, warp) -> Target:
         return Target(option_id, "warp", "step", label, (), at=at, info=info,
                       unsupported="script_driven_warp")  # fmt: skip
     if warp.trigger is None:
-        # a warp event on a plain tile. Walking onto it did NOT warp live (the twins beside a
-        # Pokemon Center / Mart exit mat: only the arrow warp next to them fires). Twins are inert;
-        # a lone one (a cave hole, a league doorway) is offered as untested, verified when walked.
+        # A warp event on a tile whose metatile behavior does not start a warp by itself.
+        # FireRed only fires a step warp when ``IsWarpMetatileBehavior`` is true (warp door,
+        # ladder, escalator, non-anim door, the Lavaridge pads, warp pad, fall warp, union room;
+        # ``IsWarpMetatileBehavior`` in field_control_avatar.c).  A readable behavior that
+        # classified without a warp trigger is therefore positively inert: walking onto it
+        # cannot transition and would only spend the executor's bounded wait.  Keep the row in
+        # diagnostics as unavailable instead of offering an unstartable step.  Only an
+        # unreadable tile behavior (or an unclassified id) stays ``untested``, because then
+        # the trigger is genuinely unknown rather than disproved.
+        if warp.tile_behavior is not None and behavior_info(warp.tile_behavior).kind != "unknown":
+            return Target(option_id, "warp", "step", label, (), at=at, info=info,
+                          unavailable="not_warp_metatile")  # fmt: skip
+        # a lone unclassified warp (a league doorway or a cave row whose behavior is outside
+        # the grid) is offered as untested and verified by walking onto it.
         twin = any(
             o.index != warp.index
             and o.trigger in ("door", "step", "arrow", "stairs")

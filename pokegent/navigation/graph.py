@@ -1128,19 +1128,12 @@ class NavigationGraph:
                     )
         fall_tile = info.kind in ("cracked_ice", "hole")
         # A warp entry on an ordinary/MB_CAVE tile is ROM metadata, not proof that walking onto
-        # the tile fires a transition.  Preserve other trigger kinds, plus the Waterfall/ice
-        # fall path, while excluding the inert cave warp that caused the Mansion loop.
-        automatic_warp = (
-            warp is not None
-            and warp.trigger
-            not in (
-                "arrow",
-                "stairs",
-                "door",
-                "none",
-            )
-            and not (warp.trigger is None and warp.tile_kind == "cave")
-        )
+        # the tile fires a transition.  Only a behavior that starts a step warp by itself
+        # (``IsWarpMetatileBehavior``: warp door, ladder, escalator, non-anim door, Lavaridge
+        # pads, warp pad, fall warp, union room) may become an automatic step edge.  A missing
+        # or unknown trigger is not proof, so those rows never route (the Mansion loop was the
+        # cave case of this).
+        automatic_warp = warp is not None and warp.trigger == "step"
         if warp is not None and (fall_tile or automatic_warp):
             edge = self._warp_edge(state, node, warp, direction, capabilities)
             if edge is not None and fall_tile:
