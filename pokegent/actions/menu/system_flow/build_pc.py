@@ -157,17 +157,33 @@ def _party_count(snapshot: Any) -> int:
     return sum(1 for member in getattr(snapshot, "party", ()) if member is not None)
 
 
-def _battle_capable(mon: Any) -> bool | None:
-    """True only when the decoded HP proves a non-egg member can still battle.
+def _party_readable(snapshot: Any) -> bool:
+    """Positive party-read admission from the existing ``Health.confidence`` semantics.
 
-    ``False`` is a proven non-battler (egg or zero HP). ``None`` means the HP evidence is
-    unreadable or inconsistent, so it must never be counted as a healthy party member.
+    ``1.0`` means every party check passed. An absent or degraded section means the party
+    evidence is not proven, even when the decoded fields look usable.
     """
-    if mon is None or bool(getattr(mon, "is_egg", False)):
+    health = getattr(snapshot, "health", None)
+    confidence = getattr(health, "confidence", None)
+    return isinstance(confidence, dict) and confidence.get("party") == 1.0
+
+
+def _battle_capable(mon: Any) -> bool | None:
+    """True only when decoded fields prove a non-egg member can still battle.
+
+    ``False`` is a proven non-battler (egg or zero HP). ``None`` means the evidence is
+    missing, unreadable or inconsistent, so it must never be counted as a healthy member.
+    """
+    if mon is None:
         return False
+    is_egg = getattr(mon, "is_egg", None)
+    if is_egg is True:
+        return False
+    if is_egg is not False:
+        return None
     hp = getattr(mon, "hp", None)
     max_hp = getattr(mon, "max_hp", None)
-    if not isinstance(hp, int) or not isinstance(max_hp, int) or max_hp <= 0 or hp < 0:
+    if type(hp) is not int or type(max_hp) is not int or max_hp <= 0 or hp < 0:
         return None
     if hp > max_hp:
         return None
@@ -661,6 +677,7 @@ def pc_main(
             )
             destination_slot = _first_empty_slot(storage, deposit_box)
         party_count = _party_count(snapshot)
+        party_readable = _party_readable(snapshot)
         for slot, mon in enumerate(snapshot.party):
             if mon is None:
                 continue
@@ -671,7 +688,10 @@ def pc_main(
                 for other in snapshot.party
                 if other is not None and other is not mon
             )
-            if party_count <= 1:
+            if not party_readable:
+                legal = Legality.UNKNOWN
+                reason = "party read is not proven: cannot verify battle-capable members"
+            elif party_count <= 1:
                 legal = Legality.UNAVAILABLE
                 reason = "cannot deposit the last party Pokemon"
             elif destination_slot is None:

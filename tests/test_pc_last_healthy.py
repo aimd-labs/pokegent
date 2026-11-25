@@ -6,10 +6,12 @@ registered ``pc_main`` handler with validated storage/party models, not planner 
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from pokegent.actions.menu.system_flow import refs as R
-from pokegent.actions.menu.system_flow.build_pc import pc_main
+from pokegent.actions.menu.system_flow.build_pc import _battle_capable, pc_main
 from pokegent.actions.menu.system_flow.evidence import Verdict
 from pokegent.actions.menu.system_flow.policy import SystemFlowOptions
 from pokegent.games.gen3.firered.reader.schemas import (
@@ -26,6 +28,7 @@ from pokegent.options.registry import BuildContext
 from pokegent.state.scenes import SceneResult
 
 PARTY_SIZE = 6
+_UNSET = object()
 
 
 def _mon(slot: int, pid: int, *, hp: int = 20, max_hp: int = 20, egg: bool = False) -> PartyMember:
@@ -88,11 +91,13 @@ def _snapshot(
     *,
     seq: int = 1,
     storage: PokemonStorage | None = None,
+    party_confidence: object = _UNSET,
 ) -> StateSnapshot:
+    confidence = {} if party_confidence is _UNSET else {"party": party_confidence}
     return StateSnapshot.create(
         rom_profile="synthetic",
         snapshot_seq=seq,
-        health=Health(valid=True),
+        health=Health(valid=True, confidence=confidence),
         player=Player(
             name="TEST",
             gender="male",
@@ -113,8 +118,16 @@ def _snapshot(
     )
 
 
-def _deposit(party: tuple[PartyMember, ...], *, seq: int = 1, full: bool = False):
-    snapshot = _snapshot(party, seq=seq, storage=_storage(full=full))
+def _deposit(
+    party: tuple[PartyMember, ...],
+    *,
+    seq: int = 1,
+    full: bool = False,
+    party_confidence: object = 1.0,
+):
+    snapshot = _snapshot(
+        party, seq=seq, storage=_storage(full=full), party_confidence=party_confidence
+    )
     ctx = BuildContext(
         snapshot=snapshot,
         scene=SceneResult(scene_id=R.PC_MAIN, confidence=0.95),
@@ -124,8 +137,12 @@ def _deposit(party: tuple[PartyMember, ...], *, seq: int = 1, full: bool = False
     return {option.id: option for option in draft.options}
 
 
-def _option(party, pid: int, *, seq: int = 1, full: bool = False):
-    return _deposit(party, seq=seq, full=full)[f"deposit:{pid}"]
+def _option(
+    party, pid: int, *, seq: int = 1, full: bool = False, party_confidence: object = 1.0
+):
+    return _deposit(
+        party, seq=seq, full=full, party_confidence=party_confidence
+    )[f"deposit:{pid}"]
 
 
 def test_sole_battle_capable_is_refused_when_companion_is_fainted():
@@ -208,6 +225,33 @@ def test_changed_fresh_party_data_must_not_retain_old_admission():
     healed = _mon(0, 171), _mon(1, 172, hp=1)
     fresh = _option(healed, 171, seq=2)
     assert fresh.legality is Legality.LEGAL
+
+
+@pytest.mark.parametrize("confidence", [0.0, 0.7, _UNSET])
+def test_unproven_party_read_blocks_positive_hp_deposit(confidence):
+    healthy, companion = _mon(0, 191), _mon(1, 192)
+
+    option = _option((healthy, companion), 191, party_confidence=confidence)
+
+    assert option.legality is Legality.UNKNOWN
+    assert option.executor_ref is None
+
+
+def test_unproven_party_read_blocks_even_a_fainted_target():
+    healthy, fainted = _mon(0, 201), _mon(1, 202, hp=0)
+
+    option = _option((healthy, fainted), 202, party_confidence=0.0)
+
+    assert option.legality is Legality.UNKNOWN
+    assert option.executor_ref is None
+
+
+def test_battle_capable_requires_known_egg_and_exact_int_hp():
+    assert _battle_capable(SimpleNamespace(hp=10, max_hp=10)) is None
+    assert _battle_capable(SimpleNamespace(hp=10, max_hp=10, is_egg=None)) is None
+    assert _battle_capable(SimpleNamespace(hp=True, max_hp=10, is_egg=False)) is None
+    assert _battle_capable(SimpleNamespace(hp=10, max_hp=10, is_egg=True)) is False
+    assert _battle_capable(SimpleNamespace(hp=10, max_hp=10, is_egg=False)) is True
 
 
 @pytest.mark.parametrize("hp,max_hp", [(30, 20), (-1, 20), (5, 0)])
