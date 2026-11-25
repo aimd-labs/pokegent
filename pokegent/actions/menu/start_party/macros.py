@@ -209,6 +209,9 @@ def executor_specs() -> tuple[ExecutorSpec, ...]:
             ExecutionKind.DETERMINISTIC,
             select,
             args={"item_id": Arg(int, required=False, min=1, max=65535)},
+            # GIVE is the only selection that opens the bag and its item context menu on the way
+            # to the held-item delta; the registered detector names that live menu scene
+            # ``menu.open``. Every other selection still verifies its own postcondition.
             allowed_scenes=frozenset(
                 {
                     R.START,
@@ -216,6 +219,7 @@ def executor_specs() -> tuple[ExecutorSpec, ...]:
                     R.PARTY_ACTION,
                     R.PARTY_REORDER,
                     R.PARTY_HELD_ITEM,
+                    "menu.open",
                     "scene.unknown",
                 }
             ),
