@@ -75,6 +75,13 @@ HTTP timeout above that value, or pass `?wait=<seconds>` to use a shorter wait (
 Invalid wait values return HTTP 400. `pokegent step --wait <seconds>` passes the same shorter wait;
 without it, the CLI retains the 30-second default.
 
+`GET /frame?diagnostics=1` opts into a bounded, read-only explanation of alternatives that are
+not selectable. The response adds `diagnostics: {"total": <count>, "items": [...]}`; each item is
+only `{"legality": "...", "reason": "..."}`, with `reason` `null` when no readable reason exists.
+At most 32 items are served and each reason is capped at 240 characters. The rows describe
+UNKNOWN/UNAVAILABLE/UNSUPPORTED options and never add a selectable option, option id or action
+authority; the default response and the option set are unchanged.
+
 While `--on-objective-done hold` is holding after completion, `/status` and the no-frame response
 from `step` retain their existing fields and add `waiting_for_objective: true` plus the completed
 `objective_id`.
