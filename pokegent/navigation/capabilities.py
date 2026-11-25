@@ -16,8 +16,13 @@ _MOVE_CAPABILITIES = {
     "flash": (I.MOVE_FLASH, K.BADGE_BOULDER, "Flash and Boulder Badge"),
 }
 
-#: Field moves whose badge access and party carrier the reader capability owner can explain.
-_EXPLAINED_FIELD_MOVES = frozenset({"cut", "smash", "strength", "flash"})
+#: Obstacle requirement key -> capability owner kind (Rock Smash key is ``rock_smash``).
+_FIELD_MOVE_KINDS = {
+    "cut": "cut",
+    "rock_smash": "smash",
+    "strength": "strength",
+    "flash": "flash",
+}
 
 
 def _section_readable(snapshot: StateSnapshot, section: str) -> bool:
@@ -37,9 +42,9 @@ def _section_readable(snapshot: StateSnapshot, section: str) -> bool:
 
 def missing_field_move_fact(snapshot: StateSnapshot, key: str) -> dict[str, object] | None:
     """Structured proven gap of an unmet field move; ``None`` when absence is not proved."""
-    if key not in _EXPLAINED_FIELD_MOVES:
+    if key not in _FIELD_MOVE_KINDS:
         return None
-    capability = field_capability(snapshot, key)
+    capability = field_capability(snapshot, _FIELD_MOVE_KINDS[key])
     if not capability.known:
         return None
     if not _section_readable(snapshot, "party") or not _section_readable(snapshot, "player"):

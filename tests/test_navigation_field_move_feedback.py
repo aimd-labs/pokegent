@@ -30,6 +30,7 @@ START = NavigationNode(1, 59, 10, 10)
 BOULDER = NavigationNode(1, 59, 13, 7)
 TARGET = NavigationTarget(1, 60)
 STRENGTH = NavigationRequirement("strength", "Strength and Rainbow Badge", False, "party")
+ROCK_SMASH = NavigationRequirement("rock_smash", "Rock Smash and Thunder Badge", False, "party")
 HEALTHY = {
     "save_blocks": 1.0,
     "player": 1.0,
@@ -156,6 +157,43 @@ def _strength_option():
                 "at": [13, 7],
             },
             "obstacle": "boulder",
+        },
+    )
+
+
+def _rock_smash_plan():
+    edge = NavigationEdge(
+        "rock_smash:4",
+        START,
+        BOULDER,
+        "field_move",
+        6,
+        (ROCK_SMASH,),
+        executor_target=(
+            ("kind", "obstacle"),
+            ("role", "rock_smash"),
+            ("local_id", 4),
+            ("at", (13, 7)),
+        ),
+    )
+    return NavigationPlan(START, TARGET, 6, (edge,), unmet=(ROCK_SMASH.label,))
+
+
+def _rock_smash_option():
+    return Option(
+        id="rock_smash:4",
+        label="Use Rock Smash on the rock",
+        legality=Legality.LEGAL,
+        executor_ref="field.interact",
+        facts={
+            "target": {
+                "kind": "obstacle",
+                "role": "rock_smash",
+                "map": [1, 59],
+                "local_id": 4,
+                "at": [13, 7],
+            },
+            "obstacle": "rock_smash",
         },
     )
 
@@ -288,6 +326,39 @@ def test_annotate_exposes_the_enriched_blocked_route_to_options():
         "carrier_missing": False,
         "badge_missing": True,
     }
+
+
+def test_rock_smash_requirement_maps_to_the_smash_capability_owner():
+    text = _adapter().blocked_route(
+        _rock_smash_plan(), snapshot=_snapshot(badges=(K.BADGE_THUNDER,), carrier=False)
+    )
+
+    assert text is not None
+    assert "no party member knows Rock Smash" in text
+    assert "Thunder Badge obtained" in text
+
+
+def test_rock_smash_gap_reaches_payload_criteria():
+    options, _ = _adapter().annotate(
+        [_rock_smash_option()],
+        _snapshot(badges=(K.BADGE_THUNDER,), carrier=False),
+        None,
+        plan=_rock_smash_plan(),
+    )
+    option = options[0]
+    frame = DecisionFrame(
+        decision_id="prereqs168-rock-smash",
+        run_id="",
+        snapshot_seq=1,
+        scene_id="field.free",
+        scene_confidence=1.0,
+        state_fingerprint="sha256:" + "b" * 64,
+        options=(option,),
+    )
+
+    criteria = to_system_one_payload(frame)["criteria"][option.id]
+    assert "no party member knows Rock Smash" in criteria
+    assert "Thunder Badge obtained" in criteria
 
 
 def test_payload_criteria_show_the_missing_badge_detail():
