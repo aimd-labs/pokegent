@@ -868,7 +868,9 @@ class NavigationGraph:
             if include_unmet or edge.available
         )
         out.extend(
-            edge for edge in self.elevator_edges(node.map_key, capabilities) if edge.source == node
+            edge
+            for edge in self.elevator_edges(node.map_key, capabilities)
+            if edge.source == node and (include_unmet or edge.available)
         )
         out.extend(
             edge
