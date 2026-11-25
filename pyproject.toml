@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pokegent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Gen 3 FireRed agent runtime with RAM-verified actions and optional local addons."
 readme = "README.md"
 license = {text = "MIT"}

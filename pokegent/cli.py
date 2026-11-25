@@ -35,7 +35,7 @@ from typing import Any
 
 from pokegent.goals import ObjectiveStore, validate
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 def _removed_hybrid_timeout(_value: str) -> float:
