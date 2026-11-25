@@ -12,8 +12,8 @@ from pokegent.actions.menu.start_party import refs as R
 from pokegent.options.registry import BuildContext
 from pokegent.pipeline import Observation
 
-# Base-game item 216 is the ordinary EXP Share, not a key item or HM.
-EXP_SHARE = 216
+# pret/pokefirered 037335f4 include/constants/items.h line 189: ITEM_EXP_SHARE = 182.
+EXP_SHARE = 182
 TARGET_PID = 0x12345678
 OTHER_PID = 0x87654321
 
@@ -34,7 +34,8 @@ def _mon(slot, personality, held_item=0):
 
 
 def _bag(quantity):
-    items = NS(pocket="items", capacity=30, items=(NS(item_id=EXP_SHARE, quantity=quantity),))
+    held = NS(item_id=EXP_SHARE, quantity=quantity)
+    items = NS(pocket="items", capacity=30, items=(held,))
     berries = NS(pocket="berries", capacity=30, items=())
     return (items, berries)
 
