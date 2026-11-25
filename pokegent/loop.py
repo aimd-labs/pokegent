@@ -527,6 +527,9 @@ class Runner:
             loop_signature_limit=self.config.loop_signature_limit,
             loop_min_cycles=self.config.loop_min_cycles,
         )
+        # Loop evidence belongs to one objective revision: a new objective must not inherit
+        # a closed-loop suspicion collected under the previous one.
+        self._loop_goal_key: dict[str, Any] | None = None
         self._last_perception: Perception | None = None
         self._last_frame: DecisionFrame | None = None
         self._pending_objective_key: tuple[str, int] | None = None
@@ -778,6 +781,15 @@ class Runner:
             now=observed_at,
             iteration=self.counters.iterations,
         )
+        # The objective refresh above may have adopted a new id/revision. Retire loop evidence
+        # from the previous objective BEFORE the loop check so a genuine new objective is never
+        # stopped by old recurrences; the monitor still resets on durable progress as before.
+        loop_goal_key = self._objective_ids()
+        if loop_goal_key != self._loop_goal_key:
+            self._loop_goal_key = loop_goal_key
+            self._progress.reset_window(
+                now=observed_at, iteration=self.counters.iterations, clear_loop=True
+            )
         # Position changes reset the field monitor, but only executor-proven durable
         # progress may finish/rearm an agent recovery window (see _execute).
         if (
