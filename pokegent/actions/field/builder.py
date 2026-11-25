@@ -2097,7 +2097,8 @@ class FieldBuilder:
             # No planner edge or explicit objective selected Fly, but the scene is otherwise
             # ready.  Expose a small, stable set of visited destinations as general travel
             # choices.  They are never marked as serving the objective because no route proves
-            # that; a launch map without a verified Fly-map cell still refuses above.
+            # that; the executor still proves the live cursor before input, and an indoor or
+            # unverified map still refuses above.
             for destination in fly.offered_destinations(snap, state):
                 out.append(
                     Option(

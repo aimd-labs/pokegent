@@ -138,28 +138,19 @@ def cursor_step(cursor: tuple[int, int], target: tuple[int, int]) -> str | None:
     return None
 
 
-def cursor_cell_for_map(map_key: tuple[int, int]) -> tuple[int, int] | None:
-    """Return the Rev0 Fly-map cell used when opening Fly from ``map_key``.
-
-    The live profile does not yet expose ``sFlyMap``.  Keeping this lookup explicit makes
-    the temporary open-loop executor fail closed for maps whose starting cell is unverified.
-    """
-    return next((dest.cell for dest in DESTINATIONS if dest.map_key == map_key), None)
-
-
 def offered_destinations(
     snapshot: StateSnapshot,
     state: MapState,
     *,
     limit: int = FLY_CHOICE_LIMIT,
 ) -> tuple[FlyDestination, ...]:
-    """Bounded visited destinations selectable from a launch-proven outdoor map.
+    """Bounded visited destinations selectable from a verified outdoor map.
 
     These are general travel choices, not route steps: nothing here proves the destination
     serves the active objective or saves walking distance.  The current map is excluded and
     the order is stable (region-map section, then name) so a rebuilt frame exposes the same
-    subset.  An unproven launch map still refuses: only maps with a verified Fly-map cell
-    can open the region map.
+    subset.  Opening Fly is legal on any verified outdoor map; the executor then proves the
+    live cursor from RAM and refuses an unreadable cursor instead of guessing a start cell.
     """
     if limit < 1 or not capability(snapshot, state)["available"] or not can_launch(state):
         return ()
@@ -171,16 +162,14 @@ def offered_destinations(
     return tuple(rows[:limit])
 
 
-def launch_cell(state: MapState) -> tuple[int, int] | None:
-    """Return the verified region-map cursor cell for the current map, if any."""
-    if not can_fly_here(state):
-        return None
-    return cursor_cell_for_map((state.identity.group, state.identity.number))
-
-
 def can_launch(state: MapState) -> bool:
-    """Whether the Fly executor can prove its open-loop launch position."""
-    return launch_cell(state) is not None
+    """Whether FireRed permits opening Fly from this verified outdoor map.
+
+    The executor does not assume a start cell: it waits for ``Task_FlyMap`` and then proves
+    the live cursor, selected map section and visited type from RAM before any direction or
+    confirmation.  A map whose cursor is unreadable is refused by that executor, not guessed.
+    """
+    return can_fly_here(state)
 
 
 def capability(snapshot: StateSnapshot, state: MapState) -> dict[str, object]:

@@ -136,18 +136,61 @@ def test_missing_badge_or_carrier_never_offers_fly(destinations):
     ]
 
 
-def test_indoor_or_unproved_launch_map_refuses_fly(destinations):
+def test_indoor_or_unverified_launch_map_refuses_fly(destinations):
     state = _outdoor_state()
     indoor = state.model_copy(
         update={"identity": state.identity.model_copy(update={"map_type": 0})}
     )
+    assert fly.can_launch(indoor) is False
     assert not [
         option.id for option in _draft(_snapshot(indoor)).options if option.id.startswith("fly:")
     ]
-    elsewhere = state.model_copy(
+    unverified = state.model_copy(
+        update={"identity": state.identity.model_copy(update={"identity_verified": False})}
+    )
+    assert fly.can_launch(unverified) is False
+    assert not [
+        option.id
+        for option in _draft(_snapshot(unverified)).options
+        if option.id.startswith("fly:")
+    ]
+
+
+def test_verified_outdoor_route_without_destination_cell_offers_fly(destinations):
+    state = _outdoor_state()
+    route = state.model_copy(
         update={"identity": state.identity.model_copy(update={"group": 3, "number": 9})}
     )
-    assert fly.can_launch(elsewhere) is False
-    assert not [
-        option.id for option in _draft(_snapshot(elsewhere)).options if option.id.startswith("fly:")
+    assert route.identity.identity_verified and route.identity.map_type in fly.FLY_MAP_TYPES
+    assert (3, 9) not in fly.DESTINATIONS_BY_KEY
+    assert fly.can_launch(route) is True
+    flies = [
+        option.id for option in _draft(_snapshot(route)).options if option.id.startswith("fly:")
     ]
+    assert flies == ["fly:DemoExit", "fly:DemoLake", "fly:DemoMap"]
+
+
+def test_resume_fly_map_refuses_unreadable_cursor(destinations):
+    from pokegent.actions.field.macros import FieldMacros
+
+    snap = _snapshot(_outdoor_state()).model_copy(
+        update={
+            "ui": SimpleNamespace(
+                valid=True,
+                fly_map=SimpleNamespace(input_ready=False, cursor_x=None, cursor_y=None),
+            )
+        }
+    )
+    ctx = SimpleNamespace(
+        snapshot=snap,
+        scene=SceneResult(scene_id="menu.fly_map", confidence=1, detector="invented"),
+        args={
+            "mapsec": TARGET.mapsec,
+            "cell_x": TARGET.cell[0],
+            "cell_y": TARGET.cell[1],
+            "destination_group": TARGET.map_key[0],
+            "destination_number": TARGET.map_key[1],
+        },
+    )
+    with pytest.raises(RuntimeError, match="not RAM-verified"):
+        next(FieldMacros().resume_fly_map(ctx))
