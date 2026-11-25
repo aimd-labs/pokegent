@@ -41,7 +41,7 @@ from pokegent.actions._exec.models import (
 from pokegent.actions._exec.registry import Arg, ExecutorSpec, StepContext
 from pokegent.actions.field import builder as B
 from pokegent.actions.field import evidence as E
-from pokegent.actions.field import fieldmenu, fly
+from pokegent.actions.field import fieldmenu, fishing, fly
 from pokegent.actions.field import nav as N
 from pokegent.actions.field import targets as T
 from pokegent.actions.field.attempts import AttemptLedger, LedgerKey, capability_signature
@@ -688,6 +688,24 @@ class FieldMacros:
                 max_frames=7000,
                 settle_frames=1800,
                 failure_cleanup=_field_free_after_bag_failure,
+                macro_manages_busy=True,
+            ),
+            ExecutorSpec(
+                "field.fish",
+                ExecutionKind.MACRO,
+                self.fish,
+                args={
+                    "item_id": Arg(int, min=1, max=374),
+                    "party_slot": Arg(int, min=-1, max=5),
+                    "move_slot": Arg(int, min=-1, max=3),
+                    "forget_move": Arg(int, min=0, max=354),
+                    "move_id": Arg(int, min=0, max=354),
+                },
+                allowed_scenes=item_allowed,
+                max_inputs=90,
+                max_frames=7000,
+                settle_frames=1800,
+                settle_wall_s=90.0,
                 macro_manages_busy=True,
             ),
             ExecutorSpec(
@@ -2219,6 +2237,7 @@ class FieldMacros:
         # handoff here, then return only after the destination map is readable.
         if record.capability.field_action == "escape_rope":
             yield from self._escape_rope_transition(before_snapshot, obs)
+        return obs
 
     def _escape_rope_transition(self, before_snapshot, obs):
         """Drive the Rope script in bounded observation chunks until its map load completes."""
@@ -2257,6 +2276,18 @@ class FieldMacros:
             yield from self._use_untargeted_item(ctx, record)
             return
         yield from self._use_party_item(ctx, record)
+
+    def fish(self, ctx):
+        """Use the rod through the bag, then wait input-free for the task's real terminal."""
+        if self.item_catalog is None:
+            raise RuntimeError("item catalog is unavailable")
+        record = self.item_catalog.item(int(ctx.args["item_id"]))
+        if record.capability.field_action != "rod":
+            raise RuntimeError("fishing executor received a non-rod item")
+        obs = yield from self._use_untargeted_item(ctx, record)
+        if obs is None:
+            raise RuntimeError("rod use did not hand back a fresh observation")
+        return (yield from fishing.drive(obs))
 
     def teach_tm(self, ctx):
         """Teach a TM, including the optional move replacement prompt."""
