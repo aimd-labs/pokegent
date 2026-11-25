@@ -707,6 +707,7 @@ class FieldMacros:
                 settle_frames=1800,
                 settle_wall_s=90.0,
                 macro_manages_busy=True,
+                verify_on_interrupt=False,
             ),
             ExecutorSpec(
                 "field.use_item",

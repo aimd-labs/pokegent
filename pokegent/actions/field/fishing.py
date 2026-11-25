@@ -22,7 +22,7 @@ CAST_FRAMES = 300
 TERMINAL_FRAMES = 2400
 #: A bite unlocks the controls and starts the wild battle in the same step.  Requiring the free
 #: field to stay settled rejects that one-frame window; the no-bite/got-away path is stable.
-FREE_SETTLE_CHECKS = 60
+FREE_SETTLE_FRAMES = 120
 
 
 def _ui(obs: Any) -> Any:
@@ -39,7 +39,8 @@ def cast_started(obs: Any) -> bool:
 
 def free_field_settled(obs: Any) -> bool:
     """A readable field with no owned task, no text box, and no locked controls."""
-    if getattr(getattr(obs, "scene", None), "scene_id", None) not in FREE_SCENES:
+    scene = getattr(obs, "scene", None)
+    if getattr(scene, "scene_id", None) not in FREE_SCENES or getattr(scene, "busy", False):
         return False
     ui = _ui(obs)
     if ui is None or ui.field is None or ui.script is None or ui.text is None:
@@ -49,9 +50,15 @@ def free_field_settled(obs: Any) -> bool:
     return bool(
         ui.field.prevent_step is False
         and ui.script.controls_locked is False
+        and ui.field.fade_active is False
         and ui.text.any_active is False
         and ui.text.waiting_for_button is False
     )
+
+
+def _frame(snapshot: Any) -> int | None:
+    value = getattr(snapshot, "emulator_frame", None)
+    return value if isinstance(value, int) else None
 
 
 def battle_started(obs: Any) -> bool:
@@ -62,7 +69,7 @@ class TerminalTracker:
     """The fishing terminal after the cast: a battle, or a settled no-battle field."""
 
     def __init__(self) -> None:
-        self._free_checks = 0
+        self._free_frame: int | None = None
         self.outcome: str | None = None
 
     def __call__(self, obs: Any) -> bool:
@@ -70,12 +77,17 @@ class TerminalTracker:
             self.outcome = "battle"
             return True
         if free_field_settled(obs):
-            self._free_checks += 1
-            if self._free_checks >= FREE_SETTLE_CHECKS:
+            frame = _frame(getattr(obs, "snapshot", None))
+            if frame is None:
+                self._free_frame = None
+                return False
+            if self._free_frame is None:
+                self._free_frame = frame
+            if frame - self._free_frame >= FREE_SETTLE_FRAMES:
                 self.outcome = "no_battle"
                 return True
         else:
-            self._free_checks = 0
+            self._free_frame = None
         return False
 
 
@@ -113,12 +125,11 @@ def resolved(ctx: Any) -> bool:
         return True
     if not free_field_settled(_Obs(ctx)):
         return False
-    before = getattr(ctx, "before", None)
-    after = getattr(ctx, "after", None)
-    if before is None or after is None:
+    before_frame = _frame(getattr(ctx, "before", None))
+    after_frame = _frame(getattr(ctx, "after", None))
+    if before_frame is None or after_frame is None or after_frame < before_frame:
         return False
-    elapsed = getattr(after, "emulator_frame", 0) - getattr(before, "emulator_frame", 0)
-    return elapsed >= FREE_SETTLE_CHECKS * 2
+    return after_frame - before_frame >= FREE_SETTLE_FRAMES
 
 
 class _Obs:
