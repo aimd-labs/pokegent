@@ -106,7 +106,17 @@ class BoulderPlans:
         positions, mask = world.initial()
         region = world.region(mask, positions, world.start_node())
         ident = state.identity
-        key = (ident.group, ident.number, positions, mask, min(region.dist), exits)
+        fixed = tuple(sorted(world.fixed.items()))
+        key = (
+            ident.group,
+            ident.number,
+            hash(state.grid.blocks),
+            fixed,
+            positions,
+            mask,
+            min(region.dist),
+            exits,
+        )
         got = self._plans.get(key)
         if got is None:
             got = world.plan_all(exits)
