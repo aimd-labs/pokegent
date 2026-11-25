@@ -138,6 +138,7 @@ class ObjectiveStore:
     _revision_floor: int = 0
     _committed_completions: set[tuple[str, int]] = field(default_factory=set)
     _observation: Callable[[], ShopObservation | None] | None = field(default=None, repr=False)
+    _snapshot: Callable[[], Any | None] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
@@ -377,6 +378,10 @@ class ObjectiveStore:
         """Bind the live fresh-core observation used only for SHOP admission facts."""
         self._observation = observation
 
+    def bind_snapshot(self, snapshot: Callable[[], Any | None] | None) -> None:
+        """Bind the fresh live snapshot used only for already-satisfied REACH admission."""
+        self._snapshot = snapshot
+
     def validate(self, data: Mapping[str, Any] | Objective) -> Validation:
         return validate(
             data,
@@ -461,6 +466,10 @@ class ObjectiveStore:
                         f"revision {new.revision} must be greater than {current_rev}",
                     )
                 )  # fmt: skip
+            if not problems:
+                already = self._already_satisfied(verdict)
+                if already is not None:
+                    problems.append(already)
             if problems:
                 self._log("rejected", new.revision, new.objective_id, problems, raw)
                 return Proposal(False, tuple(problems), new)
@@ -470,6 +479,30 @@ class ObjectiveStore:
             self._activate(verdict)
             self._log("accepted", new.revision, new.objective_id, (), new.model_dump(mode="json"))
             return Proposal(True, (), new)
+
+    def _already_satisfied(self, verdict: Validation) -> Reason | None:
+        """Reject a REACH only when fresh usable RAM proves its derived target is met."""
+        resolved = verdict.resolved
+        if resolved is None or resolved.objective.kind != "reach" or self._snapshot is None:
+            return None
+        probes = tuple(probe for probe in resolved.probes if probe.derived)
+        if not probes:
+            return None
+        try:
+            snapshot = self._snapshot()
+        except Exception:  # optional admission fact: never suppress ordinary validation
+            return None
+        if snapshot is None or not getattr(snapshot, "usable", False):
+            return None
+        from pokegent.goals.tracker import evaluate_probe
+
+        if not all(evaluate_probe(probe, snapshot) for probe in probes):
+            return None
+        target = resolved.target
+        detail = f"current snapshot is already in reach map {target.group}:{target.number}"
+        if target.x is not None and target.y is not None:
+            detail += f" at tile ({target.x}, {target.y})"
+        return Reason("objective_already_satisfied", "target", detail)
 
     def _completion_committed(self, objective: Objective) -> bool:
         return (objective.objective_id, objective.revision) in self._committed_completions
