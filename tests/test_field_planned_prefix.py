@@ -11,7 +11,7 @@ from pokegent.actions.field.nav import Navigator
 from pokegent.actions.field.targets import plan_target, tile_target
 from pokegent.goals.models import Objective
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
-from pokegent.navigation.adapter import NavigationAdapter
+from pokegent.navigation.adapter import NavigationAdapter, NavigationLookup
 from pokegent.navigation.models import (
     NavigationEdge,
     NavigationNode,
@@ -50,7 +50,7 @@ def blocked_point_frame():
     resolved = ResolvedObjective(objective, ResolvedTarget(group=0, number=0, x=3, y=0), ())
     graph = _FakeGraph(names={(0, 0): 'DemoMap'})
     adapter = NavigationAdapter(graph)
-    adapter.plan = lambda *_args, **_kwargs: plan
+    adapter.plan_result = lambda *_args, **_kwargs: NavigationLookup(plan)
     builder = FieldBuilder(field_menu=False, objectives=lambda _: resolved, navigation=adapter)
     snap = snapshot().model_copy(update={'map': state})
     ctx = BuildContext(snapshot=snap,
@@ -103,7 +103,7 @@ def test_directly_reachable_point_does_not_add_prefix_alternatives():
 def test_non_toggle_plan_does_not_add_same_map_prefix():
     builder, ctx, _, plan = blocked_point_frame()
     without_toggle = replace(plan, route=tuple(e for e in plan.route if e.kind != 'toggle'))
-    builder.navigation.plan = lambda *_args, **_kwargs: without_toggle
+    builder.navigation.plan_result = lambda *_args, **_kwargs: NavigationLookup(without_toggle)
     assert not any(o.chooseable and o.id.startswith('tile:') for o in builder.build(ctx).options)
 
 

@@ -21,6 +21,7 @@ from pokegent.navigation.models import (
     NavigationTarget,
 )
 from pokegent.navigation.planner import (
+    OBJECTIVE_FRAME_BUDGET_FACT,
     NavigationPlanner,
     next_semantic_edge,
     objective_frame_budget,
@@ -31,6 +32,26 @@ from pokegent.navigation.trigger_matching import executable_route, first_planned
 from pokegent.options.models import Legality, Option
 
 _PLAN_UNSET = object()
+
+
+@dataclass(frozen=True)
+class _BudgetExhausted:
+    """The exact-input UNKNOWN of a bounded search that ran out of allowance."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class NavigationLookup:
+    """One per-call objective lookup: the plan (or ``None``) plus its exact-UNKNOWN reason.
+
+    ``unknown_reason`` is set only when the bounded objective search exhausted its allowance;
+    a missing target, an unusable state or a finite no-path proof keep it ``None``.  The value
+    is read from the same LRU entry as the plan, so it can never outlive or drift from it.
+    """
+
+    plan: NavigationPlan | None
+    unknown_reason: str | None = None
 
 
 def _map_label(graph: NavigationGraph, map_key: tuple[int, int]) -> str:
@@ -74,22 +95,39 @@ class NavigationAdapter:
         self.planner = NavigationPlanner(graph, events=events)
         self.visited = visited if visited is not None else _Visited()
         self._plan_cache_size = max(0, plan_cache_size)
-        self._plan_cache: OrderedDict[tuple[object, ...], NavigationPlan | None] = OrderedDict()
+        self._plan_cache: OrderedDict[
+            tuple[object, ...], NavigationPlan | None | _BudgetExhausted
+        ] = OrderedDict()
         self._closed_warp_cache: dict[tuple[object, ...], bool] = {}
         self._closed_warp_cache_map: tuple[int, int] | None = None
 
     def plan(
         self, snapshot, resolved: ResolvedObjective | None, *, objective_budget: int | None = None
     ) -> NavigationPlan | None:
+        return self.plan_result(
+            snapshot, resolved, objective_budget=objective_budget
+        ).plan
+
+    def plan_result(
+        self, snapshot, resolved: ResolvedObjective | None, *, objective_budget: int | None = None
+    ) -> NavigationLookup:
+        """Return this call's plan and its exact-UNKNOWN provenance, if any."""
         if objective_budget is None:
-            return self._plan(snapshot, resolved, None)
-        with objective_frame_budget(self.planner.events, objective_budget) as work:
-            plan = self._plan(snapshot, resolved, objective_budget)
-        return None if work[1] else plan
+            found = self._plan(snapshot, resolved, None)
+        else:
+            with objective_frame_budget(self.planner.events, objective_budget) as work:
+                found = self._plan(snapshot, resolved, objective_budget)
+            if work[1] and not isinstance(found, _BudgetExhausted):
+                # A fresh exhaustion that returned before the adapter's own cache write still
+                # names the planner's reason; nothing partial is admitted (and nothing cached).
+                return NavigationLookup(None, OBJECTIVE_FRAME_BUDGET_FACT)
+        if isinstance(found, _BudgetExhausted):
+            return NavigationLookup(None, found.reason)
+        return NavigationLookup(found, None)
 
     def _plan(
         self, snapshot, resolved: ResolvedObjective | None, objective_budget: int | None
-    ) -> NavigationPlan | None:
+    ) -> NavigationPlan | None | _BudgetExhausted:
         state = snapshot.map
         if state is None or state.player is None or resolved is None:
             return None
@@ -150,14 +188,14 @@ class NavigationAdapter:
                 resolved,
             )
             if objective_frame_budget_exhausted():
-                return self._abandon(cache_key)
+                return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
         wild_maps = getattr(resolved, "navigation_map_keys", frozenset())
         if wild_maps:
             plan = self.planner.plan_to_maps(
                 start, wild_maps, capabilities, live=state
             )
             if objective_frame_budget_exhausted():
-                return self._abandon(cache_key)
+                return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
             if plan is not None:
                 target = plan.target
             else:
@@ -177,7 +215,7 @@ class NavigationAdapter:
                     start, target, capabilities, live=state
                 )
                 if objective_frame_budget_exhausted():
-                    return self._abandon(cache_key)
+                    return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
                 if decision is not None:
                     plan = NavigationPlan(
                         start,
@@ -191,16 +229,16 @@ class NavigationAdapter:
         elif target is not None:
             plan = train_plan or self.planner.plan(start, target, capabilities, live=state)
             if objective_frame_budget_exhausted():
-                return self._abandon(cache_key)
+                return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
         else:
             plan = None
         if plan is not None:
             plan = self._route_to_corridor_frontier(plan, target, capabilities, state)
             if objective_frame_budget_exhausted():
-                return self._abandon(cache_key)
+                return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
             plan = self._route_to_boulder_prerequisite(plan, target, capabilities, state)
             if objective_frame_budget_exhausted():
-                return self._abandon(cache_key)
+                return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
             plan = self._stage_boulder_action(plan, target)
             # A target NPC is a destination *within* the target map.  The live map can
             # temporarily make its adjacent tile unwalkable (another event object may be
@@ -214,7 +252,7 @@ class NavigationAdapter:
                     live=state,
                 )
                 if objective_frame_budget_exhausted():
-                    return self._abandon(cache_key)
+                    return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
                 plan = NavigationPlan(
                     map_plan.start,
                     target,
@@ -244,7 +282,7 @@ class NavigationAdapter:
                 )
             plan = self._route_to_counted_trainer(plan, capabilities, state)
             if objective_frame_budget_exhausted():
-                return self._abandon(cache_key)
+                return self._abandon(cache_key, OBJECTIVE_FRAME_BUDGET_FACT)
             self._remember_plan(cache_key, plan)
             return plan
         return self._abandon(cache_key)
@@ -284,19 +322,27 @@ class NavigationAdapter:
             blocked_route_fact=blocked_route_fact,
         )
 
-    def _abandon(self, key: tuple[object, ...] | None) -> None:
+    def _abandon(
+        self, key: tuple[object, ...] | None, reason: str | None = None
+    ) -> _BudgetExhausted | None:
         """Remember only the exact UNKNOWN of an abandoned bounded search.
 
         The key is already a complete live-input identity, and the planner is deterministic, so
         the same request with the same allowance cannot find a route on the next frame.  A
-        partial ``NavigationPlan`` must never be admitted as a route or no-path proof.
+        partial ``NavigationPlan`` must never be admitted as a route or no-path proof.  When
+        ``reason`` is given, the same LRU entry carries it so a cache hit cannot lose it.
         """
-        self._remember_plan(key, None)
-        return None
+        entry: _BudgetExhausted | None = (
+            _BudgetExhausted(reason) if reason is not None else None
+        )
+        self._remember_plan(key, entry)
+        return entry
 
-    def _remember_plan(self, key: tuple[object, ...] | None, plan: NavigationPlan | None) -> None:
+    def _remember_plan(
+        self, key: tuple[object, ...] | None, plan: NavigationPlan | None | _BudgetExhausted
+    ) -> None:
         work = objective_frame_budget_state()
-        if work is not None and work[1] and plan is not None:
+        if work is not None and work[1] and isinstance(plan, NavigationPlan):
             return
         if key is None or self._plan_cache_size == 0:
             return

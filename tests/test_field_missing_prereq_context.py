@@ -18,7 +18,7 @@ from pokegent.actions.field.builder import FieldBuilder
 from pokegent.games.gen3 import mechanics_constants as K
 from pokegent.games.gen3 import mechanics_ids as I
 from pokegent.games.gen3.firered.maps.map_schema import WarpInfo
-from pokegent.navigation.adapter import NavigationAdapter
+from pokegent.navigation.adapter import NavigationAdapter, NavigationLookup
 from pokegent.navigation.models import (
     NavigationEdge,
     NavigationNode,
@@ -131,7 +131,7 @@ def _build(plan, snap):
     graph = _FakeGraph(names={(0, 0): "DemoMap", (1, 0): "InventedNext"})
     graph.scripted_warp_arrival = lambda *_args, **_kwargs: None
     adapter = NavigationAdapter(graph)
-    adapter.plan = lambda *_args, **_kwargs: plan
+    adapter.plan_result = lambda *_args, **_kwargs: NavigationLookup(plan)
     builder = FieldBuilder(field_menu=False, navigation=adapter)
     ctx = BuildContext(
         snapshot=snap,
