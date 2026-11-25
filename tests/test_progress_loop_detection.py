@@ -220,6 +220,29 @@ def test_few_new_tip_states_after_long_loop_are_not_stopped():
         assert m.loop_reason() is None, new
 
 
+# ---- supported loop_min_cycles=1 (band == window, no earlier interval) ----
+def test_min_cycles_one_still_catches_settled_two_exit_cycle():
+    """With loop_min_cycles=1 the whole window is the band; a settled loop must still fire."""
+    m = ProgressMonitor(8, now=0.0, loop_window=16, loop_min_cycles=1)
+    _feed(m, _two_exit_tiles(["A0", "A1", "A2", "B0", "B1", "B2"])[:16])
+    assert m.loop_reason() is not None
+
+    ping = ProgressMonitor(8, now=0.0, loop_window=16, loop_min_cycles=1)
+    _feed(ping, [("warp:a:1", "SA") if i % 2 == 0 else ("warp:b:1", "SB")
+                 for i in range(16)])
+    assert ping.loop_reason() is not None
+
+
+def test_min_cycles_one_new_tip_states_are_not_stopped():
+    """The no-earlier-interval fallback must still let a 1-4 state escape through."""
+    m = ProgressMonitor(8, now=0.0, loop_window=16, loop_min_cycles=1)
+    settled = _two_exit_tiles(["A0", "A1", "A2", "B0", "B1", "B2"])[:12]
+    fresh = [("warp:a:1", f"ESCAPE-{i}") for i in range(4)]
+    _feed(m, settled)
+    _feed(m, fresh)
+    assert m.loop_reason() is None
+
+
 # ---- issue #133: the real Runner must stop the same two-exit cycle ----
 def _map_cycle_runner(*, max_steps: int = 230):
     """Runner + fake executor cycling two exits through six already-visited tiles."""

@@ -127,12 +127,17 @@ class ProgressMonitor:
         # AND sig[i] was already present before position i in the tail.
         band_start = max(0, len(self._window) - self.loop_window)
         band = self._window[band_start:]
+        tip_size = min(len(band), self.loop_signature_limit)
+        tip = band[-tip_size:]
         earlier_sigs = {sig for _, sig in self._window[:band_start]}
-        fresh_sigs = {sig for _, sig in band if sig not in earlier_sigs}
+        # With loop_min_cycles=1 the band IS the window, so there is no earlier interval.
+        # Use the prefix before the tip as the "already visited" reference there; a window
+        # with no prefix cannot prove escape and keeps the remaining gates unchanged.
+        reference_sigs = earlier_sigs or {sig for _, sig in band[:-tip_size]}
+        fresh_sigs = {sig for _, sig in band if sig not in reference_sigs}
         if len(fresh_sigs) > self.loop_signature_limit:
             return None  # the tail is still opening unseen states -> not a closed loop
-        tip = band[-min(len(band), self.loop_signature_limit):]
-        if any(sig not in earlier_sigs for _, sig in tip):
+        if reference_sigs and any(sig not in reference_sigs for _, sig in tip):
             # The newest decisions entered a state not seen earlier in the interval:
             # old recurrences alone must not stop a run that is still escaping.
             return None
