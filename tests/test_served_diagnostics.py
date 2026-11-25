@@ -227,6 +227,34 @@ def test_unoffered_executor_tokens_are_redacted_or_refused(no_sockets):
     _finish(external, body, thread, outcome)
 
 
+def test_diagnostic_ids_in_reasons_are_redacted(no_sockets):
+    external = server.ExternalDecider()
+    own = _diagnostic("opaque", "diag:opaque is unavailable")
+    other = _diagnostic("other", "diag:opaque blocks diag:other")
+    thread, outcome = _start_offer(
+        external, _frame(diagnostics=(own, other)), wait_timeout=WAIT_TIMEOUT
+    )
+    body = external.frame_response(diagnostics=True, wait_timeout=0.0)[1]
+    items = body["diagnostics"]["items"]
+    rendered = json.dumps(body)
+
+    # These ids are not navigation edge keys, so only the local id redaction covers them.
+    assert "diag:opaque" not in rendered
+    assert "diag:other" not in rendered
+    assert items == [
+        {
+            "legality": "UNKNOWN",
+            "reason": "[non-selectable option] is unavailable",
+        },
+        {
+            "legality": "UNKNOWN",
+            "reason": "[non-selectable option] blocks [non-selectable option]",
+        },
+    ]
+    assert all(set(item) == {"legality", "reason"} for item in items)
+    _finish(external, body, thread, outcome)
+
+
 def test_count_and_reason_length_are_bounded(no_sockets):
     external = server.ExternalDecider()
     diagnostics = tuple(

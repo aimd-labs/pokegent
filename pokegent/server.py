@@ -73,18 +73,28 @@ MAX_OBJECTIVE_BODY = 16 * 1024
 BODY_READ_TIMEOUT = 5.0
 
 
+def _redact_diagnostic_ids(text: str, frame: DecisionFrame) -> str:
+    """Redact diagnostic ids locally; the shared sanitizer and guard do not cover option ids."""
+    for option_id in sorted(
+        (option.id for option in frame.diagnostics), key=len, reverse=True
+    ):
+        text = text.replace(option_id, "[non-selectable option]")
+    return text
+
+
 def _served_diagnostics(frame: DecisionFrame) -> dict[str, Any]:
     """Bounded readable rows for diagnostics; explanation only, never selectable identity.
 
     Reasons are projected through the existing sanitizer and leak guard against the owning
     frame, so an unrenderable reason stays ``None`` instead of publishing hidden metadata.
+    Diagnostic ids are redacted locally because neither helper covers option identity.
     """
     items: list[dict[str, Any]] = []
     for option in frame.diagnostics[:MAX_SERVED_DIAGNOSTICS]:
         reason = option.facts.get("reason")
         text: str | None = None
         if isinstance(reason, str) and reason.strip():
-            text = sanitize_internal_text(reason, frame)
+            text = _redact_diagnostic_ids(sanitize_internal_text(reason, frame), frame)
             if len(text) > MAX_SERVED_DIAGNOSTIC_REASON_CHARS:
                 text = text[: MAX_SERVED_DIAGNOSTIC_REASON_CHARS - 3].rstrip() + "..."
             try:
