@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from itertools import count
 
 from pokegent.events import EventSink, EventType
+from pokegent.games.gen3.firered.maps.map_constants import MAPGRID_UNDEFINED
 from pokegent.games.gen3.firered.maps.map_schema import MapState
 from pokegent.navigation.graph import NavigationGraph
 from pokegent.navigation.models import (
@@ -23,6 +24,7 @@ from pokegent.navigation.models import (
 
 OBJECTIVE_FRAME_PLAN_BUDGET = 75_000
 OBJECTIVE_FRAME_BUDGET_FACT = "objective route search budget exhausted"
+TARGET_NOT_WALKABLE_FACT = "target_not_walkable"
 _objective_work: ContextVar[list[int] | None] = ContextVar("objective_work", default=None)
 
 
@@ -106,6 +108,10 @@ class NavigationPlanner:
         live: MapState | None = None,
         limit: int = 250_000,
     ) -> NavigationPlan:
+        if self._static_wall_target(start, target, live):
+            return NavigationPlan(
+                start, target, None, blocked_route_fact=TARGET_NOT_WALKABLE_FACT
+            )
         available = self._search(
             start, target, capabilities, live=live, include_unmet=False, limit=limit
         )
@@ -155,6 +161,81 @@ class NavigationPlanner:
             # surface the incomplete proof in the frame.
             blocked_route_fact=budget_fact if unmet else None,
             blocked_choice_step=_choice_step(blocked.route),
+        )
+
+    def _static_wall_target(
+        self,
+        start: NavigationNode,
+        target: NavigationTarget,
+        live: MapState | None,
+    ) -> bool:
+        """Whether the explicit target tile is positively static, non-landable wall.
+
+        Only readable, verified, in-bounds, known normal land geometry with collision
+        bits set and no modeled way to arrive on it qualifies.  Missing attributes,
+        warp tiles, objects, script gates, coord events and stateful overlays stay with
+        the ordinary search: a current colliding tile is not proof of no future script.
+        """
+        if (
+            target.x is None
+            or target.y is None
+            or target.warp_index is not None
+            or target.local_id is not None
+        ):
+            return False
+        key = target.map_key
+        state = (
+            live
+            if live is not None and (live.identity.group, live.identity.number) == key
+            else self.graph.state(key)
+        )
+        layout = getattr(state, "layout", None)
+        if state is None or layout is None or not callable(getattr(state, "tile", None)):
+            return False
+        x, y = target.x, target.y
+        if not (0 <= x < layout.width and 0 <= y < layout.height):
+            return False
+        if start.map_key == key and (start.x, start.y) == (x, y):
+            return False
+        tile = state.tile(x, y)
+        grid = getattr(state, "grid", None)
+        if (
+            not getattr(getattr(state, "identity", None), "identity_verified", False)
+            or not callable(getattr(state, "in_grid", None))
+            or not state.in_grid(x, y)
+            or grid is None
+            or tile.metatile_id not in grid.attribute_map
+            or tile.metatile_id == MAPGRID_UNDEFINED
+            or tile.undefined
+            or tile.kind != "normal"
+            or tile.collision == 0
+            or tile.warp_trigger is not None
+            or tile.surfable
+            or tile.interactive is not None
+        ):
+            return False
+        graph = self.graph
+        if (key, (x, y)) in getattr(graph, "_script_unknown_sites", {}):
+            return False
+        exempt = (
+            {(warp.x, warp.y) for warp in getattr(state, "warps", ())}
+            | {(obj.x, obj.y) for obj in getattr(state, "objects", ())}
+            | {(event.x, event.y) for event in getattr(state, "coord_events", ())}
+            | {(row.x, row.y) for row in getattr(graph, "_script_obstacles", {}).get(key, ())}
+            | {(row.x, row.y) for row in getattr(graph, "_script_toggles", {}).get(key, ())}
+            | {(row[0], row[1]) for row in getattr(graph, "_gates", {}).get(key, ())}
+            | set(getattr(graph, "_on_load_barriers", {}).get(key, ()))
+        )
+        if (
+            (x, y) in exempt
+            or getattr(graph, "_on_load_metatiles", {}).get(key)
+            or getattr(graph, "_on_frame_landings", {}).get(key)
+        ):
+            return False
+        return not any(
+            floor_key == key and (x, y) == (floor_x, floor_y)
+            for rows in getattr(graph, "_elevators", {}).values()
+            for _panel_x, _panel_y, _panel, _entry, floor_key, floor_x, floor_y, *_rest in rows
         )
 
     def plan_next_decision(
