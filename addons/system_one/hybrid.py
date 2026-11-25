@@ -101,9 +101,9 @@ def _route_step_shape(option: Option) -> bool:
 
 
 def _non_competing(option: Option) -> bool:
-    """A default face/swap control or a plain off-route warp/edge exit; never route-selected.
+    """A default face/swap/START control or a plain off-route warp/edge exit; never route-selected.
 
-    The face/swap exemption is only the exact default-producer shape: legal, low risk,
+    The face/swap/START exemption is only the exact default-producer shape: legal, low risk,
     reversible and owning its documented executor.
     """
     if option.legality is not Legality.LEGAL or option.risk is Risk.HIGH or _irreversible(option):
@@ -124,6 +124,12 @@ def _non_competing(option: Option) -> bool:
             option.id.startswith("swap:")
             and option.facts.get("party_order") is True
             and option.executor_ref == "field.swap_party"
+        )
+        or (
+            option.id == "open_start"
+            and option.facts.get("menu_open") is True
+            and option.executor_ref == "field.open_start"
+            and option.postcondition_ref == "field.menu_open"
         )
     ):
         return True

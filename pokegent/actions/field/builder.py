@@ -186,6 +186,18 @@ def _shop_target_is_local(resolved: ResolvedObjective | None, map_key: tuple[int
     return resolved is not None and resolved.target.map_key == map_key
 
 
+def _start_menu_openable(ctx: BuildContext, snapshot) -> bool:
+    """Whether this frame is a decoder-proven controllable overworld where START can open."""
+    verdict = E.classify(snapshot) if snapshot.ui is not None else None
+    return bool(
+        ctx.scene.scene_id == E.FREE
+        and not ctx.scene.busy
+        and verdict is not None
+        and verdict.scene_id == E.FREE
+        and not verdict.busy
+    )
+
+
 def _failure_counts_toward_demotion(failure: Mapping[str, Any]) -> bool:
     """Return whether a failed attempt is evidence that the option is genuinely stuck.
 
@@ -221,6 +233,8 @@ PC_AT_TILE = "field.at_tile"
 PC_FACING = "field.facing"
 PC_SCRIPT_DONE = "field.script_done"
 SWAP_PARTY = "field.swap_party"
+OPEN_START = "field.open_start"
+PC_MENU_OPEN = "field.menu_open"
 
 #: spec-6.B vocabulary tokens of the options (the catalog row ``field.free`` lists the raw MOVE_*
 #: verbs; the interface uses semantic options, so these belong to sibling rows of section B)
@@ -629,6 +643,23 @@ class FieldBuilder:
                         risk=Risk.LOW,
                     )
                 )
+        if self.field_menu and _start_menu_openable(ctx, snap):
+            options.append(
+                Option(
+                    id="open_start",
+                    label="Open START menu",
+                    description=(
+                        "Press START once from the overworld and stop at the input-ready "
+                        "START menu; the next decision chooses an existing menu action."
+                    ),
+                    legality=Legality.LEGAL,
+                    facts={"menu_open": True},
+                    executor_ref=OPEN_START,
+                    postcondition_ref=PC_MENU_OPEN,
+                    verb="OPEN_MENU",
+                    risk=Risk.LOW,
+                )
+            )
         if (
             scene_id == E.DARKNESS
             and state.flash_level
