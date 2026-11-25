@@ -102,7 +102,13 @@ def _draft(*, party=PARTY, wall=False, objects=()):
 
 
 def _frame(
-    draft=None, *, options=(), goal_id="reach_dest", scene_id="field.free", decision_id="d-1"
+    draft=None,
+    *,
+    options=(),
+    goal_id="reach_dest",
+    scene_id="field.free",
+    decision_id="d-1",
+    context=None,
 ):
     draft = _draft() if draft is None else draft
     raw = (*draft.options, *options)
@@ -116,7 +122,7 @@ def _frame(
         state_fingerprint=fingerprint(scene_id, options=[option.id for option in raw]),
         goal_id=goal_id,
         goal_revision=1,
-        context=draft.context,
+        context=draft.context if context is None else context,
     )
 
 
@@ -294,6 +300,76 @@ def test_actual_default_producer_frame_qualifies_for_route_first(monkeypatch):
     assert system1.frames == []
     assert decider.last_decision == {"decided_by": "route", "escalated": False}
     assert decider._decision_id == frame.decision_id
+
+
+def test_team_needs_block_route_and_healthy_default_stays_eligible(monkeypatch):
+    draft = _draft(wall=True)
+    decider = _decider(monkeypatch)
+
+    healthy = _frame(draft)
+    assert decider.deterministic_route_step(healthy) is not None
+
+    need_context = {**draft.context, "team_needs": ["party HP is below max"]}
+    need = _frame(draft, context=need_context)
+    assert decider.deterministic_route_step(need) is None
+
+
+def test_known_team_need_falls_back_to_the_decider(monkeypatch):
+    draft = _draft(wall=True)
+    frame = _frame(draft, context={**draft.context, "team_needs": ["move PP is below max"]})
+    events = MemoryEventLog("synthetic")
+    system1 = FakeSystem1(option_id="warp:0:0:0")
+    decider = _decider(monkeypatch, system1=system1)
+    runner, actions = _runner(frame, decider, events, progressed=True)
+
+    runner.run()
+
+    assert len(system1.frames) == 1
+    assert actions == ["warp:0:0:0"]
+    assert not events.of_type(EventType.DECISION_ROUTE)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id": "edge:0:0:0", "facts": {"target": {"kind": "warp", "map": (0, 0), "index": 0}}},
+        {"facts": {"target": {"kind": "item", "map": (0, 0), "index": 0}}},
+        {"facts": {"target": {"kind": "unknown", "map": (0, 0), "index": 0}}},
+    ],
+)
+def test_mismatched_or_unknown_target_refuses(monkeypatch, changes):
+    frame = _frame(_draft(wall=True))
+    frame = _replace(frame, "warp:0:0:0", **changes)
+    decider = _decider(monkeypatch)
+
+    assert decider.deterministic_route_step(frame) is None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"executor_ref": None},
+        {"executor_ref": "field.travel_edge"},
+        {"postcondition_ref": None},
+        {"postcondition_ref": "field.edge_done"},
+    ],
+)
+def test_missing_or_incorrect_executor_or_postcondition_refuses(monkeypatch, changes):
+    frame = _frame(_draft(wall=True))
+    frame = _replace(frame, "warp:0:0:0", **changes)
+    decider = _decider(monkeypatch)
+
+    assert decider.deterministic_route_step(frame) is None
+
+
+def test_face_false_is_not_integer_zero(monkeypatch):
+    frame = _frame(_draft(wall=True))
+    face = next(option for option in frame.options if option.id == "face:S")
+    facts = {**face.facts, "steps": False}
+    frame = _replace(frame, "face:S", facts=facts)
+    decider = _decider(monkeypatch)
+
+    assert decider.deterministic_route_step(frame) is None
 
 
 def test_runner_executes_route_step_once_with_route_provenance(monkeypatch):

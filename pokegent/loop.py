@@ -1405,9 +1405,8 @@ class Runner:
                 or frame.goal_id != objective.objective_id
                 or (frame.goal_revision is not None and frame.goal_revision != objective.revision)
             )
-        # Hybrid may admit one uniquely proven route step before paying for a provider. The
-        # choice is still validated against this exact frame and executes through the normal
-        # actor; every residual case falls through to the existing decider/veto path.
+        # Hybrid may admit one uniquely proven route step before a provider; residual cases fall
+        # through to the existing decider/veto path and the normal actor still verifies.
         route = getattr(self.decider, "deterministic_route_step", None)
         if not stale_goal and callable(route):
             route_choice = route(frame)
