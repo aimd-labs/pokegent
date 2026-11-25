@@ -47,7 +47,7 @@ services or ROM. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and
 
 | Scope | Documented as tested | Not verified |
 | --- | --- | --- |
-| ROM-free checks | CPython 3.11 on GitHub Actions `ubuntu-latest` and `ubuntu-24.04` at `77a1a2e8` ([run 45531183848](https://github.com/aimd-labs/pokegent/actions/runs/45531183848)); the `ubuntu-latest` image version is not recorded in public run metadata | macOS, Windows, other Python versions; the exact image behind `ubuntu-latest` |
+| ROM-free checks | CPython 3.11: `public-checks` and `public-startup-latency` on GitHub Actions `ubuntu-latest`; `native-helper` (six synthetic tests only) on `ubuntu-24.04`; run [45531183848](https://github.com/aimd-labs/pokegent/actions/runs/45531183848) at `77a1a2e8`; the `ubuntu-latest` image version is not recorded in public run metadata | macOS, Windows, other Python versions; the exact image behind `ubuntu-latest` |
 | Native/emulator path | Ubuntu 24.04 amd64, CPython 3.11, `mgba==0.10.2`, `libmgba0.10t64=0.10.2+dfsg-1.1build3` | Other systems, architectures and minimal images |
 | Game data | FireRed USA Rev 0; local setup reached the first field and three RAM-verified movements | Other ROM revisions, full-game coverage |
 
