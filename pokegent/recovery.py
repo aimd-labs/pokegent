@@ -100,10 +100,12 @@ class ProgressMonitor:
         progress using three requirements over the FULL claimed interval
         (``loop_window * loop_min_cycles``) PLUS a current-tail recurrence band:
 
-        * the distinct **signature** set (the state set the run actually occupies) is
-          ``<= loop_signature_limit`` — a run that leaves an old ping and walks into
-          many fresh states has a large signature set and cannot be a closed loop;
-        * the distinct **option** set is ``<= loop_distinct_limit``; and
+        * the distinct **option** set is ``<= loop_distinct_limit``;
+        * the CURRENT tail enters at most ``loop_signature_limit`` states that were not
+          already seen earlier in the interval, and its newest decisions reopen no such
+          state — a settled two-exit cycle may walk several tiles per side (more than four
+          total states) but opens no new frontier, while a run that is still escaping must
+          not be stopped on old recurrences; and
         * the recent tail holds ``>= loop_min_cycles`` GENUINE returns after LEAVING a
           state (a non-adjacent re-entry into a signature already seen earlier in the
           same tail), so ``0,0,1,1,0,0,1,1`` (revisited states) trips but monotone
@@ -119,14 +121,21 @@ class ProgressMonitor:
         if len(distinct_options) > self.loop_distinct_limit:
             return None
         distinct_sigs = {sig for _, sig in self._window}
-        if len(distinct_sigs) > self.loop_signature_limit:
-            return None  # left the closed state set -> not a closed loop
 
         # Recurrence on the CURRENT tail: count genuine returns-after-leaving.
         # A return is a non-adjacent re-entry: sig[i] when i>0 differs from sig[i-1]
         # AND sig[i] was already present before position i in the tail.
         band_start = max(0, len(self._window) - self.loop_window)
         band = self._window[band_start:]
+        earlier_sigs = {sig for _, sig in self._window[:band_start]}
+        fresh_sigs = {sig for _, sig in band if sig not in earlier_sigs}
+        if len(fresh_sigs) > self.loop_signature_limit:
+            return None  # the tail is still opening unseen states -> not a closed loop
+        tip = band[-min(len(band), self.loop_signature_limit):]
+        if any(sig not in earlier_sigs for _, sig in tip):
+            # The newest decisions entered a state not seen earlier in the interval:
+            # old recurrences alone must not stop a run that is still escaping.
+            return None
         seen = set()
         returns = 0
         for idx, (_, sig) in enumerate(band):
