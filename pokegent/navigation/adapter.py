@@ -12,7 +12,7 @@ from pokegent.games.gen3.firered.maps.obstacles import option_key
 from pokegent.games.gen3.firered.reader.capabilities import field_capability
 from pokegent.goals.models import probe_leaves
 from pokegent.goals.validate import ResolvedObjective, resolve_map
-from pokegent.navigation.capabilities import from_snapshot, missing_field_move_detail
+from pokegent.navigation.capabilities import from_snapshot, missing_field_move_fact
 from pokegent.navigation.graph import NavigationGraph
 from pokegent.navigation.models import (
     NavigationEdge,
@@ -816,6 +816,7 @@ class NavigationAdapter:
         if blocked_index is None and plan.unmet and plan.blocked_route_fact is not None:
             blocked_index = len(plan.route)
         blocked_route = self.blocked_route(plan, snapshot=snapshot)
+        blocked_field_move = self._blocked_field_move_fact(plan, snapshot)
         blocked_obstacle = self._blocked_obstacle(plan, blocked_index)
         exact_semantic_available = bool(
             semantic is not None
@@ -1090,6 +1091,8 @@ class NavigationAdapter:
                     )
                     if blocked_route:
                         facts["route_blocked"] = blocked_route
+                    if blocked_field_move:
+                        facts["field_move_gap"] = blocked_field_move
                     if blocked_obstacle:
                         facts["blocked_obstacle"] = blocked_obstacle
                     if triggerable_gate and semantic is not None:
@@ -1154,6 +1157,8 @@ class NavigationAdapter:
                 )
                 if blocked_route:
                     facts["route_blocked"] = blocked_route
+                if blocked_field_move:
+                    facts["field_move_gap"] = blocked_field_move
                 if blocked_obstacle:
                     facts["blocked_obstacle"] = blocked_obstacle
                 if blocked_obstacle is None:
@@ -1500,6 +1505,14 @@ class NavigationAdapter:
     def _blocked_route(
         self, plan: NavigationPlan, blocked_index: int | None, *, snapshot=None
     ) -> str | None:
+        text = self._blocked_route_base(plan, blocked_index)
+        if text is None or snapshot is None:
+            return text
+        return self._with_field_move_detail(text, plan.route[blocked_index], snapshot)
+
+    def _blocked_route_base(
+        self, plan: NavigationPlan, blocked_index: int | None
+    ) -> str | None:
         if blocked_index is None or blocked_index >= len(plan.route):
             return None
         edge = plan.route[blocked_index]
@@ -1508,44 +1521,60 @@ class NavigationAdapter:
         target_name = _map_label(self.graph, plan.target.map_key)
         obstacle = self._blocked_obstacle(plan, blocked_index)
         if obstacle:
-            text = (
+            return (
                 f"route blocked by {obstacle['obstacle']} at {obstacle['map']} "
                 f"({obstacle['x']},{obstacle['y']})"
             )
-        else:
-            needs = ", ".join(edge.unmet) or "unknown"
-            if edge.kind == "gate" and edge.target_dict().get("triggerable") is True:
-                at = edge.target_dict().get("at")
-                if isinstance(at, (tuple, list)) and len(at) == 2:
-                    text = (
-                        f"route blocked at coordinate event on {source_name} tile "
-                        f"({at[0]},{at[1]}): {needs}; last reachable map: {source_name}; "
-                        f"target map: {target_name}"
-                    )
-                else:
-                    text = (
-                        f"route blocked at {source_name} -> {destination_name}: {needs}; "
-                        f"last reachable map: {source_name}; target map: {target_name}"
-                    )
-            else:
-                text = (
-                    f"route blocked at {source_name} -> {destination_name}: {needs}; "
-                    f"last reachable map: {source_name}; target map: {target_name}"
+        needs = ", ".join(edge.unmet) or "unknown"
+        if edge.kind == "gate" and edge.target_dict().get("triggerable") is True:
+            at = edge.target_dict().get("at")
+            if isinstance(at, (tuple, list)) and len(at) == 2:
+                return (
+                    f"route blocked at coordinate event on {source_name} tile "
+                    f"({at[0]},{at[1]}): {needs}; last reachable map: {source_name}; "
+                    f"target map: {target_name}"
                 )
-        return self._with_field_move_detail(text, edge, snapshot)
+        return (
+            f"route blocked at {source_name} -> {destination_name}: {needs}; "
+            f"last reachable map: {source_name}; target map: {target_name}"
+        )
 
     @staticmethod
-    def _with_field_move_detail(text: str, edge: NavigationEdge, snapshot) -> str:
-        """Append the readable missing badge or carrier of a proved unmet field-move edge."""
+    def _field_move_text(fact: dict[str, object]) -> str:
+        move = str(fact.get("move") or "the field move")
+        badge = f"{fact.get('badge')} Badge"
+        carrier_missing = fact.get("carrier_missing") is True
+        badge_missing = fact.get("badge_missing") is True
+        if carrier_missing and badge_missing:
+            return f"no party member knows {move} and the {badge} is not obtained"
+        if carrier_missing:
+            return f"no party member knows {move} ({badge} obtained)"
+        return f"the {badge} is not obtained (party has {move})"
+
+    @staticmethod
+    def _edge_field_move_fact(edge: NavigationEdge, snapshot) -> dict[str, object] | None:
+        """The structured proven gap of the first explainable unmet requirement on ``edge``."""
         if snapshot is None:
-            return text
+            return None
         for requirement in edge.requirements:
             if requirement.met:
                 continue
-            detail = missing_field_move_detail(snapshot, requirement.key)
-            if detail is not None:
-                return f"{text}; {detail}"
-        return text
+            fact = missing_field_move_fact(snapshot, requirement.key)
+            if fact is not None:
+                return fact
+        return None
+
+    def _blocked_field_move_fact(self, plan: NavigationPlan, snapshot) -> dict[str, object] | None:
+        """The same fact for the first unmet route edge, for option-level feedback."""
+        blocked_index = next((index for index, edge in enumerate(plan.route) if edge.unmet), None)
+        if blocked_index is None:
+            return None
+        return self._edge_field_move_fact(plan.route[blocked_index], snapshot)
+
+    def _with_field_move_detail(self, text: str, edge: NavigationEdge, snapshot) -> str:
+        """Append the readable missing badge or carrier of a proved unmet field-move edge."""
+        fact = self._edge_field_move_fact(edge, snapshot)
+        return text if fact is None else f"{text}; {self._field_move_text(fact)}"
 
     def blocked_route(self, plan: NavigationPlan, *, snapshot=None) -> str | None:
         """Return the ROM/RAM explanation for the first unmet edge in ``plan``.

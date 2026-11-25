@@ -20,48 +20,41 @@ _MOVE_CAPABILITIES = {
 _EXPLAINED_FIELD_MOVES = frozenset({"cut", "smash", "strength", "flash"})
 
 
-def _party_readable(snapshot: StateSnapshot) -> bool:
-    """Whether the party section itself was read, not merely the overall snapshot.
-
-    A valid FireRed snapshot has no read errors, so its party section was parsed.  Health
-    confidence is checked as well for callers that attach a degraded read: an unreadable or
-    partially read party must not be treated as a proved empty party.
-    """
+def _section_readable(snapshot: StateSnapshot, section: str) -> bool:
+    """Positive, configured read confidence for one section (absent means unknown)."""
     health = getattr(snapshot, "health", None)
-    if health is None:
-        # Callers that supply stand-in snapshots already signal readability through ``usable``.
-        return True
-    confidence = getattr(health, "confidence", None) or {}
+    confidence = getattr(health, "confidence", None) if health is not None else None
+    if not confidence:
+        return False
+    value = confidence.get(section)
+    if value is None:
+        return False
     try:
-        return float(confidence.get("party", 1.0)) == 1.0
+        return float(value) == 1.0
     except (TypeError, ValueError):
         return False
 
 
-def missing_field_move_detail(snapshot: StateSnapshot, requirement_key: str) -> str | None:
-    """Name the readable missing part of an unmet field-move requirement.
-
-    Returns ``None`` when the requirement is not an owning field move, when the snapshot or
-    party section is unreadable, or when both the badge and a party carrier are proved present.
-    The caller keeps the existing blocked-route text in every ``None`` case.
-    """
-    if requirement_key not in _EXPLAINED_FIELD_MOVES:
+def missing_field_move_fact(snapshot: StateSnapshot, key: str) -> dict[str, object] | None:
+    """Structured proven gap of an unmet field move; ``None`` when absence is not proved."""
+    if key not in _EXPLAINED_FIELD_MOVES:
         return None
-    capability = field_capability(snapshot, requirement_key)
-    if not capability.known or not _party_readable(snapshot):
+    capability = field_capability(snapshot, key)
+    if not capability.known:
+        return None
+    if not _section_readable(snapshot, "party") or not _section_readable(snapshot, "player"):
         return None
     badges = frozenset(snapshot.player.badges) if snapshot.player is not None else frozenset()
     has_badge = capability.badge is not None and capability.badge in badges
     has_carrier = bool(capability.carrier_species)
     if has_carrier and has_badge:
         return None
-    name = capability.name
-    badge_name = capability.badge_name
-    if not has_carrier and not has_badge:
-        return f"no party member knows {name} and the {badge_name} Badge is not obtained"
-    if not has_carrier:
-        return f"no party member knows {name} ({badge_name} Badge obtained)"
-    return f"the {badge_name} Badge is not obtained (party has {name})"
+    return {
+        "move": capability.name,
+        "badge": capability.badge_name,
+        "carrier_missing": not has_carrier,
+        "badge_missing": not has_badge,
+    }
 
 
 def from_snapshot(

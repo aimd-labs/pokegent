@@ -2,12 +2,21 @@
 
 from types import SimpleNamespace
 
+import pytest
 from test_planner_fossil_step import _FakeGraph
 
 from pokegent.games.gen3 import mechanics_constants as K
 from pokegent.games.gen3 import mechanics_ids as I
+from pokegent.games.gen3.firered.reader.schemas import (
+    FlagSet,
+    Health,
+    Player,
+    ReadError,
+    StateSnapshot,
+    VarTable,
+)
 from pokegent.navigation.adapter import NavigationAdapter
-from pokegent.navigation.capabilities import missing_field_move_detail
+from pokegent.navigation.capabilities import missing_field_move_fact
 from pokegent.navigation.models import (
     NavigationEdge,
     NavigationNode,
@@ -15,51 +24,96 @@ from pokegent.navigation.models import (
     NavigationRequirement,
     NavigationTarget,
 )
-from pokegent.options.models import Legality, Option
+from pokegent.options.models import DecisionFrame, Legality, Option, to_system_one_payload
 
 START = NavigationNode(1, 59, 10, 10)
 BOULDER = NavigationNode(1, 59, 13, 7)
 TARGET = NavigationTarget(1, 60)
 STRENGTH = NavigationRequirement("strength", "Strength and Rainbow Badge", False, "party")
+HEALTHY = {
+    "save_blocks": 1.0,
+    "player": 1.0,
+    "party": 1.0,
+    "bag": 1.0,
+    "flags": 1.0,
+    "vars": 1.0,
+    "pokedex": 1.0,
+}
 
 
-def _snapshot(*, badges=(), carrier=True, usable=True, player=True):
-    party = ()
-    if carrier:
-        party = (
-            SimpleNamespace(
-                species=6, moves=(SimpleNamespace(move_id=I.MOVE_STRENGTH),)
-            ),
-        )
-    player_obj = (
-        SimpleNamespace(
+def _player(badges=()):
+    return Player(
+        name="Test",
+        gender="male",
+        tid=0,
+        sid=0,
+        map_group=1,
+        map_num=59,
+        map_layout_id=0,
+        x=10,
+        y=10,
+        facing="N",
+        money=0,
+        coins=0,
+        badges=badges,
+    )
+
+
+def _map_state(badges=()):
+    return SimpleNamespace(
+        identity=SimpleNamespace(group=1, number=59, name="MtMoon_B2F"),
+        player=SimpleNamespace(
             avatar_x=10,
             avatar_y=10,
             facing="N",
             surfing=False,
             biking=False,
             badges=badges,
-        )
-        if player
-        else None
-    )
-    state = SimpleNamespace(
-        identity=SimpleNamespace(group=1, number=59, name="MtMoon_B2F"),
-        player=player_obj,
+        ),
         objects=(),
         strength_active=False,
     )
-    return SimpleNamespace(
-        map=state,
-        player=player_obj,
-        party=party,
-        bag=(),
-        flags=SimpleNamespace(set_ids=()),
-        vars=SimpleNamespace(nonzero=()),
-        ui=None,
-        dynamic_warp=None,
-        usable=usable,
+
+
+def _snapshot(*, badges=(), carrier=True, confidence=HEALTHY, player=True, usable=True):
+    party = (
+        (
+            SimpleNamespace(
+                species=6, moves=(SimpleNamespace(move_id=I.MOVE_STRENGTH),)
+            ),
+        )
+        if carrier
+        else ()
     )
+    if not usable:
+        snap = StateSnapshot.create(
+            rom_profile="synthetic",
+            snapshot_seq=1,
+            emulator_frame=0,
+            health=Health(
+                valid=False,
+                read_errors=(
+                    ReadError(
+                        subsystem="test", code="invalid", message="invented read failure"
+                    ),
+                ),
+                confidence=dict(confidence),
+            ),
+        )
+        return snap.model_copy(update={"map": _map_state(badges)})
+    snap = StateSnapshot.create(
+        rom_profile="synthetic",
+        snapshot_seq=1,
+        emulator_frame=0,
+        health=Health(valid=True, confidence=dict(confidence)),
+        player=_player(badges),
+        flags=FlagSet(set_ids=()),
+        vars=VarTable(nonzero=()),
+    )
+    snap = snap.model_copy(update={"party": party, "map": _map_state(badges)})
+    if not player:
+        snap = snap.model_copy(update={"player": None, "party": ()})
+    return snap
 
 
 def _plan(*, blocked_route_fact=None, unmet=STRENGTH.label, requirement=STRENGTH):
@@ -140,19 +194,58 @@ def test_both_missing_names_both_parts():
     assert "Rainbow Badge is not obtained" in text
 
 
-def test_unreadable_snapshot_never_asserts_a_missing_carrier_or_badge():
+@pytest.mark.parametrize(
+    "confidence",
+    [
+        {},
+        {"party": 0.0, "player": 1.0},
+        {"party": 1.0, "player": 0.0},
+        {"party": 1.0},
+    ],
+)
+def test_absent_or_degraded_section_confidence_never_asserts_a_negative(confidence):
     plan = _plan()
     base = _adapter().blocked_route(plan)
-    degraded = _snapshot(usable=True, carrier=False)
-    degraded.health = SimpleNamespace(valid=True, confidence={"party": 0.0})
+    snap = _snapshot(carrier=False, confidence=confidence)
+
+    assert _adapter().blocked_route(plan, snapshot=snap) == base
+    assert missing_field_move_fact(snap, "strength") is None
+
+
+def test_unusable_snapshot_or_missing_player_never_asserts_a_negative():
+    plan = _plan()
+    base = _adapter().blocked_route(plan)
 
     for snap in (
         _snapshot(usable=False, carrier=False),
         _snapshot(player=False, carrier=False),
-        degraded,
     ):
         assert _adapter().blocked_route(plan, snapshot=snap) == base
-        assert missing_field_move_detail(snap, "strength") is None
+        assert missing_field_move_fact(snap, "strength") is None
+
+
+class _RaisingConfidence:
+    def __init__(self, error):
+        self.error = error
+
+    def __bool__(self):
+        return True
+
+    def get(self, *_args):
+        raise self.error
+
+
+@pytest.mark.parametrize("error", [MemoryError(), SystemExit()])
+def test_section_confidence_errors_are_not_swallowed(error):
+    snap = SimpleNamespace(
+        usable=True,
+        player=SimpleNamespace(badges=()),
+        party=(),
+        health=SimpleNamespace(confidence=_RaisingConfidence(error)),
+    )
+
+    with pytest.raises(type(error)):
+        missing_field_move_fact(snap, "strength")
 
 
 def test_unrelated_requirements_and_budget_exhaustion_keep_existing_text():
@@ -189,3 +282,31 @@ def test_annotate_exposes_the_enriched_blocked_route_to_options():
     assert facts["next_route_step"] is True
     assert "Rainbow Badge is not obtained" in facts["route_blocked"]
     assert "party has Strength" in facts["route_blocked"]
+    assert facts["field_move_gap"] == {
+        "move": "Strength",
+        "badge": "Rainbow",
+        "carrier_missing": False,
+        "badge_missing": True,
+    }
+
+
+def test_payload_criteria_show_the_missing_badge_detail():
+    plan = _plan()
+    options, _ = _adapter().annotate(
+        [_strength_option()], _snapshot(carrier=True, badges=()), None, plan=plan
+    )
+    option = options[0]
+    frame = DecisionFrame(
+        decision_id="prereqs168",
+        run_id="",
+        snapshot_seq=1,
+        scene_id="field.free",
+        scene_confidence=1.0,
+        state_fingerprint="sha256:" + "a" * 64,
+        context={"blocked_route": option.facts["route_blocked"]},
+        options=(option,),
+    )
+
+    criteria = to_system_one_payload(frame)["criteria"][option.id]
+    assert "Rainbow Badge not obtained" in criteria
+    assert "party has Strength" in criteria
