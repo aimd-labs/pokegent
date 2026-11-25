@@ -99,12 +99,11 @@ route assist or story successor is supplied by this feature.
 
 Map names are the labels in the local index the run loads (pret names for a named index; numeric
 tokens for the diagnostics-only numeric index); case, `MAP_`, and separators are normalized.
-Unknown names are rejected. The installed index is the authority: use the labels listed in the
-file that `POKEGENT_MAP_GROUPS` points to, or `$POKEGENT_LOCAL_DATA_DIR/pret_map_groups.json` by
-default:
+Unknown names are rejected. The installed index is the authority. List the labels the resolver
+loads, using the same override, default and validation:
 
 ```sh
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(*[n for k in d["group_order"] for n in d["groups"][k]], sep="\n")' "${POKEGENT_MAP_GROUPS:-$POKEGENT_LOCAL_DATA_DIR/pret_map_groups.json}"
+python -c 'from pokegent.games.gen3.firered.maps import map_names; print(*(n for g in map_names.loaded_groups()[1] for n in g), sep="\n")'
 ```
 
 Check a proposed objective with `pokegent objective validate --file objective.json`. An unlisted
