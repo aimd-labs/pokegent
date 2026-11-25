@@ -36,7 +36,7 @@ def objective_frame_budget(events, limit):
         _objective_work.reset(token)
 
 
-def _take_objective_expansion(events) -> bool:
+def _take_objective_expansion(events, phase: str) -> bool:
     work = _objective_work.get()
     if work is None:
         return True
@@ -47,6 +47,7 @@ def _take_objective_expansion(events) -> bool:
                 events.emit(EventType.PLAN_BUDGET_EXCEEDED, public_visibility=True,
                             details={"scope": "objective", "explored": work[0],
                                      "limit": work[2],
+                                     "phase": phase,
                                      "reason": "expansion_limit"})
         return False
     work[0] += 1
@@ -201,7 +202,7 @@ class NavigationPlanner:
             cost, _order, node = heapq.heappop(heap)
             if cost != distance.get(node):
                 continue
-            if not _take_objective_expansion(self.events):
+            if not _take_objective_expansion(self.events, "choice_frontier"):
                 return None
             explored += 1
             for edge in self.graph.edges_from(
@@ -281,7 +282,7 @@ class NavigationPlanner:
             cost, node = heapq.heappop(heap)
             if cost != distance.get(node):
                 continue
-            if not _take_objective_expansion(self.events):
+            if not _take_objective_expansion(self.events, "maps"):
                 return None
             explored += 1
             if node.map_key in map_keys:
@@ -328,7 +329,7 @@ class NavigationPlanner:
             cost, node = heapq.heappop(heap)
             if cost != distance.get(node):
                 continue
-            if not _take_objective_expansion(self.events):
+            if not _take_objective_expansion(self.events, "tiles"):
                 return None
             explored += 1
             if node.map_key == map_key and (node.x, node.y) in tiles:
@@ -398,7 +399,7 @@ class NavigationPlanner:
             node, stateful_flags = search_state
             if cost != distance.get(search_state):
                 continue
-            if not _take_objective_expansion(self.events):
+            if not _take_objective_expansion(self.events, "corridor"):
                 return None
             explored += 1
             effective = self._capabilities_for_state(capabilities, stateful_flags, tracked_flags)
@@ -474,7 +475,9 @@ class NavigationPlanner:
             node, stateful_flags = search_state
             if cost != distance.get(search_state):
                 continue
-            if explored >= limit or not _take_objective_expansion(self.events):
+            if explored >= limit or not _take_objective_expansion(
+                self.events, "blocked" if include_unmet else "available"
+            ):
                 if self.events is not None:
                     if _objective_work.get() is None:
                         self.events.emit(
