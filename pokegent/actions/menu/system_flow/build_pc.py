@@ -781,20 +781,49 @@ def pc_main(
                         },
                     )
                 )
+            # Only a held egg is proven unable to battle here. The reader decodes
+            # gStorage.movingMon with decode_party_mon (HP consistency only, no held-specific
+            # read confidence), so non-egg held HP is not admitted as positive proof.
+            held_egg = getattr(storage.held_mon, "is_egg", None) is True
+            party_readable = _party_readable(snapshot)
             for member in snapshot.party:
+                target_capable = _battle_capable(member)
+                others = [
+                    other
+                    for other in snapshot.party
+                    if other is not None and other is not member
+                ]
+                another_capable = any(_battle_capable(other) is True for other in others)
+                another_unknown = any(_battle_capable(other) is None for other in others)
+                if not party_readable:
+                    legal = Legality.UNKNOWN
+                    reason = "party read is not proven: cannot verify battle-capable members"
+                elif target_capable is False or another_capable:
+                    legal = Legality.LEGAL
+                    reason = None
+                elif target_capable is True and held_egg and not another_unknown:
+                    legal = Legality.UNAVAILABLE
+                    reason = "cannot replace the last battle-capable party Pokemon with an egg"
+                else:
+                    legal = Legality.UNKNOWN
+                    reason = "party or held HP is unreadable: cannot prove one remains"
                 destination_options.append(
                     Option(
                         id=f"move:place:party:{int(member.slot)}",
                         label=f"Place in party slot {int(member.slot) + 1}",
                         description="Place into or swap with the Pokémon shown in this party slot.",
-                        legality=Legality.LEGAL,
-                        executor_ref=R.REF_PC_MOVE_PLACE,
-                        executor_args={
-                            "pid": int(storage.held_mon.personality),
-                            "target_kind": "party",
-                            "target_slot": int(member.slot),
-                        },
-                        postcondition_ref=R.POST_PC_MOVE_PLACED,
+                        legality=legal,
+                        executor_ref=R.REF_PC_MOVE_PLACE if legal.chooseable else None,
+                        executor_args=(
+                            {
+                                "pid": int(storage.held_mon.personality),
+                                "target_kind": "party",
+                                "target_slot": int(member.slot),
+                            }
+                            if legal.chooseable
+                            else {}
+                        ),
+                        postcondition_ref=R.POST_PC_MOVE_PLACED if legal.chooseable else None,
                         risk=Risk.NORMAL,
                         facts={
                             "operation": "move",
@@ -802,6 +831,7 @@ def pc_main(
                             "party_slot": int(member.slot),
                             "destination": "swap",
                             "occupant": _mon_facts(member, tables),
+                            **({"reason": reason} if reason else {}),
                         },
                     )
                 )
