@@ -12,7 +12,7 @@ from pokegent.games.gen3.firered.maps.obstacles import option_key
 from pokegent.games.gen3.firered.reader.capabilities import field_capability
 from pokegent.goals.models import probe_leaves
 from pokegent.goals.validate import ResolvedObjective, resolve_map
-from pokegent.navigation.capabilities import from_snapshot
+from pokegent.navigation.capabilities import from_snapshot, missing_field_move_fact
 from pokegent.navigation.graph import NavigationGraph
 from pokegent.navigation.models import (
     NavigationEdge,
@@ -619,7 +619,7 @@ class NavigationAdapter:
         plan = self._use_live_elevator_exit(snapshot, plan, options)
         script_unknown = self.graph.route_script_unknown(plan)
         if plan.cost is None and not plan.route:
-            blocked_route = self.blocked_route(plan)
+            blocked_route = self.blocked_route(plan, snapshot=snapshot)
             for index, option in enumerate(options):
                 facts = dict(option.facts)
                 key = self._option_key(option) or option.id
@@ -815,7 +815,8 @@ class NavigationAdapter:
         )
         if blocked_index is None and plan.unmet and plan.blocked_route_fact is not None:
             blocked_index = len(plan.route)
-        blocked_route = self.blocked_route(plan)
+        blocked_route = self.blocked_route(plan, snapshot=snapshot)
+        blocked_field_move = self._blocked_field_move_fact(plan, snapshot)
         blocked_obstacle = self._blocked_obstacle(plan, blocked_index)
         exact_semantic_available = bool(
             semantic is not None
@@ -1090,6 +1091,8 @@ class NavigationAdapter:
                     )
                     if blocked_route:
                         facts["route_blocked"] = blocked_route
+                    if blocked_field_move:
+                        facts["field_move_gap"] = blocked_field_move
                     if blocked_obstacle:
                         facts["blocked_obstacle"] = blocked_obstacle
                     if triggerable_gate and semantic is not None:
@@ -1154,6 +1157,8 @@ class NavigationAdapter:
                 )
                 if blocked_route:
                     facts["route_blocked"] = blocked_route
+                if blocked_field_move:
+                    facts["field_move_gap"] = blocked_field_move
                 if blocked_obstacle:
                     facts["blocked_obstacle"] = blocked_obstacle
                 if blocked_obstacle is None:
@@ -1497,7 +1502,17 @@ class NavigationAdapter:
         route[plan.route.index(semantic)] = exit_edge
         return replace(plan, route=tuple(route))
 
-    def _blocked_route(self, plan: NavigationPlan, blocked_index: int | None) -> str | None:
+    def _blocked_route(
+        self, plan: NavigationPlan, blocked_index: int | None, *, snapshot=None
+    ) -> str | None:
+        text = self._blocked_route_base(plan, blocked_index)
+        if text is None or snapshot is None:
+            return text
+        return self._with_field_move_detail(text, plan.route[blocked_index], snapshot)
+
+    def _blocked_route_base(
+        self, plan: NavigationPlan, blocked_index: int | None
+    ) -> str | None:
         if blocked_index is None or blocked_index >= len(plan.route):
             return None
         edge = plan.route[blocked_index]
@@ -1524,12 +1539,54 @@ class NavigationAdapter:
             f"last reachable map: {source_name}; target map: {target_name}"
         )
 
-    def blocked_route(self, plan: NavigationPlan) -> str | None:
-        """Return the ROM/RAM explanation for the first unmet edge in ``plan``."""
+    @staticmethod
+    def _field_move_text(fact: dict[str, object]) -> str:
+        move = str(fact.get("move") or "the field move")
+        badge = f"{fact.get('badge')} Badge"
+        carrier_missing = fact.get("carrier_missing") is True
+        badge_missing = fact.get("badge_missing") is True
+        if carrier_missing and badge_missing:
+            return f"no party member knows {move} and the {badge} is not obtained"
+        if carrier_missing:
+            return f"no party member knows {move} ({badge} obtained)"
+        return f"the {badge} is not obtained (party has {move})"
+
+    @staticmethod
+    def _edge_field_move_fact(edge: NavigationEdge, snapshot) -> dict[str, object] | None:
+        """The structured proven gap of the first explainable unmet requirement on ``edge``."""
+        if snapshot is None:
+            return None
+        for requirement in edge.requirements:
+            if requirement.met:
+                continue
+            fact = missing_field_move_fact(snapshot, requirement.key)
+            if fact is not None:
+                return fact
+        return None
+
+    def _blocked_field_move_fact(self, plan: NavigationPlan, snapshot) -> dict[str, object] | None:
+        """The same fact for the first unmet route edge, for option-level feedback."""
+        blocked_index = next((index for index, edge in enumerate(plan.route) if edge.unmet), None)
+        if blocked_index is None:
+            return None
+        return self._edge_field_move_fact(plan.route[blocked_index], snapshot)
+
+    def _with_field_move_detail(self, text: str, edge: NavigationEdge, snapshot) -> str:
+        """Append the readable missing badge or carrier of a proved unmet field-move edge."""
+        fact = self._edge_field_move_fact(edge, snapshot)
+        return text if fact is None else f"{text}; {self._field_move_text(fact)}"
+
+    def blocked_route(self, plan: NavigationPlan, *, snapshot=None) -> str | None:
+        """Return the ROM/RAM explanation for the first unmet edge in ``plan``.
+
+        ``snapshot`` is optional; when supplied, a proved field-move blocker also names the
+        readable missing badge or party carrier.  Planner-supplied facts (including budget
+        exhaustion) and calls without a snapshot stay exactly as before.
+        """
         if plan.blocked_route_fact is not None:
             return plan.blocked_route_fact
         blocked_index = next((index for index, edge in enumerate(plan.route) if edge.unmet), None)
-        return self._blocked_route(plan, blocked_index)
+        return self._blocked_route(plan, blocked_index, snapshot=snapshot)
 
     def _blocked_obstacle(
         self, plan: NavigationPlan, blocked_index: int | None

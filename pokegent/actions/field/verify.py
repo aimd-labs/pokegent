@@ -16,7 +16,7 @@ from __future__ import annotations
 from pokegent.actions._exec.registry import VerifierSpec, VerifyContext
 from pokegent.actions.field import builder as B
 from pokegent.actions.field import evidence as E
-from pokegent.actions.field import fly
+from pokegent.actions.field import fishing, fly
 from pokegent.actions.field.boulder_options import PC_BOULDER
 from pokegent.actions.items import EffectClass, ItemCatalog
 from pokegent.games.gen3.firered.maps.map_schema import MapState
@@ -463,6 +463,7 @@ def verifier_specs(*, item_catalog: ItemCatalog | None = None) -> list[VerifierS
         VerifierSpec(B.PC_DIG_TELEPORT, dig_teleport_done, max_frames=1800, max_wall_s=45.0),
         VerifierSpec(B.PC_TOOL, tool_done, max_frames=180, max_wall_s=20.0),
         VerifierSpec("field.item_used", item_used, max_frames=240, max_wall_s=20.0),
+        VerifierSpec("field.fishing_resolved", fishing.resolved, max_frames=300, max_wall_s=10.0),
         VerifierSpec("field.evolution_started", evolution_started, max_frames=240, max_wall_s=20.0),
         VerifierSpec("field.tm_taught", tm_taught, max_frames=600, max_wall_s=45.0),
         VerifierSpec(B.PC_TEACH_TARGET_READY, teach_target_ready, max_frames=180, max_wall_s=20.0),

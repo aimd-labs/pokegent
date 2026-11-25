@@ -833,6 +833,7 @@ class Executor:
                 dialog_fingerprint = _dialog_fingerprint(perceiver, interrupted_obs)
                 if (
                     verifier is not None
+                    and spec.verify_on_interrupt
                     and interrupted_obs is not None
                     and readable(interrupted_obs.snapshot, interrupted_obs.scene)
                 ):

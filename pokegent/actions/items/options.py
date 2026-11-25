@@ -7,7 +7,9 @@ from typing import Any, Literal
 
 from pokegent.actions.menu.system_flow.moves import HM_MOVE_IDS
 from pokegent.games.gen3 import mechanics_constants as K
+from pokegent.games.gen3.firered.maps.map_motion import _collision
 from pokegent.games.gen3.firered.maps.map_schema import snapshot_map_identity
+from pokegent.games.gen3.firered.maps.map_surf import LAND_ELEVATION
 from pokegent.games.gen3.firered.rom.item_catalog import (
     EffectClass,
     ItemCatalog,
@@ -540,7 +542,26 @@ class ItemOptionBuilder:
                 "terrain": front.terrain,
                 "surfable": front.surfable,
             }
-            if not front.surfable:
+            # src/item_use.c CanFish: underwater and waterfall are always refused, surfers need
+            # surfable water (collision 0), land needs elevation 3 facing a different level whose
+            # terrain is water (IsPlayerFacingSurfableFishableWater).
+            if getattr(player, "underwater", False) or front.kind == "waterfall":
+                return ItemVerdict(Legality.UNAVAILABLE, "cannot fish here", facts)
+            if getattr(player, "surfing", False):
+                fishable = front.surfable and front.collision == 0
+            else:
+                reason = "not_standing_on_land"
+                if player.elevation == LAND_ELEVATION:
+                    reason, _ = _collision(
+                        state,
+                        player.avatar_x,
+                        player.avatar_y,
+                        player.facing,
+                        elevation=player.elevation,
+                        camera=False,
+                    )
+                fishable = reason == "elevation" and front.terrain == "water"
+            if not fishable:
                 return ItemVerdict(Legality.UNAVAILABLE, "not facing fishable water", facts)
             facts["outcome"] = "casts the fishing rod into the facing water tile"
             return ItemVerdict(Legality.LEGAL, facts=facts)
@@ -613,6 +634,7 @@ class ItemOptionBuilder:
                 "forget_move": int(facts.get("forget_move") or 0),
             }
         teach_move = context == "field" and EffectClass.TEACH_MOVE in record.capability.effects
+        fishing = context == "field" and record.capability.field_action == "rod"
         if teach_move:
             # ``move_slot`` belongs to PP-restoration options, not TM/HM teaching.  Keep the
             # generic item facts broad, but pass only the verified teach executor's contract.
@@ -629,11 +651,19 @@ class ItemOptionBuilder:
         executor_ref = (
             "field.teach_tm"
             if teach_move and verdict.chooseable
+            else "field.fish"
+            if fishing and verdict.chooseable
             else "item.use"
             if verdict.chooseable
             else None
         )
-        postcondition_ref = "item.applied" if verdict.chooseable else None
+        postcondition_ref = (
+            "field.fishing_resolved"
+            if fishing and verdict.chooseable
+            else "item.applied"
+            if verdict.chooseable
+            else None
+        )
         verb = (
             "TEACH_MOVE"
             if teach_move and verdict.chooseable
