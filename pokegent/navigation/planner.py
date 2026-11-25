@@ -22,6 +22,7 @@ from pokegent.navigation.models import (
 )
 
 OBJECTIVE_FRAME_PLAN_BUDGET = 75_000
+OBJECTIVE_FRAME_BUDGET_FACT = "objective route search budget exhausted"
 _objective_work: ContextVar[list[int] | None] = ContextVar("objective_work", default=None)
 
 
@@ -118,14 +119,14 @@ class NavigationPlanner:
         work = _objective_work.get()
         if work is not None and (available.exhausted or work[1]):
             return NavigationPlan(start, target, None, explored=work[0],
-                                  blocked_route_fact="objective route search budget exhausted")
+                                  blocked_route_fact=OBJECTIVE_FRAME_BUDGET_FACT)
         blocked = self._search(
             start, target, capabilities, live=live, include_unmet=True, limit=limit
         )
         exhausted = available if available.exhausted else blocked if blocked.exhausted else None
         if _objective_work.get() is not None and exhausted is not None:
             return NavigationPlan(start, target, None, explored=_objective_work.get()[0],
-                                  blocked_route_fact="objective route search budget exhausted")
+                                  blocked_route_fact=OBJECTIVE_FRAME_BUDGET_FACT)
         budget_fact = self._budget_fact(exhausted, limit) if exhausted is not None else None
         if blocked.route is None:
             choice = self._choice_frontier(

@@ -465,12 +465,14 @@ class FieldBuilder:
             tiles = tuple(
                 dict.fromkeys((*tiles, *self._no_objective_local_tiles(ctx, state, nav)))
             )
+        navigation_result = None
         if self.navigation is not None:
             from pokegent.navigation.planner import OBJECTIVE_FRAME_PLAN_BUDGET
 
-            navigation_plan = self.navigation.plan(
+            navigation_result = self.navigation.plan_result(
                 snap, resolved, objective_budget=OBJECTIVE_FRAME_PLAN_BUDGET
             )
+            navigation_plan = navigation_result.plan
         else:
             navigation_plan = None
         # A reach/map-arrival objective whose target lies on ANOTHER map crosses the current
@@ -783,6 +785,15 @@ class FieldBuilder:
                 for option in options
             ]
         options = self._filter_closed_navigation_warps(options, snap, navigation_plan)
+        if navigation_result is not None and navigation_result.unknown_reason is not None:
+            options.append(
+                self._diagnostic(
+                    "route_budget",
+                    "Objective route search budget exhausted",
+                    Legality.UNAVAILABLE,
+                    navigation_result.unknown_reason,
+                )
+            )
         chooseable = [o for o in options if o.chooseable]
         chooseable.sort(key=lambda option: _objective_order_key(option, objective))
         diagnostics = [o for o in options if not o.chooseable]
