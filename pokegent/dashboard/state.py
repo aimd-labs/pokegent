@@ -137,6 +137,7 @@ class ViewerState:
             "decider_errors": 0,
             "latency_ms_total": 0.0,
             "latency_ms_last": None,
+            "latency_samples": 0,
         }
 
     # -- wiring (before the run) --------------------------------------------------------------
@@ -453,6 +454,7 @@ class ViewerState:
         else:
             self.stats["latency_ms_total"] += elapsed_ms
             self.stats["latency_ms_last"] = round(elapsed_ms, 1)
+            self.stats["latency_samples"] += 1
 
     # -- the end ------------------------------------------------------------------------------
 

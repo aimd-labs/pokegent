@@ -113,6 +113,7 @@ def test_real_route_event_becomes_a_route_decision_with_action_linkage(monkeypat
     assert telemetry["pokegent"]["decision"]["latency_ms"] is None
     assert telemetry["run_stats"]["decisions"] == 1
     assert telemetry["pokegent"]["metrics"]["latency_ms_last"] is None
+    assert telemetry["pokegent"]["metrics"]["latency_ms_mean"] is None
 
 
 def test_route_history_is_bounded_and_never_double_counted():
@@ -143,6 +144,72 @@ def test_route_event_without_its_frame_records_no_decision():
     assert view["decisions"] == []
     assert view["stats"]["decisions"] == 0
     assert view["events"][-1]["type"] == EventType.DECISION_ROUTE.value
+
+
+def _decider_call(viewer, frame, *, elapsed_ms=12.0, error=False):
+    _observe(viewer, frame)
+    viewer.on_decider_start(frame)
+    viewer.on_decider_call(
+        frame,
+        None
+        if error
+        else ChoiceResult(option_id="warp:0:0:0", provider_id="system1", model_id="mock"),
+        RuntimeError("synthetic failure") if error else None,
+        elapsed_ms,
+    )
+
+
+def test_mixed_route_and_model_mean_counts_only_measured_decider_calls():
+    template = _frame(_draft(wall=True))
+    viewer, events = _viewer()
+    route_frame = template.model_copy(update={"decision_id": "route-1"})
+    _observe(viewer, route_frame)
+    _route_event(events, route_frame)
+    _decider_call(viewer, template.model_copy(update={"decision_id": "model-1"}), elapsed_ms=12.0)
+
+    view = viewer.view()
+    metrics = build_telemetry(view)["pokegent"]["metrics"]
+    assert metrics["decisions"] == 2
+    assert metrics["latency_ms_mean"] == 12.0
+    assert view["stats"]["latency_samples"] == 1
+
+
+def test_decider_only_mean_is_unchanged():
+    viewer, _events = _viewer()
+    _decider_call(
+        viewer, _frame(_draft(wall=True)).model_copy(update={"decision_id": "model-1"})
+    )
+    metrics = build_telemetry(viewer.view())["pokegent"]["metrics"]
+    assert metrics["decisions"] == 1
+    assert metrics["latency_ms_mean"] == 12.0
+
+
+def test_failed_decider_is_not_a_latency_sample():
+    viewer, _events = _viewer()
+    _decider_call(
+        viewer,
+        _frame(_draft(wall=True)).model_copy(update={"decision_id": "failed-1"}),
+        elapsed_ms=5.0,
+        error=True,
+    )
+    _decider_call(
+        viewer, _frame(_draft(wall=True)).model_copy(update={"decision_id": "model-1"})
+    )
+    view = viewer.view()
+    assert view["stats"]["decisions"] == 2
+    assert view["stats"]["decider_errors"] == 1
+    assert view["stats"]["latency_samples"] == 1
+    assert build_telemetry(view)["pokegent"]["metrics"]["latency_ms_mean"] == 12.0
+
+
+def test_legacy_view_without_latency_samples_keeps_the_old_denominator():
+    viewer, _events = _viewer()
+    _decider_call(
+        viewer, _frame(_draft(wall=True)).model_copy(update={"decision_id": "model-1"})
+    )
+    view = viewer.view()
+    view["stats"].pop("latency_samples")
+    assert build_telemetry(view)["pokegent"]["metrics"]["latency_ms_mean"] == 12.0
 
 
 def test_route_and_system_one_records_keep_separate_provenance():

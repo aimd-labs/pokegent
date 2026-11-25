@@ -225,7 +225,11 @@ def build_telemetry(view: dict[str, Any]) -> dict[str, Any]:
         "party": [],
         "battle": {"in_battle": False, "is_trainer": False},
     }
-    latencies = stats["decisions"] - stats["decider_errors"]
+    # Route entries and failed calls have no measured latency; the legacy fallback covers views
+    # produced before the explicit sample count existed.
+    latencies = stats.get("latency_samples")
+    if latencies is None:
+        latencies = stats["decisions"] - stats["decider_errors"]
     scene = dict(view["scene"])
     if scene and view["scene_since"] is not None:
         scene["since"] = round(view["scene_since"], 3)
