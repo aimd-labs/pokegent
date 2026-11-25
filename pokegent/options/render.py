@@ -274,6 +274,9 @@ def render_field_criterion(
     route_needs = facts.get("route_needs")
     if isinstance(route_needs, (list, tuple)) and route_needs:
         details.append("route blocked by " + " and ".join(route_blockers(route_needs)))
+    gap_text = _r_field_move_gap(facts)
+    if gap_text:
+        details.extend(gap_text)
     if facts.get("blocked_by_npc") is True:
         details.append("blocked by a person in the way")
     if facts.get("script_tiles"):
@@ -877,6 +880,26 @@ def _r_field(f: Mapping[str, Any]) -> list[str]:
     return out
 
 
+def _r_field_move_gap(f: Mapping[str, Any]) -> list[str]:
+    """Render the adapter's narrow field-move gap from fixed templates only."""
+    gap = f.get("field_move_gap")
+    if not isinstance(gap, Mapping):
+        return []
+    move, badge = gap.get("move"), gap.get("badge")
+    if not isinstance(move, str) or not isinstance(badge, str):
+        return []
+    move, badge = _word(move)[:40], _word(badge)[:40]
+    carrier = gap.get("carrier_missing") is True
+    missing_badge = gap.get("badge_missing") is True
+    if carrier and missing_badge:
+        return [f"no party member knows {move}; {badge} Badge not obtained"]
+    if carrier:
+        return [f"no party member knows {move}; {badge} Badge obtained"]
+    if missing_badge:
+        return [f"{badge} Badge not obtained; party has {move}"]
+    return []
+
+
 for _name, _fn in (
     ("heal_risk", _r_heal_risk),
     ("move_effect", _r_move_effect),
@@ -886,6 +909,7 @@ for _name, _fn in (
     ("move_details", _r_move_details),
     ("move_side_effects", _r_move_side_effects),
     ("restrictions", _r_restrictions),
+    ("field_move_gap", _r_field_move_gap),
     ("battle_progress", _r_battle_progress),
     ("switch_offer", _r_switch_offer),
     ("switch", _r_switch),
