@@ -51,7 +51,10 @@ def test_on_foot_frame_does_not_advertise_water_movement():
     state = state.model_copy(update={'player': state.player.model_copy(update={
         'surfing': False, 'elevation': 3, 'avatar_y': 0, 'y': 0, 'save_y': 0,
         'prev_y': 0})})
-    assert not any(o.chooseable and o.id.startswith('tile:') for o in frame(state).options)
+    tiles = [o for o in frame(state).options if o.chooseable and o.id.startswith('tile:')]
+    # Goal-less local walks may use the ordinary land strip, never the surrounding water.
+    assert all(o.id.endswith(':0') for o in tiles)
+    assert not {'tile:2:1', 'tile:2:4', 'tile:0:2', 'tile:3:2'} & {o.id for o in tiles}
 
 
 @pytest.mark.parametrize('block', [0x1401, 0x1002, 0x3000])
