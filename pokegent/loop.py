@@ -1706,7 +1706,13 @@ class Runner:
                 if isinstance(last_error, PayloadLeakError)
                 else {"error": str(last_error)}
             )
-            return self._escalate(EscalationKind.DECIDER_FAILED, frame.scene_id, code, details)
+            return self._escalate(
+                EscalationKind.DECIDER_FAILED,
+                frame.scene_id,
+                code,
+                details,
+                pause_details={"reasons": list(self._lost_decider_reasons(last_error, code))},
+            )
 
         problem = check_choice(frame, result, allow_all=result.provider_id in {"agent", "external"})
         if problem is not None:
@@ -1811,6 +1817,26 @@ class Runner:
         except ImportError:
             return False
         return isinstance(exc, ProviderTimeout)
+
+    @staticmethod
+    def _lost_decider_reasons(exc: Exception | None, code: ErrorCode) -> tuple[str, ...]:
+        """Name a lost decider result with fixed tokens; never read exception data or text."""
+        try:
+            from addons.system_one.provider import (
+                CircuitOpen,
+                ProviderTimeout,
+                ProviderUnavailable,
+            )
+
+            if isinstance(exc, ProviderTimeout):
+                return ("provider_timeout",)
+            if isinstance(exc, CircuitOpen):
+                return ("circuit_open",)
+            if isinstance(exc, ProviderUnavailable):
+                return ("provider_unavailable",)
+        except ImportError:
+            pass
+        return (code.value,)
 
     def _wait_for_system1_outage(
         self,
@@ -2412,7 +2438,8 @@ class Runner:
             self._verdict = "escalated"
         if self._stop_reason_override is None:
             details: dict[str, Any] = {"kind": kind.value}
-            if kind is EscalationKind.NO_LEGAL_OPTION and pause_details:
+            if kind in (EscalationKind.NO_LEGAL_OPTION,
+                        EscalationKind.DECIDER_FAILED) and pause_details:
                 details.update(pause_details)
             self._stop_reason_override = ("escalated", details)
         if bool(
