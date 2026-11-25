@@ -16,6 +16,79 @@ _MOVE_CAPABILITIES = {
     "flash": (I.MOVE_FLASH, K.BADGE_BOULDER, "Flash and Boulder Badge"),
 }
 
+#: Obstacle requirement key -> capability owner kind (Rock Smash key is ``rock_smash``).
+_FIELD_MOVE_KINDS = {
+    "cut": "cut",
+    "rock_smash": "smash",
+    "strength": "strength",
+    "flash": "flash",
+}
+
+
+def _section_readable(snapshot: StateSnapshot, section: str) -> bool:
+    """Positive, configured read confidence for one section (absent means unknown)."""
+    health = getattr(snapshot, "health", None)
+    confidence = getattr(health, "confidence", None) if health is not None else None
+    if not confidence:
+        return False
+    value = confidence.get(section)
+    if value is None:
+        return False
+    try:
+        return float(value) == 1.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _move_parts(
+    snapshot: StateSnapshot, key: str
+) -> tuple[str, int | None, str | None, bool, bool] | None:
+    """Owning facts for one field-move key: name, badge, badge name, known, carrier present."""
+    if key in _FIELD_MOVE_KINDS:
+        capability = field_capability(snapshot, _FIELD_MOVE_KINDS[key])
+    elif key == "surf":
+        capability = surf_capability(snapshot)
+    elif key == "fly":
+        # Fly's indoor/map/visited gates are launch facts, not a missing badge or carrier.
+        return (
+            "Fly",
+            fly.THUNDER_BADGE,
+            "Thunder",
+            snapshot.usable and snapshot.player is not None,
+            bool(fly.carrier_slots(snapshot)),
+        )
+    else:
+        return None
+    return (
+        capability.name,
+        capability.badge,
+        capability.badge_name,
+        capability.known,
+        bool(capability.carrier_species),
+    )
+
+
+def missing_field_move_fact(snapshot: StateSnapshot, key: str) -> dict[str, object] | None:
+    """Structured proven gap of an unmet field move; ``None`` when absence is not proved."""
+    parts = _move_parts(snapshot, key)
+    if parts is None:
+        return None
+    name, badge, badge_name, known, has_carrier = parts
+    if not known:
+        return None
+    if not _section_readable(snapshot, "party") or not _section_readable(snapshot, "player"):
+        return None
+    badges = frozenset(snapshot.player.badges) if snapshot.player is not None else frozenset()
+    has_badge = badge is not None and badge in badges
+    if has_carrier and has_badge:
+        return None
+    return {
+        "move": name,
+        "badge": badge_name,
+        "carrier_missing": not has_carrier,
+        "badge_missing": not has_badge,
+    }
+
 
 def from_snapshot(
     snapshot: StateSnapshot,

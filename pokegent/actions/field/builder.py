@@ -461,6 +461,10 @@ class FieldBuilder:
         search = nav.search()
         signature = capability_signature(snap)
         tiles = self._objective_tiles(resolved, map_key)
+        if ctx.goal_id is None:
+            tiles = tuple(
+                dict.fromkeys((*tiles, *self._no_objective_local_tiles(ctx, state, nav)))
+            )
         if self.navigation is not None:
             from pokegent.navigation.planner import OBJECTIVE_FRAME_PLAN_BUDGET
 
@@ -1870,6 +1874,59 @@ class FieldBuilder:
         return got, None
 
     @staticmethod
+    def _no_objective_local_tiles(
+        ctx: BuildContext, state: MapState, nav: N.Navigator
+    ) -> tuple[tuple[int, int], ...]:
+        """Bounded ordinary adjacent land walks for a genuinely goal-less frame (issue #162).
+
+        Only the immediate N,S,W,E neighbours the existing Navigator can walk to are selected;
+        a warp, connection, script, ledge, forced-motion, water or unknown tile is never an
+        ordinary walk.  The existing tile target and walk executor still prove the path.
+        """
+        p = state.player
+        if (
+            ctx.goal_id is not None
+            or ctx.scene.busy
+            or not ctx.snapshot.health.valid
+            or not state.identity.identity_verified
+            or p is None
+            or p.surfing
+            or p.underwater
+            or not p.controllable_flag
+            or p.forced
+            or p.moving
+        ):
+            return ()
+        out: list[tuple[int, int]] = []
+        start = nav.start_node()
+        for direction in N.DIRECTIONS:
+            stepped = nav.step(start, direction)
+            if stepped is None:
+                continue
+            _node, move = stepped
+            if (
+                move.kind != "walk"
+                or move.warp_index is not None
+                or move.connection is not None
+                or move.script
+            ):
+                continue
+            outside, _collision, _elevation, info = nav._tile(*move.dst)
+            if (
+                outside
+                or info.kind == "unknown"
+                or info.surfable
+                or info.waterfall
+                or info.warp_trigger is not None
+                or info.ledge is not None
+                or info.forced is not None
+                or info.ice
+            ):
+                continue
+            out.append(move.dst)
+        return tuple(out[:4])
+
+    @staticmethod
     def _objective_tiles(
         resolved: ResolvedObjective | None, map_key: tuple[int, int]
     ) -> tuple[tuple[int, int], ...]:
@@ -2434,6 +2491,12 @@ class FieldBuilder:
             serves = True
         if serves is not None:
             facts["serves_goal"] = serves
+        if objective is None and resolved is None and target.kind == "tile":
+            # A goal-less local walk serves nothing and has no route relation; say so rather
+            # than leaving a gap the later composer could read as unproven relevance.
+            facts["serves_goal"] = False
+            facts.pop("route_step", None)
+            facts.pop("on_route", None)
         if serves is True and target.kind not in {"warp", "edge", "fly", "grass"}:
             facts["satisfies_objective"] = True
 
