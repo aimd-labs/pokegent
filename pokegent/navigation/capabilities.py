@@ -16,6 +16,53 @@ _MOVE_CAPABILITIES = {
     "flash": (I.MOVE_FLASH, K.BADGE_BOULDER, "Flash and Boulder Badge"),
 }
 
+#: Field moves whose badge access and party carrier the reader capability owner can explain.
+_EXPLAINED_FIELD_MOVES = frozenset({"cut", "smash", "strength", "flash"})
+
+
+def _party_readable(snapshot: StateSnapshot) -> bool:
+    """Whether the party section itself was read, not merely the overall snapshot.
+
+    A valid FireRed snapshot has no read errors, so its party section was parsed.  Health
+    confidence is checked as well for callers that attach a degraded read: an unreadable or
+    partially read party must not be treated as a proved empty party.
+    """
+    health = getattr(snapshot, "health", None)
+    if health is None:
+        # Callers that supply stand-in snapshots already signal readability through ``usable``.
+        return True
+    confidence = getattr(health, "confidence", None) or {}
+    try:
+        return float(confidence.get("party", 1.0)) == 1.0
+    except (TypeError, ValueError):
+        return False
+
+
+def missing_field_move_detail(snapshot: StateSnapshot, requirement_key: str) -> str | None:
+    """Name the readable missing part of an unmet field-move requirement.
+
+    Returns ``None`` when the requirement is not an owning field move, when the snapshot or
+    party section is unreadable, or when both the badge and a party carrier are proved present.
+    The caller keeps the existing blocked-route text in every ``None`` case.
+    """
+    if requirement_key not in _EXPLAINED_FIELD_MOVES:
+        return None
+    capability = field_capability(snapshot, requirement_key)
+    if not capability.known or not _party_readable(snapshot):
+        return None
+    badges = frozenset(snapshot.player.badges) if snapshot.player is not None else frozenset()
+    has_badge = capability.badge is not None and capability.badge in badges
+    has_carrier = bool(capability.carrier_species)
+    if has_carrier and has_badge:
+        return None
+    name = capability.name
+    badge_name = capability.badge_name
+    if not has_carrier and not has_badge:
+        return f"no party member knows {name} and the {badge_name} Badge is not obtained"
+    if not has_carrier:
+        return f"no party member knows {name} ({badge_name} Badge obtained)"
+    return f"the {badge_name} Badge is not obtained (party has {name})"
+
 
 def from_snapshot(
     snapshot: StateSnapshot,
