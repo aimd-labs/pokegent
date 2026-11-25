@@ -97,8 +97,19 @@ route assist or story successor is supplied by this feature.
 | `hold` | none | none |
 | `team-prep` | none | none; provide a `party_species` probe |
 
-Map names are pret names; case, `MAP_`, and separators are normalized. Unknown names are rejected.
-Deep ROM checks can reject an unknown warp, NPC, or out-of-bounds coordinate.
+Map names are the labels in the local index the run loads (pret names for a named index; numeric
+tokens for the diagnostics-only numeric index); case, `MAP_`, and separators are normalized.
+Unknown names are rejected. The installed index is the authority. List the labels the resolver
+loads, using the same override, default and validation:
+
+```sh
+python -c 'from pokegent.games.gen3.firered.maps import map_names; print(*(n for g in map_names.loaded_groups()[1] for n in g), sep="\n")'
+```
+
+Check a proposed objective with `pokegent objective validate --file objective.json`. An unlisted
+label returns `unknown_map` on `target.map`; no nearest-name, suffix or floor-number match will
+admit it. A missing index fails with an explicit local-data error and does not become an empty
+table. Deep ROM checks can reject an unknown warp, NPC, or out-of-bounds coordinate.
 
 A `collect` objective with `target.species` is an NPC gift objective. The game indexes non-trade
 `givemon` commands from the ROM (including the gift level and prerequisite flags), routes to the
