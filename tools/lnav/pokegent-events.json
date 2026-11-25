@@ -1,0 +1,36 @@
+{
+  "$schema": "https://lnav.org/schemas/format-v1.schema.json",
+  "pokegent_events": {
+    "title": "Pokegent Events",
+    "description": "Pokegent EventEnvelope records, one JSON object per line",
+    "file-pattern": "(?:^|/)events(?:-[0-9]{6})?\\.jsonl$",
+    "file-type": "json",
+    "timestamp-field": "observed_at",
+    "line-format": [
+      {
+        "field": "type",
+        "suffix": " "
+      },
+      {
+        "field": "scene_id",
+        "prefix": "scene=",
+        "suffix": " "
+      },
+      {
+        "field": "outcome",
+        "prefix": "outcome="
+      }
+    ],
+    "value": {
+      "type": {
+        "kind": "string"
+      },
+      "scene_id": {
+        "kind": "string"
+      },
+      "outcome": {
+        "kind": "string"
+      }
+    }
+  }
+}
