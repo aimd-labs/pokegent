@@ -21,7 +21,7 @@ The goal is a complete Pokémon tool for arbitrary agents, not a fixed walkthrou
 
 ## Research delivery status (verified 2026-11-25)
 
-The R01 to R12 research packages are merged as non-normative planning material (PRs #182 to #194). Acceptance means the written findings are usable for planning; it does not mean implementation, exhaustive source audits, native acceptance, benchmark results or a release gate. No support status is promoted. See the [senior review index](docs/research/oss-maintenance.md#senior-review-index) for each package and its limits, and [senior disposition](docs/research/senior-disposition.md) for what stays deferred.
+The R01 to R12 research packages are merged as non-normative planning material (PRs #182 to #193, with clarifications in #194). Acceptance means the written findings are usable for planning; it does not mean implementation, exhaustive source audits, native acceptance, benchmark results or a release gate. No support status is promoted. See the [senior review index](docs/research/oss-maintenance.md#senior-review-index) for each package and its limits, and [senior disposition](docs/research/senior-disposition.md) for what stays deferred.
 
 ## Current source status (v0.1.1 FireRed stability)
 
@@ -29,7 +29,7 @@ Merged source changes, each limited to its stated seam: [#199](https://github.co
 
 ## Delivery and release policy
 
-Deliver small independent changes on disjoint files. Each change needs one maintainer review and green exact-head CI before merge; maintainers own merging, and no agent merges. Release candidates are batched and need one operator canary approve or reject. No calendar date, reliability target or support for other titles is promised. No new game, plugin or DS work starts before the FireRed gates above. See [senior disposition](docs/research/senior-disposition.md).
+Deliver small independent changes on disjoint files. Each change needs one maintainer review and green exact-head CI before merge; maintainers own merging, and the gameplay/stream agent may open and update PRs but never merges them. Release candidates are batched and need one operator canary approve or reject. No calendar date, reliability target or support for other titles is promised. No new game, plugin or DS work starts before the FireRed gates above. See [senior disposition](docs/research/senior-disposition.md).
 
 ## Milestones (no calendar promises)
 
