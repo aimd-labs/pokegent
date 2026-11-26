@@ -18,6 +18,7 @@ from pokegent.games.gen3.firered.rom.rom_tables import (
     EvolutionData,
     GameTables,
     ItemData,
+    ItemEffect,
     MoveData,
     SpeciesData,
 )
@@ -123,6 +124,22 @@ class FireRedKnowledge:
         except KeyError:
             return self._record("item", item_id, known=False, values=())
         return self._record("item", item_id, known=True, values=_item_values(data))
+
+    def item_restoration(self, item_id: int) -> LocalRomRecord:
+        """Decoded restoration subset for one native bag item."""
+        item_id = _native_id(item_id, "item")
+        try:
+            data = self._tables.item(item_id)
+        except KeyError:
+            return self._record("item_restoration", item_id, known=False, values=())
+        if data.effect is None:
+            return self._record("item_restoration", item_id, known=False, values=())
+        return self._record(
+            "item_restoration",
+            item_id,
+            known=True,
+            values=_restoration_values(data.effect),
+        )
 
     def ability(self, ability_id: int) -> LocalRomRecord:
         ability_id = _native_id(ability_id, "ability")
@@ -276,4 +293,17 @@ def _item_values(data: ItemData) -> tuple[tuple[str, object], ...]:
         ("hold_effect", data.hold_effect),
         ("hold_effect_param", data.hold_effect_param),
         ("battle_usage", data.battle_usage),
+    )
+
+
+def _restoration_values(effect: ItemEffect) -> tuple[tuple[str, object], ...]:
+    return (
+        ("heal_hp", effect.heal_hp),
+        ("heal_hp_full", effect.heal_hp_full),
+        ("heal_hp_half", effect.heal_hp_half),
+        ("revive", effect.revive),
+        ("cures", tuple(sorted(effect.cures))),
+        ("heal_pp", effect.heal_pp),
+        ("heal_pp_all_moves", effect.heal_pp_all_moves),
+        ("sacred_ash", effect.sacred_ash),
     )
