@@ -771,38 +771,24 @@ def build_runner(
     registries = Registries.new(catalog)
     from pokegent.actions.menu.dialog import PromptPolicy
     from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
-    from pokegent.games.gen3.firered.reader.menu_rom import FireRedMenuResolver
+    from pokegent.games.gen3.firered.composition import make_menu_services
 
-    menu_resolver = FireRedMenuResolver(actor, profile)
-    tables = None
-    if rom_path is not None:
-        try:
-            from pokegent.games.gen3.firered.rom.rom_tables import GameTables
-
-            tables = GameTables.from_rom_file(rom_path)
-        except Exception as exc:
-            logger.warning("ROM tables unavailable for %s: %s", rom_path, exc)
+    menu_services = make_menu_services(
+        actor,
+        profile,
+        rom_path,
+        navigation=objective_navigation,
+        session=session,
+        logger=logger,
+    )
+    menu_resolver = menu_services.menus
+    tables = menu_services.tables
     if session is not None and tables is not None:
         session.tracker.tables = tables
     elif session is not None and rom_path is None:
         objective = session.store.current()
         if objective is not None and objective.kind == "heal":
             logger.warning("heal objective max PP unknown: no ROM tables (rom_path is None)")
-
-    def resolve_menu_entries(snapshot, menu_id, count):
-        entries = menu_resolver.multichoice(snapshot, menu_id, count)
-        resolved_entries = (
-            tuple((entry.stable_key, entry.label) for entry in entries) if entries else None
-        )
-        if objective_navigation is not None and session is not None:
-            resolved_entries = objective_navigation.ferry_menu_entries(
-                snapshot,
-                session.store.resolved(),
-                count,
-                resolved_entries,
-                menu_id=menu_id,
-            )
-        return resolved_entries
 
     # The field family cannot work without the map block: with map_mode "off" it is not registered
     # (a field.free claim without a map would only be a bounded wait that starves the executors'
@@ -816,7 +802,7 @@ def build_runner(
             optional=optional,
             prompt_policy=PromptPolicy(  # type: ignore[arg-type]
                 unknown_prompts=config.unknown_prompts,
-                menu_entries=resolve_menu_entries,
+                menu_entries=menu_services.menu_entries,
                 tables=tables,
             ),
             facts=facts,
