@@ -331,3 +331,18 @@ def test_errors_do_not_echo_wheel_content(tmp_path):
                             capture_output=True, text=True, env=env, check=False)
     assert result.returncode == 1
     assert "TOPSECRET" not in result.stderr
+
+
+def test_embedded_null_path_is_a_manifest_error():
+    with pytest.raises(manifest.ManifestError, match="wheel path"):
+        manifest.build_manifest("bad\x00wheel.whl", source_commit=COMMIT)
+
+
+def test_main_embedded_null_path_returns_one_without_traceback(capsys):
+    code = manifest.main(["bad\x00wheel.whl", "--source-commit", COMMIT])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert "wheel_manifest:" in captured.err
