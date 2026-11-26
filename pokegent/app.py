@@ -172,6 +172,9 @@ class AppConfig:
     on_objective_done: str = "hold"
     on_objective_review: str = "continue"
     objective_stuck_after: int = 120
+    #: goal/revision changes while the emulator frame is frozen before one progress.stuck
+    #: (0 = off, unchanged behavior; otherwise an integer >= 2)
+    objective_churn_limit: int = 0
     decision_history: int = DEFAULT_KEEP
     #: headless/maintenance opt-out: a satisfied objective success probe does not stop the run
     #: (``run.ignore_objective``, CLI ``--ignore-objective``; default off)
@@ -237,6 +240,10 @@ class AppConfig:
                 or not isinstance(self.objective_stuck_after, int)
                 or self.objective_stuck_after < 1):
             raise AppError("objective_stuck_after must be an integer >= 1")
+        if (isinstance(self.objective_churn_limit, bool)
+                or not isinstance(self.objective_churn_limit, int)
+                or (self.objective_churn_limit != 0 and self.objective_churn_limit < 2)):
+            raise AppError("objective_churn_limit must be 0 (off) or an integer >= 2")
         if self.story_path is not None and (not isinstance(self.story_path, str)
                                             or not self.story_path):
             raise AppError("objectives.story_path must be a nonempty path string")
@@ -322,6 +329,7 @@ _SECTIONS = {
         "on_objective_done",
         "on_objective_review",
         "objective_stuck_after",
+        "objective_churn_limit",
         "decision_history",
         "ignore_objective",
         "checkpoint_every",
@@ -713,6 +721,7 @@ def build_runner(
         story_path=config.story_path,
         rom_path=rom_path,
         stuck_after=config.objective_stuck_after,
+        churn_limit=config.objective_churn_limit,
         shop_observation=shop_observation,
     )
     if session is not None and fresh_snapshot is not None:
@@ -881,6 +890,7 @@ def make_objective_session(
     story_path: str | os.PathLike[str] | None = None,
     rom_path: str | os.PathLike[str] | None = None,
     stuck_after: int = 120,
+    churn_limit: int = 0,
     shop_observation: Callable[[], Any] | None = None,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
@@ -944,7 +954,8 @@ def make_objective_session(
             raise AppError("story fallback requires valid private progression data",
                            EXIT_ENVIRONMENT) from None
     if session is None:
-        return ObjectiveSession(store, script=script, fallback=fallback, stuck_after=stuck_after)
+        return ObjectiveSession(store, script=script, fallback=fallback,
+                                stuck_after=stuck_after, churn_limit=churn_limit)
     if fallback is not None:
         session.fallback = fallback
     if script is not None:

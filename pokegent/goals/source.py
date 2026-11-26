@@ -139,12 +139,15 @@ class ObjectiveSession:
         script: ScriptedObjectiveSource | None = None,
         fallback: DexFallback | StoryFallback | None = None,
         stuck_after: int = 120,
+        churn_limit: int = 0,
         sink: ProgressSink | None = None,
     ) -> None:
         self.store = store
         # The tracker is driven through ``set_objective`` (not handed the store): the goal changes
         # at ``refresh()``, before the next perception, and not at some later ``update``.
-        self.tracker = tracker if tracker is not None else ObjectiveTracker(stuck_after=stuck_after)
+        self.tracker = tracker if tracker is not None else ObjectiveTracker(
+            stuck_after=stuck_after, churn_limit=churn_limit
+        )
         if sink is not None:
             self.tracker.sink = sink
         self.script = script
