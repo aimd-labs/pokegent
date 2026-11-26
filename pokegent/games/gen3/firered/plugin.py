@@ -35,6 +35,7 @@ FIRERED_CAPABILITIES = frozenset(
         "objective_observation",
         "dex_fallback",
         "story_fallback",
+        "pre_game_callbacks",
     }
 )
 
@@ -53,6 +54,7 @@ class FireRedServices:
     dex_fallback_factory: Callable[..., Any]
     story_fallback_factory: Callable[..., Any]
     story_identity_validator: Callable[..., Any]
+    pre_game_callbacks: frozenset[str]
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -95,6 +97,7 @@ class FireRedPlugin:
 
     def compose(self) -> FireRedServices:
         """Lazily name the existing adapter, composite source and game-owned helpers."""
+        from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
         from pokegent.games.gen3.firered.admission import (
             make_objective_observation_services,
         )
@@ -121,4 +124,5 @@ class FireRedPlugin:
             dex_fallback_factory=make_dex_fallback,
             story_fallback_factory=make_story_fallback,
             story_identity_validator=verify_story_identity,
+            pre_game_callbacks=PRE_GAME_CALLBACKS,
         )
