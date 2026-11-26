@@ -271,8 +271,9 @@ def test_output_is_plain_jsonable_and_omits_case_identity_and_payloads():
         assert field not in raw
     assert report["eligibility"] == "not_evaluated"
     assert report["authority_granted"] is False
-    assert report["limits"]["labels"] == "caller_supplied_not_independently_certified"
-    assert report["limits"]["family_grouping"] == "supplied_not_proven_independent"
+    assert report["limits"]["labels"] == "caller_supplied_not_independent_certification"
+    assert report["limits"]["family_grouping"] == "supplied_not_independent_certification"
+    assert report["limits"]["no_prediction_identity"] == "unknown_provider_and_model"
 
 
 def test_exact_string_identity_is_required():
@@ -311,6 +312,20 @@ def test_provider_and_model_identity_is_bounded_and_empty_is_unknown():
             [LabeledChoiceCase(make_frame("d4"), exact, frozenset({"tap:a"}), "f1")],
             enabled=True,
         )
+
+    empty_subclass = make_result(decision_id="d5").model_copy(
+        update={"provider_id": StrSubclass("")}
+    )
+    with pytest.raises(EvaluationRejected):
+        evaluate_labeled_choices(
+            [LabeledChoiceCase(make_frame("d5"), empty_subclass, frozenset({"tap:a"}), "f1")],
+            enabled=True,
+        )
+
+    with pytest.raises(EvaluationRejected):
+        evaluate_labeled_choices([case("d6", provider="   ")], enabled=True)
+    with pytest.raises(EvaluationRejected):
+        evaluate_labeled_choices([case("d7", model="\t")], enabled=True)
 
 
 def test_malformed_case_and_identity_are_rejected():

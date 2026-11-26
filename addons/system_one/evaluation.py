@@ -36,11 +36,9 @@ def _identity(value: Any, name: str) -> str:
 
 
 def _peer_identity(value: Any, name: str) -> str | None:
-    if value == "":
+    if type(value) is str and value == "":
         return None
-    if type(value) is not str or len(value) > MAX_IDENTITY:
-        raise EvaluationRejected(f"{name} must be empty or at most 128 characters")
-    return value
+    return _identity(value, name)
 
 
 def _labels(case: LabeledChoiceCase, chooseable: set[str]) -> frozenset[str] | None:
@@ -137,9 +135,10 @@ def evaluate_labeled_choices(
         "supplied_family_count": len(supplied_families),
         "labeled_family_count": len(labeled_families),
         "strata": strata,
-        "limits": {"labels": "caller_supplied_not_independently_certified",
+        "limits": {"labels": "caller_supplied_not_independent_certification",
                    "accuracy": "conditional_on_supplied_labels",
-                   "family_grouping": "supplied_not_proven_independent",
+                   "family_grouping": "supplied_not_independent_certification",
+                   "no_prediction_identity": "unknown_provider_and_model",
                    "case_cap": MAX_CASES, "label_cap": MAX_LABELS},
         "eligibility": "not_evaluated", "authority_granted": False,
     }
