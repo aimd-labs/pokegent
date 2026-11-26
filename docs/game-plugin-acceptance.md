@@ -23,7 +23,7 @@ stay fail-closed.
 | Observation envelope is opt-in and validates every record: schema version, identities, counters, usable, immutable caller-data copy | tests/test_game_observation_envelope.py::test_factory_is_off_by_default_and_refuses_without_opt_in, test_schema_version_is_exact, test_identities_are_nonempty_bounded_strings, test_record_and_payload_are_immutable_and_copy_caller_data |
 | Observation sequences stay strictly increasing per epoch; rollback is rejected, an epoch increase allows reset, and unusable never becomes ready | tests/test_game_observation_envelope.py::test_same_epoch_sequence_must_strictly_increase, test_cross_identity_and_epoch_rollback_are_rejected, test_unusable_stays_unknown_and_never_becomes_ready |
 | Two synthetic games share the same valid observation API | tests/test_game_observation_envelope.py::test_two_synthetic_games_share_the_same_valid_api |
-| A second game title composes and runs through the pipeline without new core branches | not covered |
+| A second game title composes and runs through the pipeline without new core branches | partially covered: a synthetic second title is admitted by exact digest, composes once and produces a valid observation sequence in tests/test_second_title_plugin.py::test_second_title_admission_composes_services (unknown digests are refused by test_unknown_digest_is_refused_and_never_composes); running the title through the full pipeline is not covered |
 | Gameplay, native runtime or campaign parity for a second title | not covered |
 
 Rows marked `not covered` have no repository test today; filling them is exactly the remaining
