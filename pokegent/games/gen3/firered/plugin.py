@@ -20,14 +20,16 @@ FIRERED_GAME = "firered"
 FIRERED_CONTRACT_VERSION = 1
 FIRERED_GAME_CODE = "BPRE"
 FIRERED_ROM_VERSION = 0
-#: Only what this composition actually supplies: the existing adapter's readers/rules, the
-#: existing composite snapshot source, the game-owned menu/family constructors, the fresh
-#: objective observation helper, the game-owned Dex fallback factory, and the game-owned story
-#: fallback/identity callables. No action verification, input, support or title promotion.
+#: Only what this composition actually supplies: the existing adapter's readers/rules, the existing
+#: composite snapshot source, the existing scene catalog loader, the game-owned menu/family
+#: constructors, the fresh objective observation helper, the game-owned Dex fallback factory, and
+#: the game-owned story fallback/identity callables. No action verification, input, support or title
+#: promotion.
 FIRERED_CAPABILITIES = frozenset(
     {
         "snapshot_source",
         "reader",
+        "scene_catalog",
         "menu_services",
         "family_registration",
         "objective_observation",
@@ -44,6 +46,7 @@ class FireRedServices:
     profile: RomProfile
     adapter: Any
     snapshot_source_factory: Callable[..., Any]
+    scene_catalog_factory: Callable[..., Any]
     menu_services_factory: Callable[..., Any]
     family_registration_factory: Callable[..., Any]
     objective_observation_factory: Callable[..., Any]
@@ -104,12 +107,14 @@ class FireRedPlugin:
             make_story_fallback,
             verify_story_identity,
         )
+        from pokegent.state.catalog import load_scene_catalog
 
         adapter = FireRedAdapter(profile=self._profile)
         return FireRedServices(
             profile=self._profile,
             adapter=adapter,
             snapshot_source_factory=CompositeSnapshotSource,
+            scene_catalog_factory=load_scene_catalog,
             menu_services_factory=make_menu_services,
             family_registration_factory=register_families,
             objective_observation_factory=make_objective_observation_services,
