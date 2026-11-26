@@ -1,7 +1,8 @@
 """Synthetic contract tests for the opt-in local objective SDK facade.
 
 Real temporary ``ObjectiveStore`` plus an invented admitted FireRed selection. No ROM, server,
-runtime wiring, game input, snapshot read or network is involved.
+runtime wiring, game input or network is involved; the store's already-bound admission snapshot is
+used only where a test exercises already-satisfied admission.
 """
 
 from __future__ import annotations

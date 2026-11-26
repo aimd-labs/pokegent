@@ -116,6 +116,7 @@ new transport, second-title provenance, redaction guarantee or compatibility pro
 caller-owned `ObjectiveStore` and forwards one copied mapping to `store.propose()` with a mandatory
 plain-int `expected_revision` and `set_by` bound to `agent`. Admission, CAS, source priority,
 already-satisfied rejection and history stay the store's; there is no revision bump, retry,
-completion, snapshot read, server/MCP/runtime wiring or game input. FireRed namespace only. The
-supplied selection and store are trusted, not cryptographically bound to a ROM or running process.
-See [the objective file](objective-file.md).
+completion, independent snapshot provider or read path, server/MCP/runtime wiring or game input.
+The store's own already-bound admission snapshot may still be read during `propose()`. FireRed
+namespace only. The supplied selection and store are trusted, not cryptographically bound to a ROM
+or running process. See [the objective file](objective-file.md).

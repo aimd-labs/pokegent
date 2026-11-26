@@ -1,10 +1,11 @@
 """Opt-in local objective facade over one caller-owned, existing ``ObjectiveStore``.
 
-This module performs local store calls only: it never reads a snapshot, calls a server, MCP,
-runtime, executor, backend or game input, and it exposes no raw file or history export. The
-supplied selection and store are trusted caller inputs; they are not cryptographically bound to
-a plugin ROM, a running process or a transport, and this facade proves no such binding. Disabled
-unless the caller explicitly opts in.
+This module performs local store calls only: it provides no independent snapshot provider or new
+read path, calls no server, MCP, runtime, executor, backend or game input, and it exposes no raw
+file or history export. A delegated ``ObjectiveStore.propose`` may still use that store's own
+already-bound fresh snapshot for already-satisfied admission. The supplied selection and store are
+trusted caller inputs; they are not cryptographically bound to a plugin ROM, a running process or
+a transport, and this facade proves no such binding. Disabled unless the caller explicitly opts in.
 """
 
 from __future__ import annotations
