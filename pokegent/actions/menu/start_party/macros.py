@@ -45,13 +45,23 @@ def _swap_binding(
         return False
     if old_held in (0, item_id) or old_held in MAIL_ITEM_IDS:
         return False
+    ui = snapshot.ui
+    if ui is None or ui.menu is None:
+        return False
+    # ``ui.valid`` is only ``main.valid``: every section is read independently and an invalid
+    # section's empty/None values mean unknown, never "no task/window/fade/script".
+    for section in (ui.main, ui.tasks, ui.text, ui.script, ui.menu, ui.field):
+        if section is None or section.valid is not True:
+            return False
+    script = ui.script
+    # A loaded script is a positive fact; None (unknown) is not proof that no script exists.
+    if script.running is not False:
+        return False
     if not _party_prompt_candidate(snapshot):
         return False
-    ui = snapshot.ui
     party, menu, yes_no, text = ui.menu.party, ui.menu.menu, ui.menu.yes_no, ui.text
     callback = ui.main.callback2
     mon = next((member for member in snapshot.party if member.slot == selected_slot), None)
-    script = ui.script
     if callback is None or callback.name != "CB2_UpdatePartyMenu" or callback.verified is not True:
         return False
     if party.slot_id != selected_slot or party.item_id != item_id:
