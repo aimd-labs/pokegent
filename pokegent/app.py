@@ -799,6 +799,7 @@ def build_runner(
             game="firered",
             profile_id=getattr(profile, "profile_id", ""),
             required_capabilities=required_capabilities,
+            expected_rom_sha1=profile.rom.sha1 if plugin_registry is not None else None,
         )
         plugin_services = selection.services
         if config.new_game.enabled:
