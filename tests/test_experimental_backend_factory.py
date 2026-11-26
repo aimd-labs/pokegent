@@ -1,6 +1,7 @@
 """Synthetic ROM admission and fake backends only; no native mGBA, ROM or provider calls."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -100,6 +101,22 @@ def test_invalid_experimental_gate_refuses_before_admission(monkeypatch, case):
     }[case]
     with pytest.raises(AppError):
         with open_emulator("/unused.gba", **kwargs):
+            pass
+    assert events == []
+    assert calls == []
+
+
+def test_bool_spoof_is_refused_before_admission(monkeypatch):
+    events = []
+    patch_admission(monkeypatch, events)
+    calls = []
+    spoof = Mock(spec=bool)
+    assert isinstance(spoof, bool)  # the mock spoofs __class__, so this is not exact typing
+    with pytest.raises(AppError, match="boolean"):
+        with open_emulator(
+            "/unused.gba", experimental_backend=spoof,
+            backend_factory=lambda: calls.append("factory") or RecordingBackend(events),
+        ):
             pass
     assert events == []
     assert calls == []

@@ -1330,7 +1330,7 @@ def open_emulator(
         require_supported,
     )
 
-    if not isinstance(experimental_backend, bool):
+    if type(experimental_backend) is not bool:
         raise AppError("experimental_backend must be a boolean")
     if experimental_backend:
         if not callable(backend_factory):
