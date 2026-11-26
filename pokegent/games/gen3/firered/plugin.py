@@ -25,7 +25,8 @@ FIRERED_ROM_VERSION = 0
 #: composite snapshot source, the existing scene catalog loader, the game-owned menu/family
 #: constructors, the fresh objective observation helper, the game-owned Dex fallback factory, the
 #: game-owned story fallback/identity callables, the existing local knowledge reader, and the
-#: game-owned battle facts factory. No action verification, input, support or title promotion.
+#: game-owned battle facts factory, and the internal observation projection callable. No action
+#: verification, input, support or title promotion.
 FIRERED_CAPABILITIES = frozenset(
     {
         "snapshot_source",
@@ -39,6 +40,7 @@ FIRERED_CAPABILITIES = frozenset(
         "pre_game_callbacks",
         "local_knowledge",
         "battle_facts",
+        "observation_projection",
     }
 )
 
@@ -60,6 +62,7 @@ class FireRedServices:
     local_knowledge_factory: Callable[..., Any]
     pre_game_callbacks: frozenset[str]
     battle_facts_factory: Callable[..., Any] | None = None
+    observation_factory: Callable[..., Any] | None = None
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -111,6 +114,7 @@ class FireRedPlugin:
         from pokegent.games.gen3.firered.families import register_families
         from pokegent.games.gen3.firered.knowledge import FireRedKnowledge
         from pokegent.games.gen3.firered.objectives import make_dex_fallback
+        from pokegent.games.gen3.firered.observation import project_observation
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
         from pokegent.games.gen3.firered.reader.snapshot_sources import CompositeSnapshotSource
         from pokegent.games.gen3.firered.story import (
@@ -134,4 +138,5 @@ class FireRedPlugin:
             local_knowledge_factory=FireRedKnowledge,
             pre_game_callbacks=PRE_GAME_CALLBACKS,
             battle_facts_factory=make_battle_facts,
+            observation_factory=project_observation,
         )
