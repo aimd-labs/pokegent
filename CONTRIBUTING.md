@@ -169,8 +169,10 @@ directly as pull requests.
 
 Open small, focused PRs targeting `main`. Describe the concrete behavior change, relevant tests,
 and exact verification commands and outcomes. Include regression tests for behavioral fixes.
-A maintainer must review and approve every PR before it is merged. Maintainers own merging.
-The stream's agent bot may open and update PRs; it must never merge PRs.
+A maintainer must review and approve every PR before it is merged. Maintainers own merging,
+including the owner maintainer apps aimd-pg-lead and aimd-carlos, after an independent
+exact-head review and green CI. Contributor or third-party bots never merge. The stream's
+agent bot may open and update PRs; it must never merge PRs.
 Changes to runtime legality or irreversible actions require special care and evidence from current
 RAM; unverified game state must never be treated as a legal action.
 
