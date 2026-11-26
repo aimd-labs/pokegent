@@ -13,6 +13,8 @@ from typing import Any
 from pokegent.options.models import ChoiceResult, DecisionFrame, check_choice
 
 MAX_CASES, MAX_LABELS, MAX_IDENTITY = 1000, 256, 128
+CONTEXT_FIELDS = ("game_profile", "backend_version", "provider_protocol",
+                  "prompt_profile", "knowledge_policy")
 FIELDS = ("supplied", "labeled", "unknown_label", "no_prediction", "invalid_choice",
           "valid_choice", "labeled_valid_choice", "acceptable_choice")
 
@@ -21,18 +23,34 @@ class EvaluationRejected(ValueError):
     """Malformed labeled-evaluation request; case details are never echoed."""
 
 
+def _identity(value: Any, name: str) -> str:
+    if type(value) is not str or not value.strip() or len(value) > MAX_IDENTITY:
+        raise EvaluationRejected(f"{name} must be nonblank and at most 128 characters")
+    return value
+
+
+@dataclass(frozen=True)
+class EvaluationContext:
+    """Caller-supplied comparison tags; not runtime admission or proof."""
+
+    game_profile: str
+    backend_version: str
+    provider_protocol: str
+    prompt_profile: str
+    knowledge_policy: str
+
+    def __post_init__(self) -> None:
+        for name in CONTEXT_FIELDS:
+            _identity(getattr(self, name), f"context.{name}")
+
+
 @dataclass(frozen=True)
 class LabeledChoiceCase:
     frame: DecisionFrame
     result: ChoiceResult | None
     acceptable_option_ids: frozenset[str] | None
     family_id: str
-
-
-def _identity(value: Any, name: str) -> str:
-    if type(value) is not str or not value.strip() or len(value) > MAX_IDENTITY:
-        raise EvaluationRejected(f"{name} must be nonblank and at most 128 characters")
-    return value
+    context: EvaluationContext | None = None
 
 
 def _peer_identity(value: Any, name: str) -> str | None:
@@ -74,13 +92,20 @@ def evaluate_labeled_choices(
         return {"kind": "labeled_choice_evaluation/1", "enabled": False, "evaluated": False,
                 "eligibility": "not_evaluated", "authority_granted": False}
     counts = dict.fromkeys(FIELDS, 0)
-    rows: dict[tuple[str, str | None, str | None], dict[str, int]] = {}
+    rows: dict[
+        tuple[str, str | None, str | None, tuple[str, ...] | None], dict[str, int]
+    ] = {}
     supplied_families: set[str] = set()
     labeled_families: set[str] = set()
     seen: set[tuple[str, str, str | None, str | None]] = set()
     for case in _collect(cases):
         if not isinstance(case, LabeledChoiceCase):
             raise EvaluationRejected("cases must contain LabeledChoiceCase values")
+        context = case.context
+        if context is not None and not isinstance(context, EvaluationContext):
+            raise EvaluationRejected("context must be an EvaluationContext or None")
+        context_key = (None if context is None
+                       else tuple(getattr(context, name) for name in CONTEXT_FIELDS))
         frame, result = case.frame, case.result
         if not isinstance(frame, DecisionFrame) or not (
             result is None or isinstance(result, ChoiceResult)
@@ -99,7 +124,9 @@ def evaluate_labeled_choices(
         supplied_families.add(case.family_id)
         if labels is not None:
             labeled_families.add(case.family_id)
-        row = rows.setdefault((frame.scene_id, provider, model), dict.fromkeys(FIELDS, 0))
+        row = rows.setdefault(
+            (frame.scene_id, provider, model, context_key), dict.fromkeys(FIELDS, 0)
+        )
         valid = (
             result is not None and result.decision_id == frame.decision_id
             and check_choice(frame, result, allow_all=False) is None
@@ -115,9 +142,13 @@ def evaluate_labeled_choices(
             counts[name] += increment
             row[name] += increment
     strata = [
-        {"scene_id": key[0], "provider": key[1], "model": key[2], **rows[key]}
+        {"scene_id": key[0], "provider": key[1], "model": key[2],
+         "comparison_context": (None if key[3] is None
+                                else dict(zip(CONTEXT_FIELDS, key[3]))),
+         **rows[key]}
         for key in sorted(rows, key=lambda key: (
-            key[0], key[1] is not None, key[1] or "", key[2] is not None, key[2] or ""
+            key[0], key[1] is not None, key[1] or "", key[2] is not None, key[2] or "",
+            key[3] is not None, key[3] or (),
         ))
     ]
     acceptable = counts["acceptable_choice"]
@@ -139,6 +170,8 @@ def evaluate_labeled_choices(
                    "accuracy": "conditional_on_supplied_labels",
                    "family_grouping": "supplied_not_independent_certification",
                    "no_prediction_identity": "unknown_provider_and_model",
+                   "comparison_context": "caller_supplied_not_runtime_verified",
+                   "unknown_context": "not_inferred_from_model_or_frame",
                    "case_cap": MAX_CASES, "label_cap": MAX_LABELS},
         "eligibility": "not_evaluated", "authority_granted": False,
     }

@@ -7,6 +7,7 @@ import json
 import pytest
 
 from addons.system_one.evaluation import (
+    EvaluationContext,
     EvaluationRejected,
     LabeledChoiceCase,
     evaluate_labeled_choices,
@@ -14,6 +15,17 @@ from addons.system_one.evaluation import (
 from pokegent.options.models import ChoiceResult, DecisionFrame, Legality, Option
 
 _NO_RESULT = object()
+_CONTEXT = {
+    "game_profile": "firered-us-1.0",
+    "backend_version": "mgba-0.10.3",
+    "provider_protocol": "openai-compatible/1",
+    "prompt_profile": "scene-v3",
+    "knowledge_policy": "game-facts-only",
+}
+
+
+def context(**overrides):
+    return EvaluationContext(**{**_CONTEXT, **overrides})
 
 
 def make_frame(decision_id="dec-1", *, run_id="run-1", scene_id="field.free", hidden=False):
@@ -65,6 +77,7 @@ def case(
     result_decision_id=_NO_RESULT,
     no_result=False,
     hidden=False,
+    context=None,
 ):
     frame = make_frame(decision_id, run_id=run_id, scene_id=scene_id, hidden=hidden)
     if no_result:
@@ -79,6 +92,7 @@ def case(
         result=result,
         acceptable_option_ids=labels,
         family_id=family,
+        context=context,
     )
 
 
@@ -337,3 +351,102 @@ def test_malformed_case_and_identity_are_rejected():
         evaluate_labeled_choices([case("d1", family="f" * 129)], enabled=True)
     with pytest.raises(EvaluationRejected):
         evaluate_labeled_choices([case("d1", run_id="")], enabled=True)
+
+
+@pytest.mark.parametrize("tag", sorted(_CONTEXT))
+def test_differing_single_context_tag_forms_separate_strata(tag):
+    report = evaluate_labeled_choices(
+        [case("d1", context=context()), case("d2", context=context(**{tag: "other"}))],
+        enabled=True,
+    )
+
+    assert report["counts"]["supplied"] == 2
+    assert len(report["strata"]) == 2
+    contexts = [row["comparison_context"] for row in report["strata"]]
+    assert all(isinstance(item, dict) for item in contexts)
+    assert {item[tag] for item in contexts} == {_CONTEXT[tag], "other"}
+    assert all(row["supplied"] == 1 for row in report["strata"])
+
+
+def test_same_context_shares_one_stratum_with_exact_counts():
+    report = evaluate_labeled_choices(
+        [case("d1", context=context()), case("d2", context=context())], enabled=True
+    )
+
+    assert len(report["strata"]) == 1
+    row = report["strata"][0]
+    assert row["supplied"] == 2
+    assert row["labeled"] == 2
+    assert row["comparison_context"] == _CONTEXT
+    assert report["counts"]["supplied"] == 2
+
+
+def test_unknown_context_is_distinct_from_known_context():
+    report = evaluate_labeled_choices(
+        [case("d1"), case("d2", context=context())], enabled=True
+    )
+
+    assert len(report["strata"]) == 2
+    by_unknown = {row["comparison_context"] is None: row for row in report["strata"]}
+    assert by_unknown[True]["supplied"] == 1
+    assert by_unknown[False]["comparison_context"] == _CONTEXT
+
+
+def test_absent_context_keeps_positional_signature_and_none_bucket():
+    item = LabeledChoiceCase(
+        make_frame("d1"), make_result(), frozenset({"tap:a"}), "f1"
+    )
+
+    report = evaluate_labeled_choices([item], enabled=True)
+
+    row = report["strata"][0]
+    assert row["scene_id"] == "field.free"
+    assert row["provider"] == "system1"
+    assert row["model"] == "model-1"
+    assert row["comparison_context"] is None
+    assert report["counts"]["supplied"] == 1
+
+
+def test_duplicate_observation_rejected_even_when_context_differs():
+    first = case("d1", context=context())
+    relabeled = case("d1", context=context(prompt_profile="other"))
+
+    with pytest.raises(EvaluationRejected):
+        evaluate_labeled_choices([first, relabeled], enabled=True)
+
+
+@pytest.mark.parametrize("tag", sorted(_CONTEXT))
+@pytest.mark.parametrize("bad", [True, "", "   ", "x" * 129])
+def test_malformed_context_tags_rejected_without_echo(tag, bad):
+    with pytest.raises(EvaluationRejected) as excinfo:
+        context(**{tag: bad})
+
+    message = str(excinfo.value)
+    assert "context." + tag in message
+    if str(bad):
+        assert str(bad) not in message
+
+
+@pytest.mark.parametrize("bad", ["not-a-context", {}, object(), 3])
+def test_non_context_value_is_rejected(bad):
+    item = LabeledChoiceCase(
+        make_frame("d1"), make_result(), frozenset({"tap:a"}), "f1", bad
+    )
+
+    with pytest.raises(EvaluationRejected):
+        evaluate_labeled_choices([item], enabled=True)
+
+
+def test_context_rows_are_plain_jsonable_and_limits_are_explicit():
+    report = evaluate_labeled_choices(
+        [case("dec-secret", context=context())], enabled=True
+    )
+
+    raw = json.dumps(report, sort_keys=True, allow_nan=False)
+    assert "dec-secret" not in raw
+    assert report["strata"][0]["comparison_context"] == _CONTEXT
+    assert report["limits"]["comparison_context"] == "caller_supplied_not_runtime_verified"
+    assert report["limits"]["unknown_context"] == "not_inferred_from_model_or_frame"
+    assert report["eligibility"] == "not_evaluated"
+    assert report["authority_granted"] is False
+
