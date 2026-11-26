@@ -43,10 +43,10 @@ directory construction, admission or support proof.
 ## Limits
 
 The helper is FireRed-owned and Python-only. It does not validate a profile,
-choose a title, verify input or prove a native run. Earlier app wiring still
-builds its own FireRed directory; moving that call onto this helper is a
-separate pending slice and is not claimed here as merged or adopted. The
-pinned source scope above is the whole subject of this page.
+choose a title, verify input or prove a native run. At the pinned source above,
+early app wiring constructs its own FireRed directory. The separate app call
+site is tracked in [#350](https://github.com/aimd-labs/pokegent/pull/350);
+this guide makes no live-uptake claim.
 
 ## Synthetic fence
 
