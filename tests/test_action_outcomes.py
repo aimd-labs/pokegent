@@ -31,7 +31,7 @@ REPORT_KEYS = {
 }
 ROW_KEYS = {
     "run_id", "scene_id", "source", "provider", "model_id", "terminal_actions",
-    "status", "verified", "progressed", "verified_progressed",
+    "status", "verified", "progressed", "verified_progressed", "measured_ms",
 }
 
 
@@ -451,6 +451,112 @@ def test_missing_provider_model_and_scene_stay_null_unknown(tmp_path):
     row = report["strata"][0]
     assert (row["scene_id"], row["provider"], row["model_id"]) == (None, None, None)
     assert row["terminal_actions"] == 1
+
+
+def test_measured_ms_known_missing_zero_and_nearest_rank(tmp_path):
+    path = tmp_path / "latency.jsonl"
+    records = []
+    for index, value in enumerate((0, 10, 20, 30, None)):
+        request_id = f"dec-{index}"
+        record = claim(request_id=request_id, seq=3 * index + 1)
+        if value is None:
+            record["details"].pop("measured_ms")
+        else:
+            record["details"]["measured_ms"] = value
+        records.extend([
+            record,
+            start(request_id=request_id, seq=3 * index + 2),
+            terminal(request_id=request_id, seq=3 * index + 3),
+        ])
+    raw(path, records)
+
+    report = report_of(run_cli(path))
+
+    row = report["strata"][0]
+    assert row["measured_ms"] == {"count": 4, "missing": 1, "p50": 10.0, "p95": 30.0}
+
+
+def test_route_accepted_has_no_measurement_and_veto_timing_is_not_attached(tmp_path):
+    path = tmp_path / "route.jsonl"
+    raw(path, [
+        claim(event_type=EventType.DECISION_SYSTEMONE_COMPLETED.value, provider="system1",
+              outcome="rejected", seq=1),
+        envelope(
+            EventType.DECISION_ROUTE.value,
+            run_id="run-a",
+            request_id="dec-1",
+            outcome="accepted",
+            provider="route",
+            details={"option_id": "walk", "decided_by": "route", "reason": "route_step_veto"},
+            seq=2,
+        ),
+        start(source="route", seq=3),
+        terminal(seq=4),
+    ])
+
+    report = report_of(run_cli(path))
+
+    row = report["strata"][0]
+    assert (row["source"], row["provider"]) == ("route", "route")
+    assert row["measured_ms"] == {"count": 0, "missing": 1, "p50": None, "p95": None}
+
+
+def test_irrelevant_shadow_and_rejected_latency_never_contaminate_or_fail(tmp_path):
+    bad = {"measured_ms": "not-a-number"}
+    path = tmp_path / "ignored-latency.jsonl"
+    rejected = claim(event_type=EventType.DECISION_SYSTEMONE_COMPLETED.value, provider="system1",
+                     outcome="rejected", seq=1)
+    shadow = claim(event_type=EventType.DECISION_SYSTEMONE_COMPLETED.value, provider="system1",
+                   outcome="observed", accepted=False, authority="shadow", seq=2)
+    rejected["details"].update(bad)
+    shadow["details"].update(bad)
+    raw(path, [rejected, shadow,
+               envelope("scene.entered", details=bad, seq=3)])
+
+    report = report_of(run_cli(path))
+
+    assert report["records"] == 0 and report["no_records"] is True
+    assert report["strata"] == []
+
+
+@pytest.mark.parametrize("bad", [True, "1.0", float("nan"), float("inf"), -1, 10 ** 400])
+def test_malformed_accepted_measurement_fails_without_echo(tmp_path, bad):
+    path = tmp_path / "bad-latency.jsonl"
+    record = claim(seq=1)
+    record["details"]["measured_ms"] = bad
+    record["details"]["secret"] = "RAW_SECRET"
+    raw(path, [record])
+
+    result = run_cli(path)
+
+    assert result.returncode != 0 and result.stdout == ""
+    assert f"{path}:1: field measured_ms" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "RAW_SECRET" not in result.stderr
+
+
+def test_real_runner_accepted_measurement_is_bound_to_the_stratum(tmp_path):
+    runner, events = real_runner([
+        ActionResult(status=ActionStatus.APPLIED, verified_outcome=True, progressed=True),
+    ])
+    current = frame()
+    assert isinstance(runner._decide(current), tuple)
+    runner._act(current, "walk", source="decider")
+    path = tmp_path / "events.jsonl"
+    dump(events, path)
+
+    accepted = [event for event in events.events
+                if event.type == EventType.DECISION_AGENT_COMPLETED.value
+                and event.outcome == "accepted"]
+    assert len(accepted) == 1
+    emitted = accepted[0].details["measured_ms"]
+    assert isinstance(emitted, (int, float)) and not isinstance(emitted, bool)
+
+    report = report_of(run_cli(path))
+
+    row = report["strata"][0]
+    assert row["measured_ms"] == {"count": 1, "missing": 0,
+                                  "p50": float(emitted), "p95": float(emitted)}
 
 
 def test_irrelevant_bad_values_are_ignored_and_relevant_bad_values_fail_without_echo(
