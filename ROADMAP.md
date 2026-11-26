@@ -29,6 +29,15 @@ Merged source changes, each limited to its stated seam: [#199](https://github.co
 
 At the 2026-11-26 base, newer source slices sit behind defaults: exact-ROM plugin selection ([#246](https://github.com/aimd-labs/pokegent/pull/246)), a default-off objective churn guard ([#248](https://github.com/aimd-labs/pokegent/pull/248)), an internal observation envelope ([#250](https://github.com/aimd-labs/pokegent/pull/250)), frame-bound choice validation in the SDK ([#253](https://github.com/aimd-labs/pokegent/pull/253)), and FireRed source composition behind an explicit Python API flag ([#254](https://github.com/aimd-labs/pokegent/pull/254)). Offline reports cover shadow observations ([#249](https://github.com/aimd-labs/pokegent/pull/249)), wheel member hashes and build metadata ([#251](https://github.com/aimd-labs/pokegent/pull/251)), and exact-head required-check evidence ([#252](https://github.com/aimd-labs/pokegent/pull/252)). These are bounded implementation seams, not a generic runner, backend injection, plugin discovery, second-title implementation or native proof.
 
+After the 2026-11-26 base, later slices merged as bounded seams. CI hardening: [#376](https://github.com/aimd-labs/pokegent/pull/376)
+adds a serial Python CodeQL job to public checks; [#379](https://github.com/aimd-labs/pokegent/pull/379) declares a utf-8 coding cookie in
+mon.py to avoid a CodeQL pure-codec misfire (reader encoding fix); [#380](https://github.com/aimd-labs/pokegent/pull/380) audits locked
+dependencies for known vulnerabilities in public-checks. Tests: [#378](https://github.com/aimd-labs/pokegent/pull/378) checks the reader
+refuses invalid UTF-8 and never escapes; [#381](https://github.com/aimd-labs/pokegent/pull/381) adds seeded evaluator property coverage.
+[#382](https://github.com/aimd-labs/pokegent/pull/382) relabels planner-derived unoffered warp keys in route text while the payload-leak
+guard stays the backstop. These are bounded implementation seams, not native, release or full-mechanic proof; the #106 pause and
+owner-native acceptance wording above stay unchanged.
+
 ## Delivery and release policy
 
 Deliver small independent changes on disjoint files. Small default-off or experimental roadmap work, including ROM-free implementation and tests, may proceed before native FireRed acceptance. Release, compatibility and title-support claims remain evidence-gated, and each change still needs one maintainer review and green exact-head CI before merge; maintainers own merging, and the gameplay/stream agent may open and update PRs but never merges them. Release candidates are batched and need one operator canary approve or reject. Native story and campaign acceptance, actor ownership and fail-closed legality remain requirements. No calendar date, reliability target or support for other titles is promised. Issue #106 remains paused. See [senior disposition](docs/research/senior-disposition.md).
