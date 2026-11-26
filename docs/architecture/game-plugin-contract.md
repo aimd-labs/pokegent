@@ -2,6 +2,13 @@
 
 Status: proposal for maintainer review, not implemented or frozen. 2026-11-24, runtime baseline c73774285e5e164d01629ca14a5e8e551e03493f. Implements research scope of [#139](https://github.com/aimd-labs/pokegent/issues/139), not issue closure. R04, R05, R08 and R09 are inputs; this contract owns generic admission, and R08 only supplies DS evidence. Current v1.x contracts are authoritative. No runtime API change, profile promotion, backend selection, ROM or test execution.
 
+Implementation status (2026-11-26): a default-off, runtime-unwired prototype seam exists in
+`pokegent/games/plugin.py`, exercised by synthetic plugins in
+`tests/test_game_plugin_selection.py`. It covers exact SHA-1 admission, contract/profile/capability
+refusal and duplicate ownership only; there is no FireRed composition, snapshot projection, backend
+injection or plugin discovery, and no title-support claim. [#139](https://github.com/aimd-labs/pokegent/issues/139)
+remains open.
+
 ## Evidence
 
 | Reference | Exact pin and inspected surfaces | Boundary |
