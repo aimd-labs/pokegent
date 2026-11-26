@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import deque
 from collections.abc import Mapping
 from typing import Any
 
@@ -26,6 +27,10 @@ class ProgressMonitor:
       forever).  This catches loops that *change position* on every step, which
       by design never trip ``decision_limit``, while a monotone grind that
       changes party state each step while reusing one option stays clean.
+
+    The opt-in ``exit_cycle_guard`` independently recognises a three-action,
+    two-map round trip the two-option detector cannot express.  It is default
+    off and changes no legacy window or signature behavior.
     """
 
     def __init__(
@@ -37,6 +42,7 @@ class ProgressMonitor:
         loop_distinct_limit: int = 2,
         loop_signature_limit: int = 4,
         loop_min_cycles: int = 3,
+        exit_cycle_guard: bool = False,
     ) -> None:
         for name, value in (
             ("decision_limit", decision_limit),
@@ -60,9 +66,37 @@ class ProgressMonitor:
         self._capacity = loop_window * loop_min_cycles
         # Bounded (option_id, signature) pairs covering the FULL claimed interval.
         self._window: list[tuple[str, str]] = []
+        if not isinstance(exit_cycle_guard, bool):
+            raise ValueError("exit_cycle_guard must be a bool")
+        self.exit_cycle_guard = exit_cycle_guard
+        #: #133: exactly three identical three-entry blocks, never a longer history.
+        self._cycle_window: deque[tuple[str, str, tuple[int, int]]] = deque(maxlen=9)
+        self._cycle_map_key: tuple[int, int] | None = None
 
-    def observe(self, signature: str, *, now: float, iteration: int) -> bool:
+    @staticmethod
+    def _usable_map_key(value: Any) -> tuple[int, int] | None:
+        if not isinstance(value, tuple) or len(value) != 2:
+            return None
+        group, number = value
+        if type(group) is not int or type(number) is not int:
+            return None
+        return (group, number)
+
+    def observe(
+        self,
+        signature: str,
+        *,
+        now: float,
+        iteration: int,
+        map_key: tuple[int, int] | None = None,
+    ) -> bool:
         """Return true only for a verified action followed by a semantic state change."""
+        if self.exit_cycle_guard:
+            usable_map = self._usable_map_key(map_key)
+            if usable_map is None:
+                # An unreadable map proves nothing about a map round trip.
+                self._cycle_window.clear()
+            self._cycle_map_key = usable_map
         if self._signature is None:
             self._signature = signature
             self.last_progress_at = now
@@ -75,13 +109,34 @@ class ProgressMonitor:
             self.reset_window(now=now, iteration=iteration)
         return progressed
 
-    def note_decision(self, *, verified: bool, option_id: str | None = None) -> None:
+    def note_decision(
+        self,
+        *,
+        verified: bool,
+        option_id: str | None = None,
+        cycle_verified: bool = False,
+    ) -> None:
         self.decisions_since_progress += 1
         self._verified_before = self._signature if verified else None
         if verified and option_id and self._signature is not None:
             self._window.append((option_id, self._signature))
             if len(self._window) > self._capacity:
                 del self._window[0]
+        if self.exit_cycle_guard:
+            eligible = (
+                cycle_verified is True
+                and isinstance(option_id, str)
+                and bool(option_id)
+                and self._signature is not None
+                and self._cycle_map_key is not None
+            )
+            if eligible:
+                self._cycle_window.append(
+                    (option_id, self._signature, self._cycle_map_key)
+                )
+            else:
+                # Interrupted/failed/unverified/noneligible actions are not cycle evidence.
+                self._cycle_window.clear()
 
     def due_reason(self) -> str | None:
         if self.decisions_since_progress >= self.decision_limit:
@@ -89,7 +144,45 @@ class ProgressMonitor:
         loop = self.loop_reason()
         if loop is not None:
             return loop
-        return None
+        return self.exit_cycle_reason()
+
+    def exit_cycle_reason(self) -> str | None:
+        """``exit_cycle`` only for three identical three-action blocks over two maps.
+
+        Each entry is ``(option_id, full semantic signature, exact map identity)``.
+        Equality of all three blocks is the closed-return proof: a new frontier,
+        changed party/bag/flags or a same-map pattern breaks it.  A repeated action
+        id alone is insufficient (three distinct ids, two exit ids and one
+        ``strength:`` id are required).
+        """
+        if not self.exit_cycle_guard or len(self._cycle_window) != 9:
+            return None
+        entries = list(self._cycle_window)
+        first, second, third = entries[0:3], entries[3:6], entries[6:9]
+        if not first == second == third:
+            return None
+        if (
+            self._signature != first[0][1]
+            or self._cycle_map_key != first[0][2]
+        ):
+            # The post-action observation must prove the return to the block start.
+            return None
+        if first[0][2] == first[1][2] or first[1][2] != first[2][2]:
+            # Real two-floor shape: warp A -> strength on B -> warp B back to A.
+            return None
+        options = [entry[0] for entry in first]
+        maps = {entry[2] for entry in entries}
+        exits = [oid for oid in options if oid.startswith(("warp:", "edge:"))]
+        if (
+            len(set(options)) != 3
+            or len(maps) != 2
+            or len(exits) != 2
+            or not first[0][0].startswith(("warp:", "edge:"))
+            or not first[1][0].startswith("strength:")
+            or not first[2][0].startswith(("warp:", "edge:"))
+        ):
+            return None
+        return "exit_cycle:entries=9,actions=3,maps=2"
 
     def loop_reason(self) -> str | None:
         """``option_loop`` when the CURRENT tail is a closed loop of a few states/options.
@@ -162,6 +255,7 @@ class ProgressMonitor:
         # a positional ping (which changes position yet is still a closed loop, issue #35).
         if clear_loop:
             self._window.clear()
+            self._cycle_window.clear()
 
     @property
     def signature(self) -> str | None:
