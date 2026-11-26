@@ -3,9 +3,9 @@
 The plugin is inert unless a caller explicitly enables :class:`ReviewedPluginRegistry` and the
 built-in FireRed plugin is admitted for exact caller-supplied ROM bytes. ``compose`` only builds
 the existing adapter and names the existing composite source and game-owned menu/family helpers
-plus the game-owned battle facts factory; it does not read an actor, touch a ROM file, register
-options or claim verification/support beyond source + reader + menu/family/battle-fact
-composition.
+plus the ROM-only objective directory helper and the game-owned battle facts factory; it does not
+read an actor, touch a ROM file, register options or claim verification/support beyond source +
+reader + menu/family/battle-fact/directory composition.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ FIRERED_CAPABILITIES = frozenset(
         "battle_facts",
         "observation_projection",
         "navigation",
+        "objective_directory",
     }
 )
 
@@ -65,6 +66,7 @@ class FireRedServices:
     battle_facts_factory: Callable[..., Any] | None = None
     observation_factory: Callable[..., Any] | None = None
     navigation_factory: Callable[..., Any] | None = None
+    objective_directory_factory: Callable[..., Any] | None = None
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -115,7 +117,10 @@ class FireRedPlugin:
         from pokegent.games.gen3.firered.composition import make_menu_services
         from pokegent.games.gen3.firered.families import register_families
         from pokegent.games.gen3.firered.knowledge import FireRedKnowledge
-        from pokegent.games.gen3.firered.navigation import make_navigation_services
+        from pokegent.games.gen3.firered.navigation import (
+            make_navigation_services,
+            make_objective_directory,
+        )
         from pokegent.games.gen3.firered.objectives import make_dex_fallback
         from pokegent.games.gen3.firered.observation import project_observation
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
@@ -143,4 +148,5 @@ class FireRedPlugin:
             battle_facts_factory=make_battle_facts,
             observation_factory=project_observation,
             navigation_factory=make_navigation_services,
+            objective_directory_factory=make_objective_directory,
         )

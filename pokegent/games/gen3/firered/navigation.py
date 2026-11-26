@@ -2,7 +2,8 @@
 
 The factory forwards caller-supplied admitted bytes/profile to the existing graph, adapter and
 optional directory constructors in the app's original order; it reads no path or actor and
-catches nothing. It is not an admission or digest gate.
+catches nothing. It is not an admission or digest gate. ``make_objective_directory`` is the
+standalone lazy constructor for the ROM-only directory.
 """
 
 from __future__ import annotations
@@ -22,6 +23,13 @@ class FireRedNavigationServices:
     directory: Any
 
 
+def make_objective_directory(rom_bytes: bytes, profile: Any) -> Any:
+    """Build the ROM-only objective directory from already-admitted bytes/profile."""
+    from pokegent.goals.directory import RomMapDirectory
+
+    return RomMapDirectory(rom_bytes, profile)
+
+
 def make_navigation_services(
     rom_bytes: bytes,
     profile: Any,
@@ -36,7 +44,5 @@ def make_navigation_services(
     )
     directory = None
     if needs_directory:
-        from pokegent.goals.directory import RomMapDirectory
-
-        directory = RomMapDirectory(rom_bytes, profile)
+        directory = make_objective_directory(rom_bytes, profile)
     return FireRedNavigationServices(graph, navigation, directory)

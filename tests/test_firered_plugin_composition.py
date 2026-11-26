@@ -122,6 +122,7 @@ def test_capabilities_cover_exactly_the_supplied_source_factories():
         "battle_facts",
         "observation_projection",
         "navigation",
+        "objective_directory",
     }
     assert not FIRERED_CAPABILITIES & {"verification", "supported", "input"}
 
