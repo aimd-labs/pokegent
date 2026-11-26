@@ -103,6 +103,8 @@ for local configuration. Keep credentials in environment variables.
 See [local run ledger commands](docs/run-ledger.md) for explicit ingestion, queries and splits.
 See the [local knowledge guide](docs/local-knowledge.md) for the opt-in, read-only native move
 and species fact seam.
+See the [campaign report CLI guide](docs/benchmarks/campaign-report-cli.md) for a default-off
+caller-named manifest summary.
 See the [event SDK](docs/event-sdk.md) for bounded, metadata-only event pages.
 
 ## Built live on stream
