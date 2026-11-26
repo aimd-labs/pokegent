@@ -86,6 +86,9 @@ def test_concurrent_open_survives_real_wal_contention(tmp_path, monkeypatch):
     finally:
         for event in (a_committed, b_reserved, a_wal_done):
             event.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(5)
         monkeypatch.setattr(ledger.sqlite3, "connect", original_connect)
         monkeypatch.setattr(ledger, "_migrate", original_migrate)
 

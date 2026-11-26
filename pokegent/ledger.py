@@ -217,6 +217,8 @@ def _activate_wal(db: sqlite3.Connection) -> None:
             if remaining <= 0:
                 break
             db.execute(f"PRAGMA busy_timeout={max(0, int(remaining * 1000))}")
+            if time.monotonic() >= deadline:
+                break
             try:
                 mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
             except sqlite3.OperationalError as exc:
