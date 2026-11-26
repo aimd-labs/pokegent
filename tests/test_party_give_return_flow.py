@@ -738,3 +738,37 @@ def test_give_gets_a_dedicated_busy_owning_spec_and_other_selections_do_not(monk
     assert take_spec.kind is ExecutionKind.DETERMINISTIC
     assert take_spec.macro_manages_busy is False
     assert take_spec.allowed_scenes == give_spec.allowed_scenes
+
+
+def _swap_message_snapshot(**kw):
+    """#274 live shape: already-holding text paused at \\p, no YES/NO window yet."""
+    snap = _swap_prompt_snapshot(yes_window_in_use=False, **kw)
+    snap.ui.tasks = NS(valid=True, active=(
+        _task("Task_SwitchItemsYesNo", True), _task("Task_PrintAndWaitForText", True)))
+    snap.ui.menu.yes_no = snap.ui.menu.menu = None
+    snap.ui.script.controls_locked = True
+    return snap
+
+
+def _swap_message_run(monkeypatch, message, repeat):
+    registries, option, spec, before = _give_setup(monkeypatch, held_item=OLD_ITEM)
+    bag = _bag_snapshot(held_item=OLD_ITEM, quantity=2)
+    prompt, after = _swap_prompt_snapshot(), _after_snapshot()
+    after.bag = _bag_pairs((EXP_SHARE, 1), (OLD_ITEM, 1))
+    party = lambda s: _obs(s, _party_scene(s))  # noqa: E731
+    bagobs = _obs(bag, _bag_scene(registries, bag))
+    seen = [party(before), bagobs, bagobs] + [party(message)] * 3
+    perceiver = _Perceiver(seen + ([] if repeat else [party(prompt)] * 3 + [party(after)]),
+                           party(message) if repeat else party(after))
+    return _run(registries, option, spec, before, perceiver)
+
+
+def test_swap_message_gets_one_acknowledgement_then_the_bound_yes(monkeypatch):
+    result, actor = _swap_message_run(monkeypatch, _swap_message_snapshot(), repeat=False)
+    # party confirm, item row, ONE message acknowledgement, then the existing bound YES
+    assert result.status is ActionStatus.APPLIED and tuple(actor.taps) == ("a",) * 4
+
+
+def test_unproven_swap_message_never_gets_an_acknowledgement(monkeypatch):
+    result, actor = _swap_message_run(monkeypatch, _swap_message_snapshot(held_item=0), True)
+    assert result.verified_outcome is not True and tuple(actor.taps) == ("a", "a")
