@@ -53,6 +53,11 @@ def _feed(monitor, blocks=3, *, block=BLOCK, cycle_verified=True, start=0):
     return iteration
 
 
+def _close_cycle(monitor, start=9):
+    """The post-action observation that proves the return to block[0]."""
+    monitor.observe("sig-A", now=float(start), iteration=start, map_key=(1, 1))
+
+
 # ---- opt-in wiring -----------------------------------------------------------------------------
 def test_guard_is_off_by_default_and_rejects_non_bool():
     assert RunnerConfig().exit_cycle_guard is False
@@ -73,11 +78,21 @@ def test_runner_config_parser_propagates_exact_bool():
 
 
 # ---- detector ----------------------------------------------------------------------------------
-def test_three_exact_blocks_hit_due_reason_at_nine():
+def test_three_exact_blocks_need_the_final_return_observation():
     m = ProgressMonitor(100, now=0.0, exit_cycle_guard=True)
     _feed(m)
+    assert m.due_reason() is None  # nine note-only entries are not a closed return
+    _close_cycle(m)
     assert m.exit_cycle_reason() == "exit_cycle:entries=9,actions=3,maps=2"
     assert m.due_reason() == "exit_cycle:entries=9,actions=3,maps=2"
+
+
+def test_ninth_action_escaping_to_a_new_frontier_does_not_fire():
+    m = ProgressMonitor(100, now=0.0, exit_cycle_guard=True)
+    _feed(m)
+    m.observe("sig-NEW", now=9.0, iteration=9, map_key=(3, 3))
+    assert m.exit_cycle_reason() is None
+    assert m.due_reason() is None
 
 
 def test_guard_off_is_inert_for_the_same_entries():
@@ -151,6 +166,7 @@ def test_fourth_action_same_maps_or_changed_state_do_not_fire():
 def test_clear_loop_clears_but_positional_reset_retains_cycle_evidence():
     m = ProgressMonitor(100, now=0.0, exit_cycle_guard=True)
     _feed(m)
+    _close_cycle(m)
     m.reset_window(now=20.0, iteration=20)
     assert m.exit_cycle_reason() is not None
     m.reset_window(now=21.0, iteration=21, clear_loop=True)
@@ -168,12 +184,19 @@ def test_legacy_neighbour_still_detects_two_option_ping():
 
 
 # ---- real Runner wiring ------------------------------------------------------------------------
-def _map_state(group: int, number: int, x: int) -> MapState:
+def _map_state(
+    group: int,
+    number: int,
+    x: int,
+    *,
+    identity_verified: bool = True,
+    position_consistent: bool = True,
+) -> MapState:
     identity = MapIdentity(
         group=group, number=number, name="Synthetic", layout_id=1,
         region_section_id=0, map_type=0, map_type_name="indoor", weather=0,
         cave=0, floor_num=0, battle_type=0, music=0, biking_allowed=False,
-        allow_escaping=False, allow_running=True, identity_verified=True,
+        allow_escaping=False, allow_running=True, identity_verified=identity_verified,
     )
     return MapState(
         identity=identity,
@@ -184,7 +207,7 @@ def _map_state(group: int, number: int, x: int) -> MapState:
         grid=MapGrid(columns=15, rows=15, blocks=(0,) * 225, attributes=((0, 0),)),
         player=PlayerPlacement(
             save_x=x, save_y=0, avatar_x=x, avatar_y=0, prev_x=x, prev_y=0,
-            x=x, y=0, position_consistent=True, facing="N", elevation=0,
+            x=x, y=0, position_consistent=position_consistent, facing="N", elevation=0,
             object_event_id=0, avatar_flags=0, surfing=False, underwater=False,
             biking=False, controllable_flag=True, forced=False, moving=False,
             tile_transition_state=0, running_state=0,
@@ -192,9 +215,42 @@ def _map_state(group: int, number: int, x: int) -> MapState:
     )
 
 
-def _exit_cycle_runner(*, guard: bool, max_steps: int):
+def _snapshot_with_map(*, identity_verified=True, position_consistent=True):
+    return StateSnapshot.create(
+        rom_profile="synthetic", snapshot_seq=0, health=Health(valid=True),
+        player=Player(
+            name="Test", gender="male", tid=0, sid=0, map_group=1,
+            map_num=1, map_layout_id=0, x=0, y=0, money=0, coins=0,
+        ),
+        flags=FlagSet(), vars=VarTable(),
+        map=_map_state(
+            1, 1, 0, identity_verified=identity_verified,
+            position_consistent=position_consistent,
+        ),
+    )
+
+
+def test_snapshot_map_key_requires_usable_verified_consistent_map():
+    assert Runner._snapshot_map_key(_snapshot_with_map()) == (1, 1)
+    assert Runner._snapshot_map_key(_snapshot_with_map(identity_verified=False)) is None
+    assert Runner._snapshot_map_key(_snapshot_with_map(position_consistent=False)) is None
+    assert Runner._snapshot_map_key(
+        SimpleNamespace(usable=False, map=_map_state(1, 1, 0))
+    ) is None
+
+
+def _exit_cycle_runner(
+    *,
+    guard: bool,
+    max_steps: int,
+    identity_verified: bool = True,
+    position_consistent: bool = True,
+    escape_on_ninth: bool = False,
+):
     events = MemoryEventLog("synthetic")
     states = [(1, 1, 0), (1, 1, 1), (2, 2, 0)]
+    if escape_on_ninth:
+        states.append((3, 3, 2))
     options = ("warp:a:1", "strength:b:1", "warp:c:1")
     state = {"idx": 0}
     executions: list[str] = []
@@ -202,7 +258,7 @@ def _exit_cycle_runner(*, guard: bool, max_steps: int):
     class Decider:
         def decide(self, frame: DecisionFrame) -> ChoiceResult:
             return ChoiceResult(
-                option_id=options[state["idx"]], confidence=1.0,
+                option_id=options[state["idx"] % len(options)], confidence=1.0,
                 model_id="test", provider_id="test", decision_id=frame.decision_id,
             )
 
@@ -215,7 +271,11 @@ def _exit_cycle_runner(*, guard: bool, max_steps: int):
                 name="Test", gender="male", tid=0, sid=0, map_group=group,
                 map_num=number, map_layout_id=0, x=x, y=0, money=0, coins=0,
             ),
-            flags=FlagSet(), vars=VarTable(), map=_map_state(group, number, x),
+            flags=FlagSet(), vars=VarTable(),
+            map=_map_state(
+                group, number, x, identity_verified=identity_verified,
+                position_consistent=position_consistent,
+            ),
         )
         frame = DecisionFrame(
             decision_id=decision_id, run_id="synthetic", snapshot_seq=seq,
@@ -233,7 +293,10 @@ def _exit_cycle_runner(*, guard: bool, max_steps: int):
 
     def execute(frame: DecisionFrame, option_id: str) -> ActionResult:
         executions.append(option_id)
-        state["idx"] = (state["idx"] + 1) % len(states)
+        if escape_on_ninth and len(executions) == 9:
+            state["idx"] = 3
+        else:
+            state["idx"] = (state["idx"] + 1) % 3
         return ActionResult(
             status="applied", option_id=option_id, progressed=True,
             non_positional_progress=False, verified_outcome=True,
@@ -255,6 +318,29 @@ def test_runner_stops_the_three_action_cycle_after_nine_actions():
     assert summary.stop_reason == "no_progress"
     assert summary.stop_details["reason"] == "exit_cycle:entries=9,actions=3,maps=2"
     assert len(executions) == 9
+
+
+def test_runner_ninth_action_landing_new_frontier_keeps_playing():
+    runner, executions = _exit_cycle_runner(
+        guard=True, max_steps=10, escape_on_ninth=True
+    )
+    summary = runner.run()
+    assert summary.status is RunStatus.MAX_STEPS
+    assert summary.stop_reason != "no_progress"
+    assert len(executions) == 10
+
+
+def test_runner_unverified_map_or_inconsistent_position_does_not_arm_guard():
+    for variant in (
+        {"identity_verified": False},
+        {"position_consistent": False},
+    ):
+        runner, executions = _exit_cycle_runner(
+            guard=True, max_steps=12, **variant
+        )
+        summary = runner.run()
+        assert summary.status is RunStatus.MAX_STEPS, variant
+        assert len(executions) == 12, variant
 
 
 def test_runner_guard_off_keeps_legacy_behavior():

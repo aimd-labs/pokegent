@@ -1459,9 +1459,15 @@ class Runner:
 
     @staticmethod
     def _snapshot_map_key(snapshot: StateSnapshot) -> tuple[int, int] | None:
-        """Exact (group, number) only from a readable map identity and player proof."""
+        """Exact (group, number) only from a usable, verified and consistent snapshot."""
+        if getattr(snapshot, "usable", False) is not True:
+            return None
         state = getattr(snapshot, "map", None)
-        if getattr(state, "identity", None) is None:
+        identity = getattr(state, "identity", None)
+        if identity is None or getattr(identity, "identity_verified", None) is not True:
+            return None
+        player = getattr(state, "player", None)
+        if player is None or getattr(player, "position_consistent", None) is not True:
             return None
         position = Runner._player_position(snapshot)
         if position is None:

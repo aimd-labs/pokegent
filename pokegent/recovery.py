@@ -161,6 +161,12 @@ class ProgressMonitor:
         first, second, third = entries[0:3], entries[3:6], entries[6:9]
         if not first == second == third:
             return None
+        if (
+            self._signature != first[0][1]
+            or self._cycle_map_key != first[0][2]
+        ):
+            # The post-action observation must prove the return to the block start.
+            return None
         options = [entry[0] for entry in first]
         maps = {entry[2] for entry in entries}
         exits = [oid for oid in options if oid.startswith(("warp:", "edge:"))]

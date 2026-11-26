@@ -13,9 +13,15 @@ added.
 
 Each entry holds the option id, the full semantic progress signature (position, party, bag,
 flags) and the exact map identity `(group, number)`. All three blocks must be identical, so
-a new frontier or changed durable state breaks the evidence. A repeated action id alone is
-never enough: the block must contain three distinct ids, exactly two `warp:`/`edge:` exits,
-one `strength:` action, and exactly two map identities.
+a new frontier or changed durable state breaks the evidence. The observation after the
+ninth action must also return to the start of the repeated block, signature and map
+included; a ninth action that lands somewhere new keeps the run going. A repeated action id
+alone is never enough: the block must contain three distinct ids, exactly two
+`warp:`/`edge:` exits, one `strength:` action, and exactly two map identities.
+
+A map key is supplied only from a usable snapshot whose map identity is ROM-verified and
+whose player position is consistent. Anything less clears the new ring and makes the guard
+ineligible for that observation.
 
 Only an applied action with `verified_outcome is True` enters the ring. Interrupted, failed,
 unverified or noneligible actions clear it. An unreadable or unusable map clears only the
