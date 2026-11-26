@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pokegent.actions._exec.menu_executor import select_menu_entry
-from pokegent.actions._exec.models import ExecutionKind, Tap, WaitUntil
+from pokegent.actions._exec.models import ExecutionKind, Interrupt, Tap, WaitUntil
 from pokegent.actions._exec.registry import Arg, ExecutorSpec, StepContext
 from pokegent.actions.field.macros import _field_free_after_bag_failure
 from pokegent.actions.menu.start_party import refs as R
 from pokegent.games.gen3.firered.reader.menu_decoders import (
-    decode_cursor_menu,
     decode_party_action,
     decode_party_menu,
     decode_party_reorder,
@@ -17,12 +16,61 @@ from pokegent.games.gen3.firered.reader.menu_decoders import (
 from pokegent.pipeline import Observation
 
 
-def _give_context_menu(snapshot):
-    """Decode the post-list bag menu whose first semantic entry must be GIVE."""
-    return decode_cursor_menu(
-        snapshot,
-        surface="bag.context",
-        entries=(("bag:give", "GIVE"), ("bag:cancel", "CANCEL")),
+def _bag_item_quantity(snapshot, item_id: int) -> int:
+    return sum(
+        item.quantity
+        for pocket in snapshot.bag
+        for item in pocket.items
+        if item.item_id == item_id
+    )
+
+
+def _party_prompt_candidate(snapshot) -> bool:
+    """A live two-entry party prompt on the give return path, used only to STOP.
+
+    Pinned ``party_menu.c`` opens ``Task_SwitchItemsYesNo`` only when the target already holds an
+    item.  The current profile does not prove that task symbol, so this structural shape cannot
+    prove that YES means swap: it may only withhold input.  (The settled prompt's text printer is
+    deliberately inactive, so text activity is not a valid discriminator either.)
+    """
+    ui = snapshot.ui
+    if ui is None or not ui.valid or ui.main.in_battle is not False:
+        return False
+    party = ui.menu.party
+    menu = ui.menu.menu
+    if party is None or party.active_hint is not True or getattr(party, "menu_type", None) != 0:
+        return False
+    if ui.field is None or ui.field.fade_active is not False:
+        return False
+    if any(task.func.name == "Task_HandleSelectionMenuInput" for task in ui.tasks.active):
+        return False
+    if ui.menu.bag is not None and ui.menu.bag.bag_open:
+        return False
+    listing = ui.menu.list_menu
+    if listing is not None and listing.window_in_use:
+        return False
+    return bool(
+        menu is not None
+        and menu.window_in_use
+        and menu.consistent
+        and menu.min_cursor_pos == 0
+        and menu.max_cursor_pos == 1
+        and menu.cursor_pos in (0, 1)
+    )
+
+
+def _party_input_ready(current) -> bool:
+    """A settled party menu is the verifier's turn, not a reason to send more input."""
+    ui = current.snapshot.ui
+    party = ui.menu.party if ui is not None and ui.valid else None
+    return bool(
+        current.scene.busy is False
+        and current.scene.scene_id
+        in (R.PARTY_LIST, R.PARTY_ACTION, R.PARTY_REORDER, R.PARTY_HELD_ITEM)
+        and party is not None
+        and party.active_hint is True
+        and ui.field is not None
+        and ui.field.fade_active is False
     )
 
 
@@ -141,23 +189,43 @@ def select(ctx: StepContext):
             observation = yield Tap(button, hold_frames=4, wait_frames=20)
         else:
             raise RuntimeError("held-item list cursor did not reach the requested item")
-        observation = yield Tap("a", hold_frames=4, wait_frames=20)
-        context = _give_context_menu(observation.snapshot)
-        if context is None or context.selected_key != "bag:give":
-            raise RuntimeError("bag item context menu did not land on Give")
-        observation = yield Tap("a", hold_frames=4, wait_frames=20)
         observation = yield WaitUntil(
-            lambda current: any(
+            bag_ready, max_frames=120, failure_reason="bag declined input before the item row"
+        )
+        bag_count = _bag_item_quantity(observation.snapshot, item_id)
+        # The item row is the give input: ``Task_ItemContext_FieldGive`` closes the bag, then the
+        # game gives directly (empty slot) or asks the two-entry swap question.  There is no bag
+        # context menu and no second bag confirmation.
+        observation = yield Tap("a", hold_frames=4, wait_frames=20)
+
+        def give_applied(current) -> bool:
+            if _bag_item_quantity(current.snapshot, item_id) != bag_count - 1:
+                return False
+            return any(
                 mon.personality == target_personality and mon.held_item == item_id
                 for mon in current.snapshot.party
-            ),
-            max_frames=240,
+            )
+
+        def prompt_candidate(current) -> bool:
+            return _party_prompt_candidate(current.snapshot)
+
+        observation = yield WaitUntil(
+            lambda current: give_applied(current)
+            or prompt_candidate(current)
+            or _party_input_ready(current),
+            max_frames=600,
+            failure_reason="party give did not reach a transfer or party menu",
         )
-        if not any(
-            mon.personality == target_personality and mon.held_item == item_id
-            for mon in observation.snapshot.party
-        ):
-            raise RuntimeError("giving the item did not update the party held item")
+        if not give_applied(observation) and prompt_candidate(observation):
+            # Existing-held give needs a YES the profile cannot bind to the swap question or the
+            # requested member/item.  Missing identity evidence: Task_SwitchItemsYesNo symbol,
+            # the prompt's text-to-menu binding, and slot_id/member/item corroboration.  Stop with
+            # zero confirmation; the verifier never sees an unproven swap.
+            yield Interrupt(
+                "party give reached an unverified swap prompt; refusing YES without a proven "
+                "prompt/member/item binding"
+            )
+        return observation
     if scene != R.PARTY_LIST or stable_key == "party:cancel":
         return observation
 
@@ -204,6 +272,32 @@ def select(ctx: StepContext):
 
 def executor_specs() -> tuple[ExecutorSpec, ...]:
     return (
+        ExecutorSpec(
+            R.REF_GIVE,
+            ExecutionKind.MACRO,
+            select,
+            args={"item_id": Arg(int, required=False, min=1, max=65535)},
+            # Give owns the bag close -> party transfer return.  ``macro_manages_busy`` keeps the
+            # input-waiting swap prompt out of the generic post-step busy settle, which can never
+            # clear without an answer.  No failure cleanup: it would answer an unknown party
+            # prompt with a blind A, so a failed give leaves the menu open for a safe pause.
+            allowed_scenes=frozenset(
+                {
+                    R.START,
+                    R.PARTY_LIST,
+                    R.PARTY_ACTION,
+                    R.PARTY_REORDER,
+                    R.PARTY_HELD_ITEM,
+                    "menu.open",
+                    "scene.unknown",
+                }
+            ),
+            max_inputs=15,
+            max_frames=2400,
+            settle_frames=1800,
+            settle_wall_s=90.0,
+            macro_manages_busy=True,
+        ),
         ExecutorSpec(
             R.REF_SELECT,
             ExecutionKind.DETERMINISTIC,

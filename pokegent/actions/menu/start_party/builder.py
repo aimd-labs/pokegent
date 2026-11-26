@@ -391,7 +391,11 @@ class StartPartyBuilder:
             facts={
                 **_facts(ctx, entry, novelty=novelty),
             },
-            executor_ref=R.REF_SELECT if legality.chooseable else None,
+            executor_ref=(
+                (R.REF_GIVE if item_id is not None else R.REF_SELECT)
+                if legality.chooseable
+                else None
+            ),
             # A give option names the verified bag item so the registered macro can drive the
             # bag after confirming the cursor entry; other selections carry no arguments.
             executor_args={"item_id": item_id} if item_id is not None else {},
