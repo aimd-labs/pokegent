@@ -37,16 +37,11 @@ from urllib.parse import urlsplit
 
 import yaml
 
-from pokegent.actions import (
-    OPTIONAL_FAMILIES,
-    FamilyBundle,
-    FamilyConfig,
-    Registries,
-    register_all,
-)
+from pokegent.actions import FamilyBundle, Registries
 from pokegent.actions._exec.executor import Executor
 from pokegent.addons import AddonConfig, AddonConfigError, AddonStartError, AddonTaps
 from pokegent.events import EventLog, EventSink, EventType, MemoryEventLog
+from pokegent.games.gen3.firered.families import register_families
 from pokegent.games.gen3.firered.reader.snapshot_sources import (
     CompositeSnapshotSource,
     MapMode,
@@ -769,7 +764,6 @@ def build_runner(
     objective_source = session.objective_source() if session is not None else None
     catalog = catalog or load_scene_catalog()
     registries = Registries.new(catalog)
-    from pokegent.actions.menu.dialog import PromptPolicy
     from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
     from pokegent.games.gen3.firered.composition import make_menu_services
 
@@ -781,7 +775,6 @@ def build_runner(
         session=session,
         logger=logger,
     )
-    menu_resolver = menu_services.menus
     tables = menu_services.tables
     if session is not None and tables is not None:
         session.tracker.tables = tables
@@ -790,40 +783,16 @@ def build_runner(
         if objective is not None and objective.kind == "heal":
             logger.warning("heal objective max PP unknown: no ROM tables (rom_path is None)")
 
-    # The field family cannot work without the map block: with map_mode "off" it is not registered
-    # (a field.free claim without a map would only be a bounded wait that starves the executors'
-    # post-step budgets of the other families).
-    optional = tuple(
-        name for name in OPTIONAL_FAMILIES if not (name == "field" and config.map_mode == "off")
-    )
-    bundle = register_all(
+    bundle = register_families(
         registries,
-        FamilyConfig(
-            optional=optional,
-            prompt_policy=PromptPolicy(  # type: ignore[arg-type]
-                unknown_prompts=config.unknown_prompts,
-                menu_entries=menu_services.menu_entries,
-                tables=tables,
-            ),
-            facts=facts,
-            objectives=objective_source,
-            graph=objective_graph,
-            navigation=objective_navigation,
-            options={
-                "system_flow": {
-                    "new_game": config.new_game.__dict__,
-                    "menus": menu_resolver,
-                    "rom_path": str(rom_path) if rom_path is not None else None,
-                },
-                "field": {
-                    "walk_step_limit": (
-                        int(config.external.get("walk_step_limit", 8))
-                        if bool(getattr(decider, "external_control", False))
-                        else None
-                    ),
-                },
-            },
-        ),
+        config=config,
+        menu_services=menu_services,
+        facts=facts,
+        objectives=objective_source,
+        graph=objective_graph,
+        navigation=objective_navigation,
+        external_control=bool(getattr(decider, "external_control", False)),
+        rom_path=rom_path,
     )
     field_family = bundle.plugins.get("field")
     allow_unknown_scene = getattr(decider, "escalate_unknown_scene", False) is True
