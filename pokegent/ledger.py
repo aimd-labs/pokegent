@@ -207,17 +207,15 @@ def _migrate(db: sqlite3.Connection) -> None:
 
 
 def _activate_wal(db: sqlite3.Connection) -> None:
-    """Activate WAL within one monotonic second, retrying only SQLITE_BUSY."""
+    """Activate WAL within one monotonic second with manual SQLITE_BUSY retry."""
     deadline = time.monotonic() + 1.0
     prior = db.execute("PRAGMA busy_timeout").fetchone()[0]
     busy: sqlite3.OperationalError | None = None
     try:
+        db.execute("PRAGMA busy_timeout=0")
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                break
-            db.execute(f"PRAGMA busy_timeout={max(0, int(remaining * 1000))}")
-            if time.monotonic() >= deadline:
                 break
             try:
                 mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]

@@ -38,6 +38,7 @@ def test_concurrent_open_survives_real_wal_contention(tmp_path, monkeypatch):
         def execute(self, statement, *args, **kwargs):
             label = threading.current_thread().name
             if label == "A" and statement == WAL:
+                assert super().execute("PRAGMA busy_timeout").fetchone()[0] == 0
                 try:
                     cursor = super().execute(statement, *args, **kwargs)
                 except sqlite3.OperationalError as exc:
