@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from itertools import islice
 from typing import Any
@@ -82,13 +83,30 @@ def build_report(paths: Any, *, cohort_id: Any, enabled: bool = False) -> dict[s
     return summarize_attempts(attempts, enabled=True)
 
 
+def _write_report(destination: str, report: dict[str, Any]) -> None:
+    """Create a new artifact from fully serialized text; never replace a target."""
+    payload = json.dumps(report, sort_keys=True, allow_nan=False) + "\n"
+    try:
+        descriptor = os.open(
+            destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+    except OSError:
+        raise ReportError("report artifact cannot be written") from None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("paths", nargs="+", metavar="MANIFEST_JSON")
     parser.add_argument("--cohort", required=True)
     parser.add_argument("--enabled", action="store_true",
                         help="read the caller-named manifests (default off)")
+    parser.add_argument("--output", metavar="REPORT_JSON",
+                        help="write the report to a new exclusive file (default off)")
     args = parser.parse_args(argv)
+    if args.output is not None and not args.enabled:
+        print("campaign_report: --output requires --enabled", file=sys.stderr)
+        return 1
     try:
         report = build_report(args.paths, cohort_id=args.cohort, enabled=args.enabled)
     except (CampaignAttemptRejected, ReportError) as exc:
@@ -100,6 +118,13 @@ def main(argv: list[str] | None = None) -> int:
     except RecursionError:
         print("campaign_report: input is not one JSON object", file=sys.stderr)
         return 1
+    if args.output is not None:
+        try:
+            _write_report(args.output, report)
+        except ReportError as exc:
+            print(f"campaign_report: {exc}", file=sys.stderr)
+            return 1
+        return 0
     print(json.dumps(report, sort_keys=True, allow_nan=False))
     return 0
 
