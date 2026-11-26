@@ -7,6 +7,7 @@ redaction/title-neutral projection claim. Disabled unless the caller explicitly 
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 from pokegent.games.observation import (
@@ -57,6 +58,7 @@ class ChoiceSdk:
             raise TypeError("enabled must be exactly bool")
         self._selection = selection
         self._enabled = enabled
+        self._lock = threading.Lock()
         self._observation: GameObservation | None = None
         self._pending: _Pending | None = None
         self._consumed = False
@@ -67,6 +69,10 @@ class ChoiceSdk:
 
     def observe(self, observation: GameObservation) -> None:
         """Accept a strictly newer observation and invalidate any pending frame."""
+        with self._lock:
+            self._observe(observation)
+
+    def _observe(self, observation: GameObservation) -> None:
         self._require_enabled()
         if not isinstance(observation, GameObservation):
             raise ChoiceSdkRejected("observation must be a GameObservation")
@@ -87,6 +93,10 @@ class ChoiceSdk:
 
     def offer(self, frame: DecisionFrame) -> ChoiceOffer:
         """Offer the current observation's visible choices; any prior offer is replaced."""
+        with self._lock:
+            return self._offer(frame)
+
+    def _offer(self, frame: DecisionFrame) -> ChoiceOffer:
         self._require_enabled()
         if self._consumed:
             raise ChoiceSdkRejected("current observation already produced a choice; observe again")
@@ -121,6 +131,10 @@ class ChoiceSdk:
 
     def submit(self, result: ChoiceResult) -> ChoiceResult:
         """Validate a result against the pending frame, then consume frame and observation once."""
+        with self._lock:
+            return self._submit(result)
+
+    def _submit(self, result: ChoiceResult) -> ChoiceResult:
         self._require_enabled()
         pending = self._pending
         self._pending = None
