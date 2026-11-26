@@ -81,6 +81,11 @@ uv venv --python 3.11 --seed "$scratch/venv"
 Commit the regenerated lock with the reason for the update, and do not add unrelated upgrade
 churn.
 
+Whenever an accepted change updates `requirements-public-checks.lock`, rerun the startup-lock
+compile above against the new file. Keep its `dev`-only scope and `--constraint` on the
+public-checks lock; do not add `stream` or `mgba` extras to the startup job. Review both lock
+diffs together and commit them in the same change.
+
 ## Reproducible wheel
 
 Build from a clean checkout with a fixed source epoch. `SOURCE_DATE_EPOCH` normalizes the ZIP
@@ -100,6 +105,60 @@ interpreter and zlib (CPython 3.11.18 here). For other environments, compare unp
 hashes instead of expecting byte-identical ZIP files. The backend is pinned exactly; `wheel`
 stays ranged because the exercised copy is setuptools' vendored one, not a proven standalone
 distribution.
+
+## Wheel manifest evidence
+
+`tools/wheel_manifest.py` records the SHA-256 and size of a wheel and each member it contains,
+plus the `dist_info` name, version and generator. It reads an existing wheel; it does not build,
+extract or verify provenance. Pass the wheel and the source commit you are asserting (replace
+`REVIEWED_COMMIT` and the paths with literal values):
+
+```sh
+python -m tools.wheel_manifest /path/to/pokegent.whl \
+  --source-commit REVIEWED_COMMIT > /path/to/wheel-manifest.json
+```
+
+The source commit must be 40 lowercase hex characters. On success the tool prints one sorted JSON
+object and exits 0. A rejected wheel, commit or size bound prints `wheel_manifest: ...` to stderr
+and exits 1 without stdout. The report records `supplied_source_commit` as a label,
+`source_commit_verified` as `false`, and `manifest_environment.build_environment_proof` as
+`false`.
+
+To compare another wheel copy with that manifest:
+
+```sh
+python -m tools.verify_wheel_manifest /path/to/pokegent.whl /path/to/wheel-manifest.json \
+  --source-commit REVIEWED_COMMIT
+```
+
+It prints `{"matches": true, "mismatches": [], ...}` and exits 0 when the wheel bytes, per-member
+rows and `dist_info` fields match and the supplied commit equals the argument. A byte or commit
+difference exits 1 with the differing field names; an unreadable or invalid manifest, wheel or
+commit exits 2. Both tools compare caller-supplied inputs only. A byte match is not a build,
+native, trusted-source or attestation guarantee, and the manifest does not prove the wheel came
+from that commit.
+
+## Required check evidence
+
+`tools/check_required_checks.py` evaluates a complete GitHub REST check-runs export for one exact
+head. The input is one JSON object with a `check_runs` list and a plain-integer `total_count` equal
+to `len(check_runs)`; the list is capped at 5000 rows. Combine every page's rows from
+`GET /repos/{owner}/{repo}/commits/{ref}/check-runs` into that one object. A concatenation of
+paginated response objects is not valid input. The tool reads only the file and does not call
+GitHub. Name each required check exactly:
+
+```sh
+python -m tools.check_required_checks /path/to/check-runs.json --head HEAD_SHA \
+  --required REQUIRED_CHECK --required ANOTHER_REQUIRED_CHECK
+```
+
+`HEAD_SHA` is 40 lowercase hex characters and `--required` is repeatable with at least one name.
+Rows without a `head_sha`, or with a different one, never satisfy a required name; duplicate
+matching names, unfinished runs and non-`success` conclusions block readiness. The sorted JSON
+report has `kind: "required-checks/1"`, the head, `ready`, per-name states and a local-evidence
+note. Exit 0 means every required check succeeded at that head, 1 means not ready, and 2 means the
+input or arguments were rejected. This is check evidence only: it does not establish review,
+mergeability or admin policy, and it is not merge authorization.
 
 New to the project? Read the [README quick start](README.md#quick-start-install-and-run-the-rom-free-checks),
 run the checks, and comment on an [open issue](https://github.com/aimd-labs/pokegent/issues)
