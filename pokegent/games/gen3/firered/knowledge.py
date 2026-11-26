@@ -2,7 +2,8 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``species_training``/``species_encounter``/``national_dex``/
+native ``move``/``species``/``species_training``/``species_encounter``/``species_breeding``/
+``national_dex``/
 ``item``/``item_restoration``/``item_training``/``ability``/``type``/``evolution``/``tmhm``
 questions from those tables. Not a database, cache or plugin registration or a verification
 claim: the game/profile/ROM labels are caller assertions, not digest or live proof.
@@ -126,6 +127,20 @@ class FireRedKnowledge:
             species_id,
             known=True,
             values=_encounter_values(data),
+        )
+
+    def species_breeding(self, species_id: int) -> LocalRomRecord:
+        """Decoded per-species breeding-parameter subset for one existing native species row."""
+        species_id = _native_id(species_id, "species")
+        try:
+            data = self._tables.species(species_id)
+        except KeyError:
+            return self._record("species_breeding", species_id, known=False, values=())
+        return self._record(
+            "species_breeding",
+            species_id,
+            known=True,
+            values=_breeding_values(data),
         )
 
     def national_dex(self, species_id: int) -> LocalRomRecord:
@@ -344,6 +359,14 @@ def _encounter_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
         ("item_common", data.item_common),
         ("item_rare", data.item_rare),
         ("safari_flee_rate", data.safari_flee_rate),
+    )
+
+
+def _breeding_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
+    return (
+        ("gender_ratio", data.gender_ratio),
+        ("egg_cycles", data.egg_cycles),
+        ("egg_groups", (data.egg_groups[0], data.egg_groups[1])),
     )
 
 
