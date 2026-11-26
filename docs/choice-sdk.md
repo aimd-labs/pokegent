@@ -134,8 +134,8 @@ Construction needs an admitted `PluginSelection` and `enabled=True` (exact bool,
 `ProgressSdkRejected`. `evaluate(resolved, snapshot, tables=None)` requires real
 `ResolvedObjective` and `StateSnapshot` types and a matching `rom_profile`, then one fresh
 storeless, sinkless `ObjectiveTracker`; `completed` keeps its probe semantics unchanged.
-`False` means completion was not proven for this objective on this frame, not that every
-fact is unknown. An unusable snapshot returns `completed=None, evaluated=False`.
+`False` means the tracker did not prove completion on this frame; it does not prove
+every fact is known. An unusable snapshot returns `completed=None, evaluated=False`.
 
 The frozen `ProgressView` carries `objective_id`, `revision`, `snapshot_seq`, `completed`,
 `evaluated`, `evidence_kind="snapshot_evaluation"` and `durable_committed`, always `False`:
