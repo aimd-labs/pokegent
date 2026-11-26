@@ -3,9 +3,9 @@
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
 native ``move``/``species``/``species_training``/``national_dex``/``item``/``item_restoration``/
-``ability``/``type``/``evolution``/``tmhm`` questions from those tables. Not a database, cache or
-plugin registration or a verification claim: the game/profile/ROM labels are caller assertions,
-not digest or live proof.
+``item_training``/``ability``/``type``/``evolution``/``tmhm`` questions from those tables. Not a
+database, cache or plugin registration or a verification claim: the game/profile/ROM labels are
+caller assertions, not digest or live proof.
 """
 
 from __future__ import annotations
@@ -153,6 +153,22 @@ class FireRedKnowledge:
             item_id,
             known=True,
             values=_restoration_values(data.effect),
+        )
+
+    def item_training(self, item_id: int) -> LocalRomRecord:
+        """Decoded training-effect subset for one native bag item."""
+        item_id = _native_id(item_id, "item")
+        try:
+            data = self._tables.item(item_id)
+        except KeyError:
+            return self._record("item_training", item_id, known=False, values=())
+        if data.effect is None:
+            return self._record("item_training", item_id, known=False, values=())
+        return self._record(
+            "item_training",
+            item_id,
+            known=True,
+            values=_training_effect_values(data.effect),
         )
 
     def ability(self, ability_id: int) -> LocalRomRecord:
@@ -317,6 +333,15 @@ def _item_values(data: ItemData) -> tuple[tuple[str, object], ...]:
         ("hold_effect", data.hold_effect),
         ("hold_effect_param", data.hold_effect_param),
         ("battle_usage", data.battle_usage),
+    )
+
+
+def _training_effect_values(effect: ItemEffect) -> tuple[tuple[str, object], ...]:
+    return (
+        ("ev_gains", tuple((stat, gain) for stat, gain in effect.ev_gains)),
+        ("pp_up", effect.pp_up),
+        ("pp_max", effect.pp_max),
+        ("level_up", effect.level_up),
     )
 
 
