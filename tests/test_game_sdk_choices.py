@@ -308,3 +308,25 @@ def test_successful_submission_consumes_the_pending_frame():
         sdk.submit(accepted)
     with pytest.raises(ChoiceSdkRejected):
         sdk.submit(_result("walk"))
+
+
+def test_successful_submission_consumes_the_observation_until_an_advance():
+    sdk, _ = _open()
+    sdk.observe(_observation(seq=2, epoch=1))
+    same_frame = _frame(2)
+    sdk.offer(same_frame)
+    assert sdk.submit(_result("walk")).option_id == "walk"
+
+    with pytest.raises(ChoiceSdkRejected):
+        sdk.offer(same_frame)
+    with pytest.raises(ChoiceSdkRejected):
+        sdk.offer(_frame(2, decision_id="dec-2"))
+
+    sdk.observe(_observation(seq=3, epoch=1))
+    assert sdk.offer(_frame(3, decision_id="dec-3")).decision_id == "dec-3"
+    assert sdk.submit(_result("sign", "dec-3")).decision_id == "dec-3"
+    with pytest.raises(ChoiceSdkRejected):
+        sdk.offer(_frame(3, decision_id="dec-4"))
+
+    sdk.observe(_observation(seq=0, epoch=2))
+    assert sdk.offer(_frame(0, decision_id="dec-5")).restore_epoch == 2

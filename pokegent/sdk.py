@@ -59,6 +59,7 @@ class ChoiceSdk:
         self._enabled = enabled
         self._observation: GameObservation | None = None
         self._pending: _Pending | None = None
+        self._consumed = False
 
     def _require_enabled(self) -> None:
         if not self._enabled:
@@ -82,10 +83,13 @@ class ChoiceSdk:
                 raise ChoiceSdkRejected(f"observation transition rejected: {exc}") from exc
         self._observation = observation
         self._pending = None
+        self._consumed = False
 
     def offer(self, frame: DecisionFrame) -> ChoiceOffer:
         """Offer the current observation's visible choices; any prior offer is replaced."""
         self._require_enabled()
+        if self._consumed:
+            raise ChoiceSdkRejected("current observation already produced a choice; observe again")
         self._pending = None
         if not isinstance(frame, DecisionFrame):
             raise ChoiceSdkRejected("offer requires a DecisionFrame")
@@ -116,7 +120,7 @@ class ChoiceSdk:
         return offer
 
     def submit(self, result: ChoiceResult) -> ChoiceResult:
-        """Validate a result against the pending frame, then consume that frame on success."""
+        """Validate a result against the pending frame, then consume frame and observation once."""
         self._require_enabled()
         pending = self._pending
         self._pending = None
@@ -129,4 +133,5 @@ class ChoiceSdk:
         error = check_choice(pending.frame, result, allow_all=False)
         if error is not None:
             raise ChoiceSdkRejected(f"choice rejected: {error.value}")
+        self._consumed = True
         return result
