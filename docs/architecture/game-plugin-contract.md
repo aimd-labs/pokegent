@@ -153,6 +153,15 @@ it does not establish a second game, discovery, native support, input authority 
 verification. The fence exercises the disabled registry only, proving refusal before
 `compose()` and any actor attribute, not admitted wiring.
 
+`ReviewedPluginRegistry.descriptors()` ([#366](https://github.com/aimd-labs/pokegent/pull/366))
+returns the reviewed-plugin inventory: an explicitly enabled registry gives a
+deterministic tuple of the frozen descriptors captured at `register()`, sorted by
+`plugin_id` then `rom_sha1`; a disabled registry raises `PluginRefusal(DISABLED)` before
+reading any registered row. It never re-reads plugin properties, composes services or
+performs selection/discovery, empty enabled registries yield `()`, and earlier snapshots
+stay unchanged after later registration. The inventory is registration metadata only —
+not a title-support, native-compatibility or runtime-proof claim.
+
 ```python
 """Disabled caller registry: refuse before compose or any actor read."""
 import hashlib
