@@ -2,14 +2,14 @@
 
 `FireRedKnowledge.ability(ability_id)` answers native ability display names through the
 default-off seam described in the [local knowledge guide](local-knowledge.md). It reads only
-the caller's decoded `GameTables.ability_names` and opens no file, cache, network endpoint or
-emulator. It does not register or start a runtime.
+the caller's decoded `GameTables` through `GameTables.ability_name` and opens no file, cache,
+network endpoint or emulator. It does not register or start a runtime.
 
 ## Contract
 
 Construct as `FireRedKnowledge(selection, tables, *, enabled=False)`. `enabled` must be exactly
-`bool`; `1`, `"yes"` or an omitted value leaves it `False`, which raises
-`PluginRefusal(RefusalCode.DISABLED)`. The selection game must be `"firered"`, and
+`bool`; `1`, `"yes"` or another non-bool raises `TypeError`, while the omitted/default `False`
+raises `PluginRefusal(RefusalCode.DISABLED)`. The selection game must be `"firered"`, and
 `tables.profile_id` must be a non-blank string equal to the descriptor's `profile_id`, or
 construction raises `PluginRefusal(RefusalCode.PROFILE_MISMATCH)` before any lookup.
 
@@ -79,6 +79,8 @@ try:
 except PluginRefusal as refusal:
     assert refusal.code is RefusalCode.DISABLED
     print("default:", refusal.code.value)
+else:
+    raise AssertionError("default-off construction did not refuse")
 
 reader = FireRedKnowledge(selection, first, enabled=True)
 known, missing = reader.ability(1), reader.ability(2)
