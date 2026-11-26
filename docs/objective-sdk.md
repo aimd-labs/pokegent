@@ -30,10 +30,10 @@ retry or reinterpret it. The store also owns schema, target and probe validation
 priority, history, expiry, the revision floor and the derived already-satisfied gate. Its
 already-bound admission snapshot may be read during `propose()`; the facade adds no snapshot.
 
-Acceptance means one store write, not game completion or a live observation. There is no
-runner wiring, title support, completion or durable progress. See [the objective
-file](objective-file.md) for the schema and the [Choice SDK](choice-sdk.md) for the other
-opt-in facade; limits remain open in #139.
+Accepted proposals update the local store; proposal acceptance does not prove gameplay
+completion. There is no runner wiring, title support, completion or durable progress. See
+[the objective file](objective-file.md) for the schema and the [Choice SDK](choice-sdk.md)
+for the other opt-in facade; limits remain open in #139.
 
 ## Complete synthetic example
 
