@@ -17,9 +17,9 @@ validates a caller-supplied frame and result locally and never reads a snapshot 
 replaces only the snapshot-source factory, and only when
 `build_runner(experimental_game_plugin=True, plugin_rom_bytes=...)` is set; registration, menu and
 objective validators remain FireRed-specific
-([#254](https://github.com/aimd-labs/pokegent/pull/254)). No fully generic runner, backend
-injection, plugin discovery, second-title implementation or native acceptance proof exists.
-[#139](https://github.com/aimd-labs/pokegent/issues/139) remains open.
+([#254](https://github.com/aimd-labs/pokegent/pull/254)). These slices do not establish a fully
+generic runner, backend injection, plugin discovery, second-title implementation or new native
+acceptance proof. [#139](https://github.com/aimd-labs/pokegent/issues/139) remains open.
 
 ## Evidence
 
