@@ -70,3 +70,35 @@ stays in the JSON body.
 ```sh
 lnav -I /tmp/pokegent-lnav tools/lnav/sample/events.jsonl
 ```
+
+## Offline outcome reports
+
+Two read-only tools summarize existing runner event JSONL without a provider call, network
+request or file write. Pass only local files you own; keep generated game data outside the
+checkout. Each prints one sorted JSON report and exits 0, including when it finds zero matching
+records. An unreadable, malformed or out-of-bounds input prints a diagnostic to stderr, writes no
+stdout and exits 1.
+
+`tools/shadow_report.py` accepts one or more event files and counts only unaccepted
+`decision.systemone.completed` records whose `details.authority` is `shadow`:
+
+```sh
+python -m tools.shadow_report /path/to/run/events.jsonl
+```
+
+The report groups by run, scene, provider and model. `agreement` is observed agreement only;
+`action_acceptance` is `not_inferred`, `accuracy` and `verified_progress` are `null`, and
+`eligibility` is `not_evaluated`. `no_records: true` means the input had no shadow observations.
+
+`tools/action_outcomes.py` takes exactly one event file and joins an accepted decision claim, a
+real `action.started` and a terminal event by `(run_id, request_id)` with matching option ids:
+
+```sh
+python -m tools.action_outcomes /path/to/run/events.jsonl
+```
+
+`verified` and `progressed` count only `details.verified` and `details.progressed` set to `true`;
+an `action.verified` event name or shadow agreement is not proof. `uncorrelated_terminals` counts
+terminals excluded from the denominator. The report makes no accuracy, story-completion, durable
+outcome or eligibility claim. Passing a second file is an argparse error; the tool does not merge
+inputs.
