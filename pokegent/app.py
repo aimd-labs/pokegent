@@ -751,7 +751,12 @@ def build_runner(
     admitted_bytes = None
     if experimental_game_plugin:
         from pokegent.games.gen3.firered.plugin import FireRedPlugin
-        from pokegent.games.plugin import PluginRefusal, RefusalCode, ReviewedPluginRegistry
+        from pokegent.games.plugin import (
+            MAX_ROM_BYTES,
+            PluginRefusal,
+            RefusalCode,
+            ReviewedPluginRegistry,
+        )
 
         if plugin_rom_bytes is None:
             raise PluginRefusal(
@@ -759,7 +764,12 @@ def build_runner(
                 "experimental game plugin requires caller-supplied ROM bytes",
             )
         if experimental_plugin_navigation:
-            admitted_bytes = bytes(plugin_rom_bytes)
+            if not isinstance(plugin_rom_bytes, (bytes, bytearray, memoryview)):
+                raise TypeError("plugin_rom_bytes must be bytes-like")
+            buffer = memoryview(plugin_rom_bytes)
+            if buffer.nbytes > MAX_ROM_BYTES:
+                raise ValueError("plugin_rom_bytes exceeds the bounded input size")
+            admitted_bytes = buffer.tobytes()
         if plugin_registry is not None and not isinstance(plugin_registry, ReviewedPluginRegistry):
             raise TypeError("plugin_registry must be a ReviewedPluginRegistry")
         builtin_plugin = FireRedPlugin(profile)

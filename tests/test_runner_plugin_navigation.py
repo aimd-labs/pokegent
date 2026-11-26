@@ -1,298 +1,198 @@
-"""Python-API opt-in into an admitted plugin's navigation factory (#139/R10).
-
-Synthetic exact-ROM digests and a sentinel navigation bundle replace the ROM parser; no ROM file,
-actor read, second title or native composition is claimed.
-"""
+"""Python-API opt-in into an admitted plugin's navigation factory (#139/R10)."""
 
 from __future__ import annotations
 
-import hashlib
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
-
-from pokegent.app import AppConfig, build_runner
-from pokegent.games.gen3.firered.plugin import FIRERED_CAPABILITIES, FireRedPlugin
-from pokegent.games.gen3.firered.rom.rom_data import load_profiles
-from pokegent.games.plugin import (
-    GamePluginDescriptor,
-    PluginRefusal,
-    RefusalCode,
-    ReviewedPluginRegistry,
+from test_runner_plugin_registry import (
+    KNOWN_ROM,
+    UNKNOWN_ROM,
+    InventedFireRedPlugin,
+    NoReadActor,
+    _build,
+    _profile,
 )
 
-KNOWN_ROM = b"synthetic-plugin-navigation-known" * 8
-UNKNOWN_ROM = b"synthetic-plugin-navigation-unknown" * 8
-GRAPH, NAVIGATION, DIRECTORY, UNSET = object(), object(), object(), object()
+import pokegent.games.plugin as plugin_module
+from pokegent.games.plugin import PluginRefusal, RefusalCode, ReviewedPluginRegistry
+
+GRAPH, NAVIGATION, DIRECTORY = object(), object(), object()
 
 
-def _profile(data: bytes = KNOWN_ROM):
-    """The real FireRed profile with only the invented test digest changed."""
-    base = load_profiles().get("firered-us-rev0")
-    sha1 = hashlib.sha1(data).hexdigest()
-    return base.model_copy(update={"rom": base.rom.model_copy(update={"sha1": sha1})})
+class PoisonBytes(bytes):
+    """A bytes subclass whose conversion callback must not run on the opt-in path."""
 
-
-class NoReadActor:
-    """Fails if admission, navigation or composition touches the actor's read/input surface."""
-
-    realtime_idle_while_deciding = False
-
-    def __init__(self) -> None:
-        self.touched: list[str] = []
-
-    def __getattr__(self, name: str):
-        self.touched.append(name)
-        raise AssertionError(f"actor.{name} touched before admission/composition")
-
-
-class Nav:
-    """Sentinel navigation factory: records its one call and returns a chosen bundle."""
-
-    def __init__(self, bundle=UNSET, error: BaseException | None = None) -> None:
-        self.calls: list[tuple] = []
-        self.bundle, self.error = bundle, error
-
-    def __call__(self, rom_bytes, profile, *, events, needs_directory=False):
-        self.calls.append((rom_bytes, profile, events, needs_directory))
-        if self.error is not None:
-            raise self.error
-        if self.bundle is not UNSET:
-            return self.bundle
-        return SimpleNamespace(graph=GRAPH, navigation=NAVIGATION,
-                               directory=DIRECTORY if needs_directory else None)
-
-
-def _services(real, recorder: list[tuple], navigation_factory):
-    def wrap(name, factory):
-        def call(*args, **kwargs):
-            recorder.append((name, args, kwargs))
-            return factory(*args, **kwargs)
-        return call
-
-    return SimpleNamespace(
-        scene_catalog_factory=real.scene_catalog_factory,
-        snapshot_source_factory=real.snapshot_source_factory,
-        menu_services_factory=wrap("menu_services", real.menu_services_factory),
-        family_registration_factory=wrap("family_registration", real.family_registration_factory),
-        objective_observation_factory=wrap(
-            "objective_observation", real.objective_observation_factory),
-        dex_fallback_factory=real.dex_fallback_factory,
-        story_fallback_factory=real.story_fallback_factory,
-        story_identity_validator=real.story_identity_validator,
-        navigation_factory=navigation_factory,
-    )
+    def __bytes__(self):
+        raise AssertionError("bytes conversion ran before bounded validation")
 
 
 class NoNavigationAccess:
-    """Fails if the default-off path inspects a navigation factory at all."""
-
-    def __init__(self, inner) -> None:
+    def __init__(self, inner):
         self._inner = inner
 
     def __getattr__(self, name):
-        if name == "navigation_factory":
-            raise AssertionError("navigation_factory accessed without the opt-in")
+        assert name != "navigation_factory", "navigation_factory accessed without the opt-in"
         return getattr(self._inner, name)
 
 
-class Plugin:
-    """A reviewed non-built-in implementation claiming the admitted FireRed identity."""
+class NavPlugin(InventedFireRedPlugin):
+    """Adds a navigation factory plus menu/family mocks to an existing invented plugin."""
 
-    def __init__(self, *, profile, rom_bytes, navigation_factory=None, guard=False,
-                 recorder=None, capabilities=FIRERED_CAPABILITIES) -> None:
-        self.profile, self.composed = profile, 0
-        self._recorder = recorder if recorder is not None else []
-        self._navigation_factory, self._guard = navigation_factory, guard
-        self._descriptor = GamePluginDescriptor(
-            plugin_id="invented-plugin-navigation", game="firered",
-            profile_id=profile.profile_id, contract_version=1,
-            rom_sha1=hashlib.sha1(rom_bytes).hexdigest(), capabilities=capabilities,
-        )
-
-    @property
-    def descriptor(self) -> GamePluginDescriptor:
-        return self._descriptor
+    def __init__(self, *, navigation_factory, guard=False, **kwargs):
+        super().__init__(**kwargs)
+        self.navigation_factory, self.guard = navigation_factory, guard
 
     def compose(self):
-        self.composed += 1
-        bundle = _services(FireRedPlugin(self.profile).compose(), self._recorder,
-                           self._navigation_factory)
-        return NoNavigationAccess(bundle) if self._guard else bundle
+        services = super().compose()
+        services.navigation_factory = self.navigation_factory
+        services.menu_services_factory = self.menu = Mock(
+            wraps=services.menu_services_factory)
+        services.family_registration_factory = self.family = Mock(
+            wraps=services.family_registration_factory)
+        return NoNavigationAccess(services) if self.guard else services
 
 
-class RecordingRegistry(ReviewedPluginRegistry):
-    """Records the exact buffer handed to selection, to prove no copy on the off path."""
-
-    def __init__(self) -> None:
-        super().__init__(enabled=True)
-        self.seen: list[object] = []
-
-    def select(self, *, rom_bytes, game, profile_id, required_capabilities=()):
-        self.seen.append(rom_bytes)
-        return super().select(rom_bytes=rom_bytes, game=game, profile_id=profile_id,
-                              required_capabilities=required_capabilities)
-
-
-def _registry(plugin) -> ReviewedPluginRegistry:
+def _registry(plugin):
     registry = ReviewedPluginRegistry(enabled=True)
     registry.register(plugin)
     return registry
 
 
-def _build(profile, *, actor=None, events=None, **kwargs):
-    actor = actor if actor is not None else NoReadActor()
-    events = object() if events is None else events
-    return build_runner(actor=actor, profile=profile, events=events,
-                        config=AppConfig(run_id="plugin-navigation", map_mode="always"), **kwargs)
+@pytest.fixture
+def live():
+    profile, nav = _profile(), Mock(return_value=SimpleNamespace(
+        graph=GRAPH, navigation=NAVIGATION, directory=DIRECTORY))
+    plugin = NavPlugin(label="navigation", profile=profile, rom_bytes=KNOWN_ROM,
+                       navigation_factory=nav)
+    registry, actor = _registry(plugin), NoReadActor()
+    registry.select = select = Mock(wraps=registry.select)
 
+    def build(**kwargs):
+        options = {"experimental_game_plugin": True,
+                   "experimental_plugin_navigation": True,
+                   "plugin_rom_bytes": KNOWN_ROM, "plugin_registry": registry}
+        options.update(kwargs)
+        return _build(profile, actor=actor, **options)
 
-def _opt_in(**kwargs):
-    return {"experimental_game_plugin": True, "experimental_plugin_navigation": True,
-            "plugin_rom_bytes": KNOWN_ROM, **kwargs}
-
-
-def test_opt_in_calls_once_and_forwards_the_exact_bundle(tmp_path, monkeypatch):
-    profile, events, recorder, nav = _profile(), object(), [], Nav()
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav,
-                    recorder=recorder)
-    registry = RecordingRegistry()
-    registry.register(plugin)
-    actor, supplied = NoReadActor(), bytearray(KNOWN_ROM)
-
-    def fail(*args, **kwargs):
-        raise AssertionError("the default app factory replaced the admitted plugin factory")
-
-    monkeypatch.setattr("pokegent.app.make_objective_observation_services", fail)
-    monkeypatch.setattr("pokegent.app.register_families", fail)
-    app = _build(profile, actor=actor, events=events, objectives=tmp_path / "objective.json",
-                 plugin_registry=registry, **_opt_in(plugin_rom_bytes=supplied))
-    assert len(nav.calls) == 1
-    rom_bytes, seen_profile, seen_events, needs_directory = nav.calls[0]
-    assert type(rom_bytes) is bytes and rom_bytes == KNOWN_ROM
-    assert rom_bytes is registry.seen[0] and rom_bytes is not supplied
-    assert seen_profile is profile and seen_events is events and needs_directory is True
-    assert [row[0] for row in recorder] == [
-        "objective_observation", "menu_services", "family_registration"]
-    menu = next(row for row in recorder if row[0] == "menu_services")
-    family = next(row for row in recorder if row[0] == "family_registration")
-    assert menu[2]["navigation"] is NAVIGATION
-    assert family[2]["graph"] is GRAPH and family[2]["navigation"] is NAVIGATION
-    assert app.objectives.store.directory is DIRECTORY
+    yield SimpleNamespace(profile=profile, nav=nav, plugin=plugin, select=select, build=build)
     assert actor.touched == []
 
 
-def test_default_off_path_neither_inspects_nor_freezes_navigation():
-    profile, recorder, supplied = _profile(), [], bytearray(KNOWN_ROM)
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, recorder=recorder, guard=True)
-    registry = RecordingRegistry()
-    registry.register(plugin)
-    actor = NoReadActor()
-    app = _build(profile, actor=actor, experimental_game_plugin=True,
-                 plugin_rom_bytes=supplied, plugin_registry=registry)
-    assert registry.seen == [supplied] and registry.seen[0] is supplied
-    assert [row[0] for row in recorder] == [
-        "objective_observation", "menu_services", "family_registration"]
-    assert app.objectives is None and actor.touched == []
+def test_opt_in_freezes_once_and_forwards_the_exact_bundle(tmp_path, live):
+    supplied = PoisonBytes(KNOWN_ROM)
+    app = live.build(objectives=tmp_path / "objective.json", plugin_rom_bytes=supplied)
+    assert live.nav.call_count == 1
+    rom, profile = live.nav.call_args.args
+    assert type(rom) is bytes and rom == KNOWN_ROM and rom is not supplied
+    assert rom is live.select.call_args.kwargs["rom_bytes"]
+    assert profile is live.profile
+    assert live.nav.call_args.kwargs["events"] is app.events
+    assert live.nav.call_args.kwargs["needs_directory"] is True
+    menu, family = live.plugin.menu.call_args, live.plugin.family.call_args
+    assert live.plugin.menu.call_count == live.plugin.family.call_count == 1
+    assert menu.kwargs["navigation"] is NAVIGATION
+    assert family.kwargs["graph"] is GRAPH
+    assert family.kwargs["navigation"] is NAVIGATION
+    assert app.objectives.store.directory is DIRECTORY
+
+
+@pytest.mark.parametrize(("rom", "error", "cap"), [(1, TypeError, None),
+    (PoisonBytes(KNOWN_ROM), ValueError, len(KNOWN_ROM) - 1),
+    (memoryview(KNOWN_ROM).cast("I"), ValueError, len(memoryview(KNOWN_ROM).cast("I")))],
+    ids=["int", "over-cap", "view-nbytes"])
+def test_bounded_rom_is_checked_before_freezing(monkeypatch, live, rom, error, cap):
+    if cap is not None:
+        monkeypatch.setattr(plugin_module, "MAX_ROM_BYTES", cap)
+    with pytest.raises(error):
+        live.build(plugin_rom_bytes=rom)
+    assert live.plugin.composed == 0 and live.nav.call_count == 0
+
+
+def test_default_off_forwards_original_buffer_without_inspecting_navigation(live):
+    live.plugin.guard = True
+    supplied = bytearray(KNOWN_ROM)
+    app = live.build(experimental_plugin_navigation=False, plugin_rom_bytes=supplied)
+    assert live.select.call_args.kwargs["rom_bytes"] is supplied
+    assert live.nav.call_count == 0 and app.objectives is None
 
 
 @pytest.mark.parametrize("value", [1, "true", None], ids=["int", "str", "none"])
-def test_navigation_flag_must_be_exactly_bool(value):
-    actor = NoReadActor()
+def test_navigation_flag_must_be_exactly_bool(live, value):
     with pytest.raises(TypeError):
-        _build(_profile(), actor=actor, experimental_game_plugin=True,
-               experimental_plugin_navigation=value, plugin_rom_bytes=KNOWN_ROM)
-    assert actor.touched == []
+        live.build(experimental_plugin_navigation=value)
+    assert live.nav.call_count == 0
 
 
-def test_navigation_opt_in_without_the_game_plugin_opt_in_is_refused():
-    actor = NoReadActor()
+def test_navigation_opt_in_without_game_plugin_is_refused(live):
     with pytest.raises(PluginRefusal) as caught:
-        _build(_profile(), actor=actor, experimental_plugin_navigation=True)
-    assert caught.value.code is RefusalCode.DISABLED and actor.touched == []
+        live.build(experimental_game_plugin=False)
+    assert caught.value.code is RefusalCode.DISABLED
+    assert live.plugin.composed == 0 and live.nav.call_count == 0
 
 
-@pytest.mark.parametrize("injection", [{"objective_graph": object()},
-                                       {"objective_navigation": object()},
-                                       {"objective_directory": object()}],
-                         ids=["graph", "navigation", "directory"])
-def test_supplied_navigation_objects_are_rejected_not_overridden(injection):
-    profile, recorder, nav = _profile(), [], Nav()
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav,
-                    recorder=recorder)
-    actor = NoReadActor()
+@pytest.mark.parametrize("name", ["objective_graph", "objective_navigation",
+                                  "objective_directory"])
+def test_supplied_navigation_object_is_rejected_not_overridden(live, name):
     with pytest.raises(ValueError):
-        _build(profile, actor=actor, plugin_registry=_registry(plugin), **_opt_in(**injection))
-    assert plugin.composed == 0 and nav.calls == [] and actor.touched == []
+        live.build(**{name: object()})
+    assert live.plugin.composed == 0 and live.nav.call_count == 0
 
 
-def test_missing_navigation_capability_refuses_before_compose_or_factory():
-    profile, nav = _profile(), Nav()
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav,
-                    capabilities=FIRERED_CAPABILITIES - {"navigation"})
-    actor = NoReadActor()
+def test_missing_navigation_capability_refuses_before_compose(live):
+    plugin = NavPlugin(label="no-nav", profile=live.profile, rom_bytes=KNOWN_ROM,
+                       navigation_factory=Mock(),
+                       capabilities=live.plugin.descriptor.capabilities - {"navigation"})
     with pytest.raises(PluginRefusal) as caught:
-        _build(profile, actor=actor, plugin_registry=_registry(plugin), **_opt_in())
+        live.build(plugin_registry=_registry(plugin))
     assert caught.value.code is RefusalCode.MISSING_CAPABILITY
-    assert plugin.composed == 0 and nav.calls == [] and actor.touched == []
+    assert plugin.composed == 0 and live.nav.call_count == 0
 
 
 @pytest.mark.parametrize("factory", [None, object()], ids=["none", "noncallable"])
-def test_claimed_navigation_capability_without_a_callable_factory_is_refused(factory):
-    profile = _profile()
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=factory)
-    actor = NoReadActor()
+def test_claimed_navigation_without_a_callable_factory_is_refused(live, factory):
+    plugin = NavPlugin(label="bad-factory", profile=live.profile, rom_bytes=KNOWN_ROM,
+                       navigation_factory=factory)
     with pytest.raises(PluginRefusal) as caught:
-        _build(profile, actor=actor, plugin_registry=_registry(plugin), **_opt_in())
-    assert caught.value.code is RefusalCode.MISSING_CAPABILITY
-    assert plugin.composed == 1 and actor.touched == []
+        live.build(plugin_registry=_registry(plugin))
+    assert caught.value.code is RefusalCode.MISSING_CAPABILITY and plugin.composed == 1
 
 
 @pytest.mark.parametrize("bundle", [
     None,
     SimpleNamespace(graph=None, navigation=NAVIGATION, directory=DIRECTORY),
     SimpleNamespace(graph=GRAPH, navigation=None, directory=DIRECTORY),
-], ids=["none-bundle", "no-graph", "no-navigation"])
-def test_invalid_navigation_bundle_is_refused_without_fallback(bundle):
-    profile, nav = _profile(), Nav(bundle=bundle)
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav)
-    actor = NoReadActor()
+], ids=["none", "no-graph", "no-navigation"])
+def test_invalid_bundle_is_refused_without_fallback(live, bundle):
+    live.nav.return_value = bundle
     with pytest.raises(PluginRefusal) as caught:
-        _build(profile, actor=actor, plugin_registry=_registry(plugin), **_opt_in())
-    assert caught.value.code is RefusalCode.MISSING_CAPABILITY
-    assert len(nav.calls) == 1 and nav.calls[0][3] is False and actor.touched == []
+        live.build()
+    assert caught.value.code is RefusalCode.MISSING_CAPABILITY and live.nav.call_count == 1
+    assert live.nav.call_args.kwargs["needs_directory"] is False
 
 
-def test_directory_is_required_only_when_objectives_or_a_plan_need_it(tmp_path):
-    profile = _profile()
-    nav = Nav(bundle=SimpleNamespace(graph=GRAPH, navigation=NAVIGATION, directory=None))
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav)
-    registry, actor = _registry(plugin), NoReadActor()
-    app = _build(profile, actor=actor, plugin_registry=registry, **_opt_in())
-    assert nav.calls[0][3] is False and app.objectives is None
+def test_directory_is_required_only_when_objectives_need_it(tmp_path, live):
+    live.nav.return_value = SimpleNamespace(
+        graph=GRAPH, navigation=NAVIGATION, directory=None)
+    app = live.build()
     with pytest.raises(PluginRefusal) as caught:
-        _build(profile, actor=actor, objectives=tmp_path / "objective.json",
-               plugin_registry=registry, **_opt_in())
-    assert caught.value.code is RefusalCode.MISSING_CAPABILITY
-    assert nav.calls[1][3] is True and actor.touched == []
+        live.build(objectives=tmp_path / "objective.json")
+    assert app.objectives is None and caught.value.code is RefusalCode.MISSING_CAPABILITY
+    assert [call.kwargs["needs_directory"] for call in live.nav.call_args_list] == [False, True]
 
 
-def test_unknown_rom_refuses_before_the_navigation_factory():
-    profile, nav = _profile(), Nav()
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav)
-    actor = NoReadActor()
+@pytest.mark.parametrize("rom", [None, UNKNOWN_ROM], ids=["none", "unknown"])
+def test_unknown_rom_refuses_before_navigation(live, rom):
     with pytest.raises(PluginRefusal) as caught:
-        _build(profile, actor=actor, plugin_registry=_registry(plugin),
-               **_opt_in(plugin_rom_bytes=UNKNOWN_ROM))
+        live.build(plugin_rom_bytes=rom)
     assert caught.value.code is RefusalCode.UNKNOWN_IDENTITY
-    assert plugin.composed == 0 and nav.calls == [] and actor.touched == []
+    assert live.plugin.composed == 0 and live.nav.call_count == 0
 
 
-def test_navigation_constructor_error_propagates_unchanged():
-    profile, error, nav = _profile(), RuntimeError("sentinel navigation failed"), None
-    nav = Nav(error=error)
-    plugin = Plugin(profile=profile, rom_bytes=KNOWN_ROM, navigation_factory=nav)
-    actor = NoReadActor()
+def test_navigation_constructor_error_propagates_unchanged(live):
+    error = RuntimeError("sentinel navigation failed")
+    live.nav.side_effect = error
     with pytest.raises(RuntimeError) as caught:
-        _build(profile, actor=actor, plugin_registry=_registry(plugin), **_opt_in())
-    assert caught.value is error and len(nav.calls) == 1 and actor.touched == []
+        live.build()
+    assert caught.value is error and live.nav.call_count == 1
