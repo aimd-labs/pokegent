@@ -698,6 +698,7 @@ def build_runner(
     experimental_game_plugin: bool = False,
     plugin_rom_bytes: bytes | bytearray | memoryview | None = None,
     plugin_registry: ReviewedPluginRegistry | None = None,
+    experimental_plugin_navigation: bool = False,
 ) -> RunnerApp:
     """Wire reader, composite source, detectors, builders, executor, decider, events, sink.
 
@@ -726,6 +727,28 @@ def build_runner(
     plugin_pre_game_callbacks = None
     if type(experimental_game_plugin) is not bool:
         raise TypeError("experimental_game_plugin must be exactly bool")
+    if type(experimental_plugin_navigation) is not bool:
+        raise TypeError("experimental_plugin_navigation must be exactly bool")
+    if experimental_plugin_navigation and not experimental_game_plugin:
+        from pokegent.games.plugin import PluginRefusal, RefusalCode
+
+        raise PluginRefusal(
+            RefusalCode.DISABLED,
+            "experimental_plugin_navigation requires experimental_game_plugin=True",
+        )
+    if experimental_plugin_navigation and (
+        objective_graph is not None
+        or objective_navigation is not None
+        or objective_directory is not None
+    ):
+        raise ValueError(
+            "experimental_plugin_navigation cannot combine with a supplied "
+            "objective_graph, objective_navigation or objective_directory"
+        )
+    navigation_graph = objective_graph
+    navigation = objective_navigation
+    navigation_directory = objective_directory
+    admitted_bytes = None
     if experimental_game_plugin:
         from pokegent.games.gen3.firered.plugin import FireRedPlugin
         from pokegent.games.plugin import PluginRefusal, RefusalCode, ReviewedPluginRegistry
@@ -735,6 +758,8 @@ def build_runner(
                 RefusalCode.UNKNOWN_IDENTITY,
                 "experimental game plugin requires caller-supplied ROM bytes",
             )
+        if experimental_plugin_navigation:
+            admitted_bytes = bytes(plugin_rom_bytes)
         if plugin_registry is not None and not isinstance(plugin_registry, ReviewedPluginRegistry):
             raise TypeError("plugin_registry must be a ReviewedPluginRegistry")
         builtin_plugin = FireRedPlugin(profile)
@@ -757,8 +782,10 @@ def build_runner(
             required_capabilities += ("scene_catalog",)
         if config.new_game.enabled:
             required_capabilities += ("pre_game_callbacks",)
+        if experimental_plugin_navigation:
+            required_capabilities += ("navigation",)
         selection = registry.select(
-            rom_bytes=plugin_rom_bytes,
+            rom_bytes=admitted_bytes if experimental_plugin_navigation else plugin_rom_bytes,
             game="firered",
             profile_id=getattr(profile, "profile_id", ""),
             required_capabilities=required_capabilities,
@@ -766,6 +793,29 @@ def build_runner(
         plugin_services = selection.services
         if config.new_game.enabled:
             plugin_pre_game_callbacks = _require_plugin_pre_game_callbacks(plugin_services)
+        if experimental_plugin_navigation:
+            navigation_factory = getattr(plugin_services, "navigation_factory", None)
+            if not callable(navigation_factory):
+                raise PluginRefusal(
+                    RefusalCode.MISSING_CAPABILITY, "navigation_factory must be callable"
+                )
+            needs_directory = objectives is not None or objective_plan is not None
+            nav_bundle = navigation_factory(
+                admitted_bytes, profile, events=events, needs_directory=needs_directory
+            )
+            navigation_graph = getattr(nav_bundle, "graph", None)
+            navigation = getattr(nav_bundle, "navigation", None)
+            navigation_directory = getattr(nav_bundle, "directory", None)
+            if navigation_graph is None or navigation is None:
+                raise PluginRefusal(
+                    RefusalCode.MISSING_CAPABILITY,
+                    "navigation_factory must return graph and navigation",
+                )
+            if needs_directory and navigation_directory is None:
+                raise PluginRefusal(
+                    RefusalCode.MISSING_CAPABILITY,
+                    "navigation_factory must return a directory for objectives",
+                )
     elif plugin_registry is not None:
         from pokegent.games.plugin import PluginRefusal, RefusalCode
 
@@ -806,7 +856,7 @@ def build_runner(
     session = make_objective_session(
         objectives,
         objective_plan,
-        directory=objective_directory,
+        directory=navigation_directory,
         dex_fallback=config.dex_fallback,
         story_fallback=config.story_fallback,
         story_path=config.story_path,
@@ -856,7 +906,7 @@ def build_runner(
         actor,
         profile,
         rom_path,
-        navigation=objective_navigation,
+        navigation=navigation,
         session=session,
         logger=logger,
     )
@@ -879,8 +929,8 @@ def build_runner(
         menu_services=menu_services,
         facts=facts,
         objectives=objective_source,
-        graph=objective_graph,
-        navigation=objective_navigation,
+        graph=navigation_graph,
+        navigation=navigation,
         external_control=bool(getattr(decider, "external_control", False)),
         rom_path=rom_path,
     )
