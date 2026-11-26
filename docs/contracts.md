@@ -6,6 +6,8 @@ Implement scene families against this page. Source of truth for behavior: spec c
 `loop.py`, `errors.py`. Validate changes with `ruff check .`, `python -m compileall pokegent addons`, and
 `python tests/games/gen3/test_imports.py`.
 
+See [game plugin acceptance checklist](game-plugin-acceptance.md) for the plugin-seam acceptance points.
+
 ## 1. Flow and ownership
 
 ```text
