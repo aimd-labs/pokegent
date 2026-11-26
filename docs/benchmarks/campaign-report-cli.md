@@ -7,7 +7,7 @@ provider and grants no acceptance; see [CONTRIBUTING.md](../../CONTRIBUTING.md) 
 ## Run it
 
 ```sh
-python -m tools.campaign_report MANIFEST_JSON [MANIFEST_JSON ...] --cohort LABEL [--enabled] [--output REPORT_JSON]
+python -m tools.campaign_report MANIFEST_JSON [MANIFEST_JSON ...] --cohort LABEL [--enabled] [--output REPORT_JSON] [--validate-manifests]
 ```
 
 `--cohort` is required: a nonblank string of at most 128 characters. `--enabled` is off by
@@ -35,6 +35,17 @@ empty when an artifact is requested. An existing file, directory or final symlin
 refused and left unchanged, and no missing parent directory is created. The write is not atomic:
 a mid-write I/O error can leave a partially written new file. Without `--output`, stdout and the
 existing `build_report` behavior are unchanged.
+
+The optional `--validate-manifests` requires `--enabled` first and adds explicit structural
+validation of each bounded parsed manifest against the bundled
+`docs/benchmarks/scenario-manifest.schema.json` (Draft 2020-12) before projection. Without it,
+validation is off and the legacy tolerant projection is unchanged. It refuses the entire report
+with a generic `campaign_report:` stderr message (index-only, no value or path echo) when any
+manifest fails the schema, contains a non-finite number (raw NaN/Infinity tokens or float
+overflow such as `1e999`), or when the validation dependency or bundled schema is unavailable.
+With `--validate-manifests` and no `--enabled`, the command prints
+`campaign_report: --validate-manifests requires --enabled` to stderr and exits 1 before any
+input or output I/O.
 
 The output is one `json.dumps(..., sort_keys=True)` object of caller-label counts: `supplied`,
 `planned`, `started`, `completed`, `failed`, `timed_out`, `censored`, `infrastructure_invalid`,
