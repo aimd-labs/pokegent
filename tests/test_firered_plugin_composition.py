@@ -120,6 +120,7 @@ def test_capabilities_cover_exactly_the_supplied_source_factories():
         "pre_game_callbacks",
         "local_knowledge",
         "battle_facts",
+        "observation_projection",
     }
     assert not FIRERED_CAPABILITIES & {"verification", "supported", "input"}
 
