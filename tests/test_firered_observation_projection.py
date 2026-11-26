@@ -14,10 +14,7 @@ import pytest
 
 import pokegent.games.gen3.firered.observation as observation_module
 from pokegent.games.gen3.firered.observation import project_observation
-from pokegent.games.gen3.firered.plugin import (
-    FireRedPlugin,
-    FireRedServices,
-)
+from pokegent.games.gen3.firered.plugin import FireRedPlugin, FireRedServices
 from pokegent.games.gen3.firered.reader.schemas import (
     FlagSet,
     Health,
@@ -132,15 +129,22 @@ def test_compose_names_the_projection_without_invoking_it(monkeypatch):
 
 
 def test_previous_manual_services_construction_stays_compatible():
-    fillers = "adapter snapshot_source_factory scene_catalog_factory menu_services_factory".split()
-    fillers += "family_registration_factory objective_observation_factory".split()
-    fillers += "dex_fallback_factory story_fallback_factory story_identity_validator".split()
-    fillers += "local_knowledge_factory".split()
+    fillers = (
+        "adapter",
+        "snapshot_source_factory",
+        "scene_catalog_factory",
+        "menu_services_factory",
+        "family_registration_factory",
+        "objective_observation_factory",
+        "dex_fallback_factory",
+        "story_fallback_factory",
+        "story_identity_validator",
+        "local_knowledge_factory",
+    )
     services = FireRedServices(
         profile=_profile(),
         pre_game_callbacks=frozenset(),
         **{name: object() for name in fillers},
     )
-
     assert services.observation_factory is None
     assert services.battle_facts_factory is None
