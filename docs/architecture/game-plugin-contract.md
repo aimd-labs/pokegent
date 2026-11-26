@@ -2,24 +2,42 @@
 
 Status: historical proposal written 2026-11-24 for maintainer review, not frozen. Runtime baseline c73774285e5e164d01629ca14a5e8e551e03493f. Implements research scope of [#139](https://github.com/aimd-labs/pokegent/issues/139), not issue closure. R04, R05, R08 and R09 are inputs; this contract owns generic admission, and R08 only supplies DS evidence. Current v1.x contracts are authoritative. That proposal made no runtime API change, profile promotion, backend selection, ROM or test execution. The current dated implementation status is below.
 
-Implementation status (2026-11-26, source base `7e949140`): the reviewed
-[plugin registry](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/games/plugin.py)
+Implementation status (2026-11-26, source base `95197354`): the reviewed
+[plugin registry](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/plugin.py)
 is disabled by default and admits only explicit reviewed plugins against exact SHA-1 ROM bytes,
 with profile, contract-version, capability and duplicate-ownership refusal
 ([#246](https://github.com/aimd-labs/pokegent/pull/246)). The
-[observation envelope](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/games/observation.py)
+[observation envelope](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/observation.py)
 provides internal, immutable flat projections and is explicitly not a redaction or provider
 payload ([#250](https://github.com/aimd-labs/pokegent/pull/250)). The
-[choice SDK](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/sdk.py)
+[choice SDK](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/sdk.py)
 validates a caller-supplied frame and result locally and never reads a snapshot or sends input
-([#253](https://github.com/aimd-labs/pokegent/pull/253)). The
-[FireRed plugin](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/games/gen3/firered/plugin.py)
-replaces only the snapshot-source factory, and only when
-`build_runner(experimental_game_plugin=True, plugin_rom_bytes=...)` is set; registration, menu and
-objective validators remain FireRed-specific
-([#254](https://github.com/aimd-labs/pokegent/pull/254)). These slices do not establish a fully
-generic runner, backend injection, plugin discovery, second-title implementation or new native
-acceptance proof. [#139](https://github.com/aimd-labs/pokegent/issues/139) remains open.
+([#253](https://github.com/aimd-labs/pokegent/pull/253)).
+
+The opt-in composition APIs are Python-only, with no CLI flags. In
+[`build_runner`](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/app.py#L657-L696),
+`experimental_game_plugin=True` requires caller-supplied `plugin_rom_bytes`; the built-in
+[FireRed plugin](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/gen3/firered/plugin.py)
+must admit those exact bytes before any actor-backed read or reader construction, and its
+[composed services](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/gen3/firered/plugin.py#L87-L104)
+now supply the existing adapter and composite source together with menu, family-registration and
+objective-observation factories
+([#271](https://github.com/aimd-labs/pokegent/pull/271),
+[#273](https://github.com/aimd-labs/pokegent/pull/273)). The
+[objective helper](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/gen3/firered/admission.py#L23-L52)
+creates one `LiveReader` per `build_runner` call and reads once per admission callback, never a
+cached decision snapshot. Separately,
+[`open_emulator`](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/app.py#L1308-L1361)
+accepts `experimental_backend=True` with a trusted `backend_factory`: the callable is checked
+before use, called only after ROM profile admission, and must return an `Emulator`; the actor
+then owns the backend lifecycle
+([#268](https://github.com/aimd-labs/pokegent/pull/268)). Both switches default to `False`, and
+non-bool values are rejected.
+
+Current selection remains FireRed-only (`BPRE` version 0), and validators, targets and probes
+remain game-specific. These slices do not establish a generic second-title path, plugin
+discovery or a native compatibility promise.
+[#139](https://github.com/aimd-labs/pokegent/issues/139) remains open.
 
 ## Evidence
 
