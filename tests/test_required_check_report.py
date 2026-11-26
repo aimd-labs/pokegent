@@ -1,6 +1,7 @@
 """Synthetic GitHub check-runs exports only; no network, credentials or real branch policy."""
 
 import json
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -309,3 +310,39 @@ def test_embedded_null_byte_in_path_is_typed_input_error(tmp_path, capsys):
     assert captured.err.startswith("required-check evaluation failed: ")
     assert "Traceback" not in captured.err
     assert "embedded null" not in captured.err.lower()  # no raw error echoed
+
+
+def test_reader_refuses_invalid_utf8_boundaries(tmp_path):
+    blobs = [
+        b"\xff\xfe{\x00}\x00",        # UTF-16 BOM
+        b'"\xc3',                     # truncated two-byte sequence
+        b'"\xc0\xaf"',                # overlong encoding
+        b"\xed\xa0\x80",              # lone surrogate half
+    ]
+    path = tmp_path / "boundary.json"
+    for blob in blobs:
+        path.write_bytes(blob)
+        with pytest.raises(checks.CheckInputError):
+            checks.read_document(path)
+    valid = tmp_path / "valid.json"
+    valid.write_text('{"check_runs": []}', encoding="utf-8")
+    assert isinstance(checks.read_document(valid), dict)
+
+
+def test_seeded_reader_has_no_unexpected_exceptions(tmp_path):
+    rnd = random.Random(0x525E4544)
+    parsed = refused = 0
+    for index in range(64):
+        blob = b'{"total_count": 0, "check_runs": []}' if index == 0 else bytes(
+            rnd.randrange(256) for _ in range(rnd.randrange(0, 4096)))
+        path = tmp_path / f"blob-{index}.json"
+        path.write_bytes(blob)
+        try:
+            result = checks.read_document(path)
+        except checks.CheckInputError:
+            refused += 1
+            continue
+        parsed += 1
+        if index == 0:
+            assert result == {"total_count": 0, "check_runs": []}
+    assert parsed > 0 and refused > 0
