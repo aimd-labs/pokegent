@@ -237,6 +237,84 @@ def test_memoryview_bound_counts_bytes_not_elements(monkeypatch):
     assert plugin.compose_calls == 0
 
 
+class _LyingBytes(bytes):
+    """Bytes subclass that misreports its length via __len__."""
+
+    def __len__(self):
+        return 0
+
+
+class _LyingBytearray(bytearray):
+    """Bytearray subclass that misreports its length via __len__."""
+
+    def __len__(self):
+        return 0
+
+
+def _fail_if_called(*_args, **_kwargs):
+    raise AssertionError("hashlib reached before size refusal")
+
+
+def test_bytes_subclass_actual_size_refuses_oversize_before_hash(monkeypatch):
+    plugin_rom = b"abcde"
+    plugin = _plugin(game="synthetic-a", profile_id="a-1", data=plugin_rom, scene="alpha")
+    registry = _registry(plugin)
+    monkeypatch.setattr(plugin_module, "MAX_ROM_BYTES", 4)
+    lying = _LyingBytes(plugin_rom)
+    assert len(lying) == 0
+
+    monkeypatch.setattr(plugin_module.hashlib, "sha1", _fail_if_called)
+    with pytest.raises(ValueError, match="bounded input size"):
+        _select(registry, plugin, lying)
+
+    assert plugin.compose_calls == 0
+
+
+def test_bytearray_subclass_actual_size_refuses_oversize_before_hash(monkeypatch):
+    plugin_rom = b"abcdefg"
+    plugin = _plugin(game="synthetic-a", profile_id="a-1", data=plugin_rom, scene="alpha")
+    registry = _registry(plugin)
+    monkeypatch.setattr(plugin_module, "MAX_ROM_BYTES", 6)
+    lying = _LyingBytearray(plugin_rom)
+    assert len(lying) == 0
+
+    monkeypatch.setattr(plugin_module.hashlib, "sha1", _fail_if_called)
+    with pytest.raises(ValueError, match="bounded input size"):
+        _select(registry, plugin, lying)
+
+    assert plugin.compose_calls == 0
+
+
+def test_bytes_subclass_actual_size_at_exact_cap_still_selects(monkeypatch):
+    plugin_rom = b"abcde"
+    plugin = _plugin(game="synthetic-a", profile_id="a-1", data=plugin_rom, scene="alpha")
+    registry = _registry(plugin)
+    monkeypatch.setattr(plugin_module, "MAX_ROM_BYTES", len(plugin_rom))
+    lying = _LyingBytes(plugin_rom)
+    assert len(lying) == 0
+
+    selected = _select(registry, plugin, lying)
+
+    assert selected.descriptor is plugin.descriptor
+    assert selected.services.observed_scene == "alpha"
+    assert plugin.compose_calls == 1
+
+
+def test_bytearray_subclass_actual_size_at_exact_cap_still_selects(monkeypatch):
+    plugin_rom = b"abcde"
+    plugin = _plugin(game="synthetic-a", profile_id="a-1", data=plugin_rom, scene="alpha")
+    registry = _registry(plugin)
+    monkeypatch.setattr(plugin_module, "MAX_ROM_BYTES", len(plugin_rom))
+    lying = _LyingBytearray(plugin_rom)
+    assert len(lying) == 0
+
+    selected = _select(registry, plugin, lying)
+
+    assert selected.descriptor is plugin.descriptor
+    assert selected.services.observed_scene == "alpha"
+    assert plugin.compose_calls == 1
+
+
 @pytest.mark.parametrize("contract_version", [True, 1.0, "1"])
 def test_descriptor_contract_version_must_be_plain_int(contract_version):
     with pytest.raises(ValueError):
