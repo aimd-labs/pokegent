@@ -29,6 +29,16 @@ from pokegent.games.gen3.firered.plugin import (
     FireRedPlugin,
     FireRedServices,
 )
+from pokegent.games.gen3.firered.reader.schemas import (
+    BagItem,
+    BagPocket,
+    FlagSet,
+    Health,
+    Player,
+    ReadError,
+    StateSnapshot,
+    VarTable,
+)
 from pokegent.games.gen3.firered.rom.rom_data import load_profiles
 from pokegent.games.plugin import PluginRefusal, RefusalCode
 from pokegent.goals.shop_admission import ShopObservation
@@ -51,6 +61,49 @@ def _snapshot(profile, *, usable=True, rom_profile=None):
         usable=usable,
         rom_profile=profile.profile_id if rom_profile is None else rom_profile,
         bag=(SimpleNamespace(items=(SimpleNamespace(item_id=1, quantity=2),)),),
+    )
+
+
+def _state_snapshot(profile, *, usable=True, rom_profile=None):
+    """A real validated StateSnapshot, matching the objective fixture pattern."""
+    return StateSnapshot.create(
+        rom_profile=profile.profile_id if rom_profile is None else rom_profile,
+        snapshot_seq=1,
+        emulator_frame=1,
+        health=Health(
+            valid=usable,
+            read_errors=()
+            if usable
+            else (ReadError(subsystem="test", code="invalid", message="synthetic"),),
+        ),
+        player=Player(
+            name="Test",
+            gender="male",
+            tid=0,
+            sid=0,
+            map_group=0,
+            map_num=0,
+            map_layout_id=0,
+            x=0,
+            y=0,
+            money=0,
+            coins=0,
+        )
+        if usable
+        else None,
+        bag=(
+            (
+                BagPocket(
+                    pocket="items",
+                    capacity=20,
+                    items=(BagItem(item_id=7, quantity=4),),
+                ),
+            )
+            if usable
+            else ()
+        ),
+        flags=FlagSet() if usable else None,
+        vars=VarTable() if usable else None,
     )
 
 
@@ -112,6 +165,43 @@ def test_provider_validation_and_shop_sha_use_one_shared_fresh_reader(fake_reade
     assert observation.rom_sha1 == profile.rom.sha1
     assert observation.quantity(1) == 2
     assert reader.reads == 3
+
+
+def test_real_state_snapshot_roundtrips_through_shared_providers(fake_reader):
+    profile = _profile()
+    snapshot = _state_snapshot(profile)
+    fake_reader.snapshot = snapshot
+    actor = object()
+
+    services = make_objective_observation_services(actor, profile, "run-id")
+
+    assert len(fake_reader.instances) == 1
+    reader = fake_reader.instances[0]
+    assert reader.reads == 0
+    assert services.fresh_snapshot() is snapshot
+    observation = services.shop_observation()
+    assert observation.profile_id == profile.profile_id
+    assert observation.rom_sha1 == profile.rom.sha1
+    assert observation.usable
+    assert observation.quantity(7) == 4
+    assert reader.reads == 2
+
+
+@pytest.mark.parametrize(
+    "usable, rom_profile",
+    [(False, None), (True, "other-profile")],
+    ids=["unusable", "profile-mismatch"],
+)
+def test_real_state_snapshot_rejects_unusable_or_mismatch(fake_reader, usable, rom_profile):
+    profile = _profile()
+    fake_reader.snapshot = _state_snapshot(
+        profile, usable=usable, rom_profile=rom_profile
+    )
+
+    services = make_objective_observation_services(object(), profile, "run-id")
+
+    assert services.fresh_snapshot() is None
+    assert services.shop_observation() is None
 
 
 @pytest.mark.parametrize("rom_profile", [None, "other-profile"])
