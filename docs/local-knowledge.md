@@ -16,6 +16,8 @@ Item restoration facts have [their own page](local-item-restoration-knowledge.md
 
 Per-species training parameters have [their own page](local-species-training-knowledge.md).
 
+Per-species breeding parameters have [their own page](local-species-breeding-knowledge.md).
+
 Item training facts have [their own page](local-item-training-knowledge.md).
 
 Per-species encounter parameters have [their own page](local-species-encounter-knowledge.md).
