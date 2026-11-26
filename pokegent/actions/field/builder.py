@@ -105,6 +105,19 @@ FLY_MAP_RESUME = "field.fly_map_resume"
 PC_FLY_MAP_CANCEL = "field.fly_map_cancelled"
 
 
+def _party_species_name(member: Any, tables: Any) -> str:
+    """Display the member by decoded species, then a safe RAM nickname or native id."""
+    if tables is not None:
+        try:
+            name = tables.species_name(int(member.species))
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            name = None
+        if name:
+            return str(name)
+    nickname = str(getattr(member, "nickname", "") or "").strip()
+    return nickname or f"species {int(member.species)}"
+
+
 def _usable_escape_moves(map_state, party) -> tuple[tuple[int, str, int], ...]:
     """Return RAM-proven Dig/Teleport carriers usable on the current ROM map."""
     identity = snapshot_map_identity(map_state)
@@ -615,15 +628,23 @@ class FieldBuilder:
 
         options: list[Option] = []
         if self.field_menu and len(snap.party) > 1:
+            lead = next((mon for mon in snap.party if mon.slot == 0), None)
+            lead_name = _party_species_name(lead, self.tables) if lead else "the current lead"
             for member in snap.party:
                 if member.slot == 0:
                     continue
+                target_name = _party_species_name(member, self.tables)
+                target_slot = member.slot + 1
                 options.append(
                     Option(
                         id=f"swap:{member.personality:08x}",
-                        label=f"Swap party order with slot {member.slot + 1}",
+                        label=(
+                            f"Swap {lead_name} (slot 1) with "
+                            f"{target_name} (slot {target_slot})"
+                        ),
                         description=(
-                            f"Swap the party order of slot 1 and slot {member.slot + 1}; "
+                            f"Swap the party order of {lead_name} (slot 1) and "
+                            f"{target_name} (slot {target_slot}); "
                             "the resulting order is verified from party RAM."
                         ),
                         legality=Legality.LEGAL,
