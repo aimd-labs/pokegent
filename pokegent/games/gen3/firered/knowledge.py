@@ -2,8 +2,8 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``item``/``ability``/``type``/``evolution``/``tmhm`` questions
-from those tables. Not a database, cache or plugin
+native ``move``/``species``/``national_dex``/``item``/``ability``/``type``/``evolution``/``tmhm``
+questions from those tables. Not a database, cache or plugin
 registration or a verification claim: the game/profile/ROM labels are caller assertions, not
 digest or live proof.
 """
@@ -98,6 +98,23 @@ class FireRedKnowledge:
         except KeyError:
             return self._record("species", species_id, known=False, values=())
         return self._record("species", species_id, known=True, values=_species_values(data))
+
+    def national_dex(self, species_id: int) -> LocalRomRecord:
+        """National number for an existing native species row, from the supplied mapping."""
+        species_id = _native_id(species_id, "species")
+        try:
+            self._tables.species(species_id)
+        except KeyError:
+            return self._record("national_dex", species_id, known=False, values=())
+        number = self._tables.national_dex(species_id)
+        if type(number) is not int or number <= 0:
+            return self._record("national_dex", species_id, known=False, values=())
+        return self._record(
+            "national_dex",
+            species_id,
+            known=True,
+            values=(("species_id", species_id), ("national_dex", number)),
+        )
 
     def item(self, item_id: int) -> LocalRomRecord:
         item_id = _native_id(item_id, "item")
