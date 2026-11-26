@@ -17,8 +17,31 @@ from typing import Any, Protocol, runtime_checkable
 
 MAX_ROM_BYTES = 32 * 1024 * 1024
 MAX_REQUIRED_CAPABILITIES = 16
+# Plugin, game, profile and capability names are exact, non-blank, bounded strings.
+MAX_IDENTIFIER_CHARS = 64
 SUPPORTED_CONTRACT_VERSIONS = frozenset({1})
 _SHA1 = re.compile(r"[0-9a-f]{40}")
+
+
+def _identifier(value: object, field: str) -> None:
+    if type(value) is not str or not value.strip():
+        raise ValueError(f"{field} must be a non-blank string")
+    if len(value) > MAX_IDENTIFIER_CHARS:
+        raise ValueError(f"{field} must be at most {MAX_IDENTIFIER_CHARS} characters")
+
+
+def _capabilities(values: object, *, limit: int, field: str) -> frozenset[str]:
+    if isinstance(values, (str, bytes, bytearray, memoryview)):
+        raise ValueError(f"{field} must be an iterable of strings, not a string container")
+    try:
+        items = tuple(islice(iter(values), limit + 1))  # type: ignore[arg-type]
+    except TypeError as error:
+        raise ValueError(f"{field} must be a finite iterable of strings") from error
+    if len(items) > limit:
+        raise ValueError(f"too many {field}")
+    for item in items:
+        _identifier(item, field)
+    return frozenset(items)
 
 
 class RefusalCode(str, Enum):
@@ -46,17 +69,16 @@ class GamePluginDescriptor:
     capabilities: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
-        if not (self.plugin_id and self.game and self.profile_id):
-            raise ValueError("plugin_id, game and profile_id must be non-empty")
+        _identifier(self.plugin_id, "plugin_id")
+        _identifier(self.game, "game")
+        _identifier(self.profile_id, "profile_id")
         if type(self.contract_version) is not int or self.contract_version < 1:
             raise ValueError("contract_version must be a positive plain int")
-        if not _SHA1.fullmatch(self.rom_sha1):
+        if type(self.rom_sha1) is not str or not _SHA1.fullmatch(self.rom_sha1):
             raise ValueError("rom_sha1 must be 40 lowercase hex characters")
-        capabilities = frozenset(self.capabilities)
-        if len(capabilities) > MAX_REQUIRED_CAPABILITIES:
-            raise ValueError("too many declared capabilities")
-        if any(not isinstance(item, str) or not item for item in capabilities):
-            raise ValueError("capabilities must be non-empty strings")
+        capabilities = _capabilities(
+            self.capabilities, limit=MAX_REQUIRED_CAPABILITIES, field="capabilities"
+        )
         object.__setattr__(self, "capabilities", capabilities)
 
 
@@ -116,11 +138,13 @@ class ReviewedPluginRegistry:
         rom_size = rom_bytes.nbytes if isinstance(rom_bytes, memoryview) else len(rom_bytes)
         if rom_size > MAX_ROM_BYTES:
             raise ValueError("rom_bytes exceeds the bounded input size")
-        required = tuple(islice(required_capabilities, MAX_REQUIRED_CAPABILITIES + 1))
-        if len(required) > MAX_REQUIRED_CAPABILITIES:
-            raise ValueError("too many required capabilities")
-        if any(not isinstance(item, str) or not item for item in required):
-            raise ValueError("required capabilities must be non-empty strings")
+        _identifier(game, "game")
+        _identifier(profile_id, "profile_id")
+        required = _capabilities(
+            required_capabilities,
+            limit=MAX_REQUIRED_CAPABILITIES,
+            field="required capabilities",
+        )
 
         digest = hashlib.sha1(rom_bytes).hexdigest()
         admitted = self._plugins.get(digest)
