@@ -72,6 +72,8 @@ def _ui(
     listing: bool = True,
     cursor_row: int = 0,
     scroll: int = 0,
+    total_items: int = 3,
+    max_showed: int = 3,
 ) -> UiEvidence:
     above, cursor = vector[:3], vector[3:6]
     tasks = []
@@ -114,8 +116,8 @@ def _ui(
             list_menu=(
                 ListMenuInfo(
                     task_slot=4,
-                    total_items=3,
-                    max_showed=3,
+                    total_items=total_items,
+                    max_showed=max_showed,
                     window_id=1,
                     scroll_offset=scroll,
                     cursor_row=cursor_row,
@@ -182,6 +184,9 @@ def test_disabled_by_default_and_builders_stay_off():
     assert len(F.build_detectors(enabled=True)) == 1
     with pytest.raises(TypeError):
         F.FieldBagDetector(enabled=1)
+    for falsey in (0, "", [], None):
+        with pytest.raises(TypeError):
+            F.build_detectors(enabled=falsey)
 
 
 def test_real_registry_and_catalog_claim_only_the_ready_field_item_list():
@@ -194,8 +199,13 @@ def test_real_registry_and_catalog_claim_only_the_ready_field_item_list():
     assert _detect(_snapshot(), enabled=False).scene_id == SCENE_UNKNOWN
 
 
-def test_known_bag_callback_shape_survives_an_unmapped_name():
-    assert _detect(_snapshot(ui=_ui(callback=KNOWN_UNMAPPED))).scene_id == "bag.items"
+def test_scrolled_list_uses_relative_cursor_plus_scroll_offset():
+    ui = _ui(vector=(2, 0, 0, 1, 0, 0), total_items=4)
+    assert _detect(_snapshot(ui=ui)).scene_id == "bag.items"
+
+
+def test_unmapped_known_pointer_is_not_a_verified_callback():
+    assert _detect(_snapshot(ui=_ui(callback=KNOWN_UNMAPPED))).scene_id == SCENE_UNKNOWN
 
 
 @pytest.mark.parametrize("location", [1, 2, 3, 5])
@@ -225,6 +235,8 @@ def test_party_shop_battle_and_other_locations_are_not_stolen(location):
         {"pocket": 3},
         {"vector": (0, 0)},
         {"vector": (2, 0, 0, 1, 0, 0)},
+        {"vector": (0, 0, 0, 3, 0, 0)},
+        {"vector": (0, 0, 0, -1, 0, 0)},
         {"cursor_row": 3},
         {"scroll": 4},
     ],

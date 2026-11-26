@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pokegent.actions.battle.detect import CB2_BAG_SETUP
 from pokegent.games.gen3.firered.reader.schemas import StateSnapshot
 from pokegent.games.gen3.firered.reader.ui_schemas import FnRef, UiEvidence
 from pokegent.state.scenes import PriorityClass, SceneResult
@@ -13,12 +12,8 @@ FIELD_LOCATION, NUM_POCKETS = 0, 3
 
 
 def _owns_bag_callback(callback: FnRef | None) -> bool:
-    """A named, verified bag runner, or a pointer already known to the bag constants."""
-    if callback is None:
-        return False
-    if callback.name is not None:
-        return callback.verified and callback.name == BAG_CALLBACK
-    return (callback.ptr & ~1) in CB2_BAG_SETUP
+    """Only a profile-named, profile-verified bag runner owns the item list."""
+    return bool(callback and callback.verified and callback.name == BAG_CALLBACK)
 
 
 def _listing_ok(ui: UiEvidence) -> bool:
@@ -73,13 +68,18 @@ class FieldBagDetector:
             or len(above) != NUM_POCKETS
             or len(cursor) != NUM_POCKETS
             or any(not isinstance(value, int) or value < 0 for value in (*above, *cursor))
-            or cursor[bag.pocket] < above[bag.pocket]
         ):
             return None
         has_input = any(
             task.func.name == BAG_INPUT_TASK and task.func.verified for task in tasks.active
         )
         if not has_input or not _listing_ok(ui):
+            return None
+        listing = menu.list_menu  # bag cursor is relative; items_above is scroll
+        if (
+            cursor[bag.pocket] >= listing.max_showed
+            or above[bag.pocket] + cursor[bag.pocket] >= listing.total_items
+        ):
             return None
         return SceneResult(
             scene_id="bag.items",
@@ -96,4 +96,5 @@ class FieldBagDetector:
 
 def build_detectors(enabled: bool = False) -> tuple[FieldBagDetector, ...]:
     """No detector unless explicitly switched on; no app registration happens here."""
-    return (FieldBagDetector(enabled=enabled),) if enabled else ()
+    detector = FieldBagDetector(enabled=enabled)  # exact-bool guard even when falsey
+    return (detector,) if enabled else ()
