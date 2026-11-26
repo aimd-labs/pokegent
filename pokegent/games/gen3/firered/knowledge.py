@@ -2,8 +2,8 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``item``/``evolution`` questions from those tables. Not a database,
-cache or plugin
+native ``move``/``species``/``item``/``evolution``/``tmhm`` questions from those
+tables. Not a database, cache or plugin
 registration or a verification claim: the game/profile/ROM labels are caller assertions, not
 digest or live proof.
 """
@@ -126,6 +126,32 @@ class FireRedKnowledge:
             species_id,
             known=True,
             values=(("evolutions", tuple(_evolution_triple(row_entry) for row_entry in row)),),
+        )
+
+    def tmhm(self, species_id: int, item_id: int) -> LocalRomRecord:
+        """Native TM/HM compatibility: species index plus bag item id, not a move id."""
+        species_id = _native_id(species_id, "species")
+        item_id = _native_id(item_id, "item")
+        try:
+            self._tables.species(species_id)
+            move_id = self._tables.tmhm_move(item_id)
+            if type(move_id) is not int or move_id <= 0:
+                return self._record("tmhm", species_id, known=False, values=())
+            self._tables.move(move_id)
+            can_learn = self._tables.can_learn_tmhm(species_id, item_id)
+        except (KeyError, IndexError):
+            return self._record("tmhm", species_id, known=False, values=())
+        if can_learn is None:
+            return self._record("tmhm", species_id, known=False, values=())
+        return self._record(
+            "tmhm",
+            species_id,
+            known=True,
+            values=(
+                ("item_id", item_id),
+                ("move_id", move_id),
+                ("can_learn", can_learn),
+            ),
         )
 
     def _record(
