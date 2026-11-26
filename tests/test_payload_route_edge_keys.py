@@ -25,7 +25,9 @@ def _option(option_id: str, **extra) -> Option:
     )
 
 
-def _frame(route: list[str]) -> DecisionFrame:
+def _frame(route: list[str], options: tuple[Option, ...] | None = None) -> DecisionFrame:
+    if options is None:
+        options = (_option("edge:E:3:25"), _option("edge:W:3:34"))
     return DecisionFrame(
         run_id="synthetic",
         decision_id="dec-178",
@@ -33,7 +35,7 @@ def _frame(route: list[str]) -> DecisionFrame:
         scene_id="field.free",
         scene_confidence=1.0,
         state_fingerprint=fingerprint("field.free"),
-        options=(_option("edge:E:3:25"), _option("edge:W:3:34")),
+        options=options,
         context={"navigation": {"route": route}},
     )
 
@@ -59,7 +61,30 @@ def test_guard_still_rejects_unsanitized_edge_key():
         assert_payload_clean(payload, frame)
 
 
-def test_genuine_executor_key_leak_is_still_caught():
+def test_route_warp_not_in_options_is_relabeled_not_leaked():
     frame = _frame(["walk east", "warp:3:6:1"])
+    payload = to_system_one_payload(frame)
+    assert_payload_clean(payload, frame)
+    assert "warp:3:6:1" not in str(payload)
+    assert set(payload["criteria"]) == {"edge:E:3:25", "edge:W:3:34"}
+
+
+def test_route_warp_that_is_an_option_is_kept():
+    frame = _frame(["warp:3:6:1"], options=(_option("warp:3:6:1"),))
+    assert to_system_one_payload(frame)["state"]["navigation"]["route"] == ["warp:3:6:1"]
+
+
+def test_genuine_executor_ref_leak_is_still_caught():
+    frame = _frame(["walk east"])
+    payload = to_system_one_payload(frame)
+    payload["state"]["navigation"] = {"route": ["walk east", "field.edge"]}
     with pytest.raises(PayloadLeakError):
-        to_system_one_payload(frame)
+        assert_payload_clean(payload, frame)
+
+
+def test_guard_still_rejects_unsanitized_warp_key():
+    frame = _frame(["warp:3:6:1"])
+    payload = to_system_one_payload(_frame(["walk east"]))
+    payload["state"]["navigation"] = {"route": ["warp:3:6:1"]}
+    with pytest.raises(PayloadLeakError):
+        assert_payload_clean(payload, frame)

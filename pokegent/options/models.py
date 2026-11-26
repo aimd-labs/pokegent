@@ -284,6 +284,8 @@ _EDGE_KEY = re.compile(
 )
 # Border-edge keys only: the route may name an edge the frame does not offer as an option.
 _ROUTE_EDGE_KEY = re.compile(r"\bedge:[NSEW]:\d+:\d+\b")
+# Warp keys only: the route may name a warp tile the frame does not offer as an option (#195).
+_ROUTE_WARP_KEY = re.compile(r"\bwarp:\d+(?::\d+){2,}\b")
 _INTERNAL_KEYS = ("executor_ref", "executor_args", "postcondition_ref", "source_task", "pointer")
 LeakKind = Literal[
     "fingerprint",
@@ -439,13 +441,16 @@ def sanitize_internal_text(value: Any, frame: DecisionFrame) -> Any:
 
 
 def sanitize_route_edge_keys(value: Any, option_ids: set[str]) -> Any:
-    """Relabel raw ``edge:D:g:n`` keys that are not exposed options in visible route text.
+    """Relabel raw ``edge:D:g:n`` / ``warp:n:n:n`` keys that are not exposed options in route text.
 
-    The planner's route can name a border edge the frame does not offer (#178). The key is not
-    an option identity, so it is rendered as prose instead of tripping the leak guard, which
-    stays unchanged as the backstop for every other internal key.
+    The planner's route can name a border edge or a warp tile the frame does not offer
+    (#178/#179, #195). The key is not an option identity, so it is rendered as prose instead
+    of tripping the leak guard, which stays unchanged as the backstop for every other key.
     """
     if isinstance(value, str):
+        value = _ROUTE_WARP_KEY.sub(
+            lambda m: m.group(0) if m.group(0) in option_ids else "the warp entrance", value
+        )
         return _ROUTE_EDGE_KEY.sub(
             lambda m: m.group(0) if m.group(0) in option_ids else "the map edge", value
         )
