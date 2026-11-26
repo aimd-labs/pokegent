@@ -269,6 +269,48 @@ def test_missing_reference_file_is_a_typed_error(tmp_path):
             wheel, tmp_path / "absent.json", source_commit=COMMIT)
 
 
+def test_embedded_nul_reference_path_is_a_typed_error(tmp_path):
+    wheel = write_wheel(tmp_path / "pkg.whl")
+    reference, _ = build_reference(tmp_path, wheel)
+    wheel_before, reference_before = wheel.read_bytes(), reference.read_bytes()
+
+    with pytest.raises(verify.VerifyError):
+        verify.verify_wheel_manifest(wheel, "bad\x00reference.json",
+                                     source_commit=COMMIT)
+
+    assert wheel.read_bytes() == wheel_before
+    assert reference.read_bytes() == reference_before
+
+
+def test_embedded_nul_wheel_path_is_a_typed_error(tmp_path):
+    wheel = write_wheel(tmp_path / "pkg.whl")
+    reference, _ = build_reference(tmp_path, wheel)
+    wheel_before, reference_before = wheel.read_bytes(), reference.read_bytes()
+
+    with pytest.raises(verify.VerifyError):
+        verify.verify_wheel_manifest("bad\x00wheel.whl", reference,
+                                     source_commit=COMMIT)
+
+    assert wheel.read_bytes() == wheel_before
+    assert reference.read_bytes() == reference_before
+
+
+def test_main_returns_two_for_embedded_nul_paths_without_traceback(
+        tmp_path, capsys):
+    wheel = write_wheel(tmp_path / "pkg.whl")
+    reference, _ = build_reference(tmp_path, wheel)
+
+    for argv in ([str(wheel), "bad\x00reference.json",
+                  "--source-commit", COMMIT],
+                 ["bad\x00wheel.whl", str(reference),
+                  "--source-commit", COMMIT]):
+        assert verify.main(argv) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("verify_wheel_manifest: ")
+        assert "Traceback" not in captured.err
+
+
 def test_corrupt_and_unsafe_wheels_delegate_to_the_manifest_bounds(tmp_path):
     wheel = write_wheel(tmp_path / "pkg.whl")
     reference, _ = build_reference(tmp_path, wheel)
