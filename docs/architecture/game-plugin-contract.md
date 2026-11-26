@@ -25,8 +25,9 @@ objective-observation factories
 ([#271](https://github.com/aimd-labs/pokegent/pull/271),
 [#273](https://github.com/aimd-labs/pokegent/pull/273)). The
 [objective helper](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/gen3/firered/admission.py#L23-L52)
-creates one `LiveReader` per `build_runner` call and reads once per admission callback, never a
-cached decision snapshot. Separately,
+creates one `LiveReader` per `build_runner` call only when both the actor and profile are present;
+without either it returns two `None` providers and constructs no reader. Each admission callback
+reads once from that reader, never a cached decision snapshot. Separately,
 [`open_emulator`](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/app.py#L1308-L1361)
 accepts `experimental_backend=True` with a trusted `backend_factory`: the callable is checked
 before use, called only after ROM profile admission, and must return an `Emulator`; the actor
