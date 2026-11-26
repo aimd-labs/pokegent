@@ -861,7 +861,11 @@ class NavigationGraph:
         if state is None or not self._inside(state, node.x, node.y):
             return ()
         out: list[NavigationEdge] = []
-        out.extend(self._landing_recovery_edges(state, node, capabilities))
+        out.extend(
+            edge
+            for edge in self._landing_recovery_edges(state, node, capabilities)
+            if include_unmet or edge.available
+        )
         out.extend(
             edge
             for edge in self._boulder_plan_edges(node, state, capabilities, live=live)
