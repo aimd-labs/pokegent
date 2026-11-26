@@ -2,8 +2,8 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``item``/``ability``/``evolution``/``tmhm`` questions from those
-tables. Not a database, cache or plugin
+native ``move``/``species``/``item``/``ability``/``type``/``evolution``/``tmhm`` questions
+from those tables. Not a database, cache or plugin
 registration or a verification claim: the game/profile/ROM labels are caller assertions, not
 digest or live proof.
 """
@@ -118,6 +118,20 @@ class FireRedKnowledge:
             ability_id,
             known=True,
             values=(("id", ability_id), ("name", _bounded_name(data, "ability"))),
+        )
+
+    def type(self, type_id: int) -> LocalRomRecord:
+        if type(type_id) is not int or type_id < 0:
+            raise ValueError("type id must be a non-negative plain int")
+        try:
+            data = self._tables.rom_type_name(type_id)
+        except IndexError:
+            return self._record("type", type_id, known=False, values=())
+        return self._record(
+            "type",
+            type_id,
+            known=True,
+            values=(("id", type_id), ("name", _bounded_name(data, "type"))),
         )
 
     def evolutions(self, species_id: int) -> LocalRomRecord:
