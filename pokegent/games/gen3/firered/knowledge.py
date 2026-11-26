@@ -4,7 +4,8 @@ The caller supplies a trusted ``PluginSelection`` and the already-decoded immuta
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
 native ``move``/``species``/``species_training``/``species_encounter``/``species_breeding``/
 ``national_dex``/
-``item``/``item_restoration``/``item_training``/``ability``/``type``/``evolution``/``tmhm``
+``item``/``item_restoration``/``item_training``/``item_battle_effects``/``ability``/``type``/
+``evolution``/``tmhm``
 questions from those tables. Not a database, cache or plugin registration or a verification
 claim: the game/profile/ROM labels are caller assertions, not digest or live proof.
 """
@@ -200,6 +201,22 @@ class FireRedKnowledge:
             values=_training_effect_values(data.effect),
         )
 
+    def item_battle_effects(self, item_id: int) -> LocalRomRecord:
+        """Decoded battle-effect subset for one native bag item."""
+        item_id = _native_id(item_id, "item")
+        try:
+            data = self._tables.item(item_id)
+        except KeyError:
+            return self._record("item_battle_effects", item_id, known=False, values=())
+        if data.effect is None:
+            return self._record("item_battle_effects", item_id, known=False, values=())
+        return self._record(
+            "item_battle_effects",
+            item_id,
+            known=True,
+            values=_battle_effect_values(data.effect),
+        )
+
     def ability(self, ability_id: int) -> LocalRomRecord:
         ability_id = _native_id(ability_id, "ability")
         try:
@@ -388,6 +405,14 @@ def _training_effect_values(effect: ItemEffect) -> tuple[tuple[str, object], ...
         ("pp_up", effect.pp_up),
         ("pp_max", effect.pp_max),
         ("level_up", effect.level_up),
+    )
+
+
+def _battle_effect_values(effect: ItemEffect) -> tuple[tuple[str, object], ...]:
+    return (
+        ("stat_boost", tuple((stat, stages) for stat, stages in effect.stat_boost)),
+        ("focus_energy", effect.focus_energy),
+        ("guard_spec", effect.guard_spec),
     )
 
 
