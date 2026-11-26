@@ -70,7 +70,10 @@ def _lines(path: str, limit: int) -> Iterator[tuple[int, bytes]]:
 
 
 def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
-                 max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA) -> dict[str, Any]:
+                 max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA,
+                 frame_identity: bool = False) -> dict[str, Any]:
+    if type(frame_identity) is not bool:
+        raise ReportError("option frame_identity")
     strata: dict[tuple[Any, ...], dict[str, Any]] = {}
     scanned = records = 0
     for path in paths:
@@ -98,12 +101,19 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                     raise ReportError(f"{path}:{line}: strata limit {max_strata} exceeded")
                 strata[key] = {"records": 0, "attempts_observed": 0, "attempts_failed": 0,
                                "agreement": {"true": 0, "false": 0, "unknown": 0},
+                               "frame_identity": {"true": 0, "false": 0, "unknown": 0},
                                "samples": [], "latency_missing": 0}
             stratum = strata[key]
             stratum["records"] += 1
             stratum[f"attempts_{fields['outcome']}"] += 1
             label = "unknown" if fields["agreement"] is None else str(fields["agreement"]).lower()
             stratum["agreement"][label] += 1
+            if frame_identity:
+                matches = details.get("frame_matches_current")
+                if matches is not None and not isinstance(matches, bool):
+                    raise ReportError(f"{path}:{line}: field frame_matches_current")
+                match_label = "unknown" if matches is None else str(matches).lower()
+                stratum["frame_identity"][match_label] += 1
             if fields["measured_ms"] is None:
                 stratum["latency_missing"] += 1
             else:
@@ -120,6 +130,8 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                    attempts_failed=stratum["attempts_failed"], agreement=stratum["agreement"],
                    measured_ms={"count": len(samples), "missing": stratum["latency_missing"],
                                 "p50": p50, "p95": p95})
+        if frame_identity:
+            row["frame_identity"] = stratum["frame_identity"]
         rows.append(row)
     return {"tool": "shadow_report", "version": 1, "event_type": "decision.systemone.completed",
             "authority": "shadow", "sources": len(paths), "scanned": scanned,
@@ -132,9 +144,10 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("paths", nargs="+", metavar="EVENTS_JSONL")
+    parser.add_argument("--frame-identity", action="store_true")
     args = parser.parse_args(argv)
     try:
-        report = build_report(args.paths)
+        report = build_report(args.paths, frame_identity=args.frame_identity)
     except (ReportError, OSError) as exc:
         detail = (str(exc) if isinstance(exc, ReportError)
                   else f"{exc.filename or 'input'}: cannot read")
