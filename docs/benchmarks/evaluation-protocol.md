@@ -40,7 +40,7 @@ See [JSON schema](scenario-manifest.schema.json) and [synthetic example](scenari
 | choice quality | acceptable labeled proposals / labeled valid proposals, report coverage and invalid rate |
 | verification | verified intended action / executed action-bearing choices, normal adverse game outcomes separate |
 | progress | unique RAM-backed required milestone / logical decisions and wall/game-hour |
-| latency | p50/p95 end-to-end, provider and handoff separately; count timeout separately |
+| latency | p50/p95 end-to-end, provider and handoff separately; count timeout separately. Logged per-outcome field summary: [calibration outcome latency](calibration-outcome-latency.md). |
 | cost | actual HTTP attempts, usage and estimates/receipt incl failed starts; both model layers, missingness |
 | safety/recovery | unauthorized inputs (0 required), stale/illegal rejection, stuck/recovery/wipes/rollback counts |
 | compatibility | exact profile/backend/host, per capability implementation and verification independently |
