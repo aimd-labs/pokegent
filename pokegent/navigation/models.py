@@ -144,6 +144,8 @@ class CapabilityState:
         if key.startswith("flag:"):
             return int(key.split(":", 1)[1], 0) in self.flags
         if key.startswith("var:"):
+            if not self.vars_known:
+                return False
             parts = key.split(":")
             actual = dict(self.vars).get(int(parts[1], 0), 0)
             if len(parts) == 3:
