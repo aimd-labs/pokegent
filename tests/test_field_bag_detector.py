@@ -199,9 +199,13 @@ def test_real_registry_and_catalog_claim_only_the_ready_field_item_list():
     assert _detect(_snapshot(), enabled=False).scene_id == SCENE_UNKNOWN
 
 
-def test_scrolled_list_uses_relative_cursor_plus_scroll_offset():
-    ui = _ui(vector=(2, 0, 0, 1, 0, 0), total_items=4)
-    assert _detect(_snapshot(ui=ui)).scene_id == "bag.items"
+def test_scrolled_cursor_is_relative_to_scroll_offset_and_list_total():
+    # Same bag vector (above=2, cursor=1): absolute row 3 is outside a 3-item
+    # list but valid when the owning list reports 4 items.
+    at_total = _snapshot(ui=_ui(vector=(2, 0, 0, 1, 0, 0), total_items=3))
+    within_total = _snapshot(ui=_ui(vector=(2, 0, 0, 1, 0, 0), total_items=4))
+    assert _detect(at_total).scene_id == SCENE_UNKNOWN
+    assert _detect(within_total).scene_id == "bag.items"
 
 
 def test_unmapped_known_pointer_is_not_a_verified_callback():
@@ -234,7 +238,6 @@ def test_party_shop_battle_and_other_locations_are_not_stolen(location):
         {"bag_open": False},
         {"pocket": 3},
         {"vector": (0, 0)},
-        {"vector": (2, 0, 0, 1, 0, 0)},
         {"vector": (0, 0, 0, 3, 0, 0)},
         {"vector": (0, 0, 0, -1, 0, 0)},
         {"cursor_row": 3},
