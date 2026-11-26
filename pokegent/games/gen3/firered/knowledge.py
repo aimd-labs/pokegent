@@ -152,4 +152,5 @@ def _species_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
     return (
         ("types", tuple(data.types)),
         ("base_stats", tuple((name, stats[name]) for name in _STATS)),
+        ("abilities", (data.abilities[0], data.abilities[1])),
     )

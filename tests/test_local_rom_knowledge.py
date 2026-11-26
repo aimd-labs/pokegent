@@ -245,7 +245,7 @@ def test_species_facts_are_native_and_minimal():
         ("spa", 5),
         ("spd", 6),
     )
-    assert set(values) == {"types", "base_stats"}
+    assert set(values) == {"types", "base_stats", "abilities"}
     assert "national_dex" not in values
     assert "held_item" not in values
     assert "hp" not in values
