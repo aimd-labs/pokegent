@@ -122,6 +122,17 @@ class ReviewedPluginRegistry:
         self._plugins[descriptor.rom_sha1] = (descriptor, plugin)
         self._owners.add(owner)
 
+    def descriptors(self) -> tuple[GamePluginDescriptor, ...]:
+        """Return frozen descriptors captured at register(), sorted by plugin_id."""
+        if not self._enabled:
+            raise PluginRefusal(RefusalCode.DISABLED, "registry is not explicitly enabled")
+        return tuple(
+            sorted(
+                (descriptor for descriptor, _ in self._plugins.values()),
+                key=lambda descriptor: (descriptor.plugin_id, descriptor.rom_sha1),
+            )
+        )
+
     def select(
         self,
         *,
