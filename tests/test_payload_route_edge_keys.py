@@ -74,6 +74,14 @@ def test_route_warp_that_is_an_option_is_kept():
     assert to_system_one_payload(frame)["state"]["navigation"]["route"] == ["warp:3:6:1"]
 
 
+def test_genuine_executor_ref_leak_is_still_caught():
+    frame = _frame(["walk east"])
+    payload = to_system_one_payload(frame)
+    payload["state"]["navigation"] = {"route": ["walk east", "field.edge"]}
+    with pytest.raises(PayloadLeakError):
+        assert_payload_clean(payload, frame)
+
+
 def test_guard_still_rejects_unsanitized_warp_key():
     frame = _frame(["warp:3:6:1"])
     payload = to_system_one_payload(_frame(["walk east"]))
