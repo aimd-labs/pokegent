@@ -115,6 +115,7 @@ def test_capabilities_cover_exactly_the_supplied_source_factories():
         "family_registration",
         "objective_observation",
         "dex_fallback",
+        "story_fallback",
     }
     assert not FIRERED_CAPABILITIES & {"verification", "supported", "input"}
 

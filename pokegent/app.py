@@ -717,6 +717,8 @@ def build_runner(
         )
         if config.dex_fallback:
             required_capabilities += ("dex_fallback",)
+        if config.story_fallback:
+            required_capabilities += ("story_fallback",)
         selection = registry.select(
             rom_bytes=plugin_rom_bytes,
             game="firered",
@@ -752,6 +754,16 @@ def build_runner(
         shop_observation=shop_observation,
         dex_fallback_factory=(
             plugin_services.dex_fallback_factory if plugin_services is not None else None
+        ),
+        story_fallback_factory=(
+            plugin_services.story_fallback_factory
+            if plugin_services is not None and config.story_fallback
+            else None
+        ),
+        story_identity_validator=(
+            plugin_services.story_identity_validator
+            if plugin_services is not None and config.story_fallback
+            else None
         ),
     )
     if session is not None and fresh_snapshot is not None:
@@ -898,6 +910,8 @@ def make_objective_session(
     churn_limit: int = 0,
     shop_observation: Callable[[], Any] | None = None,
     dex_fallback_factory: Callable[[], Any] | None = None,
+    story_fallback_factory: Callable[..., Any] | None = None,
+    story_identity_validator: Callable[..., Any] | None = None,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
     if dex_fallback and story_fallback:
@@ -947,18 +961,28 @@ def make_objective_session(
 
     if story_fallback or (not dex_fallback and session is not None
                           and isinstance(session.fallback, StoryFallback)):
-        from pokegent.goals.story import load_progression
-        from pokegent.goals.story_identity import verify_identity
+        if story_fallback_factory is None:
+            from pokegent.games.gen3.firered.story import make_story_fallback
+
+            story_factory = make_story_fallback
+        else:
+            story_factory = story_fallback_factory
+        if story_identity_validator is None:
+            from pokegent.games.gen3.firered.story import verify_story_identity
+
+            story_validator = verify_story_identity
+        else:
+            story_validator = story_identity_validator
 
         try:
             if story_fallback:
-                fallback = load_progression(
-                    path=Path(story_path).expanduser() if story_path else None,
-                    directory=store.directory,
+                fallback = story_factory(
+                    Path(story_path).expanduser() if story_path else None,
+                    store.directory,
                 )
             else:
                 fallback = session.fallback
-            verify_identity(fallback.graph, rom_path)
+            story_validator(fallback.graph, rom_path)
         except (ValueError, TypeError):
             raise AppError("story fallback requires valid private progression data",
                            EXIT_ENVIRONMENT) from None

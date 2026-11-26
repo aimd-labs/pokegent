@@ -22,8 +22,8 @@ FIRERED_GAME_CODE = "BPRE"
 FIRERED_ROM_VERSION = 0
 #: Only what this composition actually supplies: the existing adapter's readers/rules, the
 #: existing composite snapshot source, the game-owned menu/family constructors, the fresh
-#: objective observation helper, and the game-owned Dex fallback factory. No verification,
-#: input, support or title promotion.
+#: objective observation helper, the game-owned Dex fallback factory, and the game-owned story
+#: fallback/identity callables. No action verification, input, support or title promotion.
 FIRERED_CAPABILITIES = frozenset(
     {
         "snapshot_source",
@@ -32,6 +32,7 @@ FIRERED_CAPABILITIES = frozenset(
         "family_registration",
         "objective_observation",
         "dex_fallback",
+        "story_fallback",
     }
 )
 
@@ -47,6 +48,8 @@ class FireRedServices:
     family_registration_factory: Callable[..., Any]
     objective_observation_factory: Callable[..., Any]
     dex_fallback_factory: Callable[..., Any]
+    story_fallback_factory: Callable[..., Any]
+    story_identity_validator: Callable[..., Any]
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -97,6 +100,10 @@ class FireRedPlugin:
         from pokegent.games.gen3.firered.objectives import make_dex_fallback
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
         from pokegent.games.gen3.firered.reader.snapshot_sources import CompositeSnapshotSource
+        from pokegent.games.gen3.firered.story import (
+            make_story_fallback,
+            verify_story_identity,
+        )
 
         adapter = FireRedAdapter(profile=self._profile)
         return FireRedServices(
@@ -107,4 +114,6 @@ class FireRedPlugin:
             family_registration_factory=register_families,
             objective_observation_factory=make_objective_observation_services,
             dex_fallback_factory=make_dex_fallback,
+            story_fallback_factory=make_story_fallback,
+            story_identity_validator=verify_story_identity,
         )
