@@ -101,6 +101,7 @@ See [connect your own agent or model](docs/connect-your-agent.md),
 and [contracts](docs/contracts.md). Copy `pokegent.example.yaml` to ignored `pokegent.yaml`
 for local configuration. Keep credentials in environment variables.
 See [local run ledger commands](docs/run-ledger.md) for explicit ingestion, queries and splits.
+See the [event SDK](docs/event-sdk.md) for bounded, metadata-only event pages.
 
 ## Built live on stream
 
