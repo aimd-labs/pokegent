@@ -146,6 +146,23 @@ def test_malformed_documents_fail_without_echoing_records(document):
     assert "xxxxx" not in str(caught.value)
 
 
+@pytest.mark.parametrize("total_count", [None, 3, 5, True, "4", -1, checks.MAX_CHECKS + 1])
+def test_total_count_must_be_a_bounded_integer_equal_to_the_rows(total_count):
+    document = ready_document()
+    if total_count is None:
+        del document["total_count"]
+    else:
+        document["total_count"] = total_count
+    with pytest.raises(checks.CheckInputError):
+        checks.evaluate(document, head=HEAD, required=["unit", "docs"])
+
+
+def test_zero_total_count_with_no_rows_reports_required_checks_missing():
+    report = checks.evaluate({"total_count": 0, "check_runs": []}, head=HEAD, required=["gate"])
+    assert report["ready"] is False
+    assert states(report) == {"gate": "missing"}
+
+
 def test_bounds_are_checked_before_parsing(tmp_path):
     too_many = {"check_runs": [run("gate")] * (checks.MAX_CHECKS + 1)}
     with pytest.raises(checks.CheckInputError):
@@ -169,7 +186,8 @@ def test_cli_ready_exit_zero_and_deterministic_json(tmp_path):
 
 
 def test_cli_not_ready_exit_one(tmp_path):
-    document = {"check_runs": [run("gate", status="in_progress", conclusion=None)]}
+    document = {"total_count": 1,
+                "check_runs": [run("gate", status="in_progress", conclusion=None)]}
     result = cli(tmp_path, document, "--head", HEAD, "--required", "gate")
     assert result.returncode == 1
     assert json.loads(result.stdout)["ready"] is False
@@ -188,6 +206,16 @@ def test_cli_unreadable_or_invalid_input_exit_two_without_stdout(tmp_path):
                              "--required", "gate"], capture_output=True, text=True, timeout=30)
     assert result.returncode == 2 and result.stdout == ""
     assert "not json" not in result.stderr
+
+
+def test_cli_count_mismatch_exit_two_without_echoing_the_count(tmp_path):
+    document = ready_document()
+    document["total_count"] = 1234
+    result = cli(tmp_path, document, "--head", HEAD, "--required", "unit")
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.startswith("required-check evaluation failed: ")
+    assert "1234" not in result.stderr
 
 
 def test_cli_deeply_nested_json_is_typed_input_error(tmp_path):
