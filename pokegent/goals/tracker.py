@@ -157,6 +157,9 @@ class ObjectiveTracker:
     sink: ProgressSink | None = None
     tables: Any = None
     stuck_after: int = 120
+    #: Objective revisions that may arrive while the emulator frame is frozen before one
+    #: ``progress.stuck`` is reported; 0 keeps the pre-churn behavior exactly.
+    churn_limit: int = 0
     reviews: deque[ReviewRequest] = field(default_factory=lambda: deque(maxlen=64))
     _idle: int = 0
     _stuck_reported: bool = False
@@ -166,11 +169,17 @@ class ObjectiveTracker:
     _revision: int = 0
     _resolved: ResolvedObjective | None = None
     _completed: bool = False
+    _churn_frame: int | None = None
+    _churn_changes: int = 0
+    _churn_reported: bool = False
 
     def __post_init__(self) -> None:
         if (isinstance(self.stuck_after, bool) or not isinstance(self.stuck_after, int)
                 or self.stuck_after < 1):
             raise ValueError("objective_stuck_after must be an integer >= 1")
+        if (isinstance(self.churn_limit, bool) or not isinstance(self.churn_limit, int)
+                or (self.churn_limit != 0 and self.churn_limit < 2)):
+            raise ValueError("objective_churn_limit must be 0 (off) or an integer >= 2")
 
     # -- the objective ----------------------------------------------------------------------------
 
@@ -197,6 +206,8 @@ class ObjectiveTracker:
         if (new_rev == self._revision and (old is None) == (resolved is None)
                 and (old is None or old.objective.objective_id == resolved.objective.objective_id)):
             return []
+        if self.churn_limit and self._churn_frame is not None:
+            self._churn_changes = min((1 << 31) - 1, self._churn_changes + 1)
         self._resolved = resolved
         self._revision = new_rev
         self._completed = False
@@ -225,7 +236,12 @@ class ObjectiveTracker:
             # A stale completion is not evidence on an unusable frame.  The next usable
             # snapshot must recompute the probes before the session can stop or advance.
             self._completed = False
+            if self.churn_limit:
+                self._reset_churn()
             return tuple(events)
+        churn_fired = (
+            self._note_churn_frame(snapshot.emulator_frame) if self.churn_limit else False
+        )
         resolved = self._resolved
         if resolved is None:
             return tuple(events)
@@ -245,6 +261,15 @@ class ObjectiveTracker:
                     self._details(resolved, satisfied, len(probes), partial=False),
                 )
             )
+        if churn_fired and not self._churn_reported:
+            details = {"objective_id": resolved.objective.objective_id,
+                       "revision": resolved.objective.revision,
+                       "reason": "objective_churn",
+                       "churn_changes": self._churn_changes,
+                       "emulator_frame": self._churn_frame}
+            events.append(self._event(STUCK, details))
+            self._churn_reported = True
+            self.note_stuck(details)
         if not self._completed and resolved.objective.kind != "hold":
             progress = self._note_progress(snapshot) or satisfied > self._satisfied_count
             self._satisfied_count = max(self._satisfied_count, satisfied)
@@ -260,6 +285,19 @@ class ObjectiveTracker:
         else:
             self._idle = 0
         return tuple(events)
+
+    def _reset_churn(self) -> None:
+        self._churn_frame, self._churn_changes, self._churn_reported = None, 0, False
+
+    def _note_churn_frame(self, frame: int | None) -> bool:
+        """Track goal churn against real emulator frames; True when the limit is reached."""
+        if frame is None:  # an unknown frame cannot prove a freeze
+            self._reset_churn()
+            return False
+        if self._churn_frame != frame:  # first frame or real advance: a new incident
+            self._churn_frame, self._churn_changes, self._churn_reported = frame, 0, False
+            return False
+        return not self._churn_reported and self._churn_changes >= self.churn_limit
 
     def _note_progress(self, snapshot: StateSnapshot) -> bool:
         progress = False
