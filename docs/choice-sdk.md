@@ -2,8 +2,9 @@
 
 `pokegent.sdk.ChoiceSdk` validates one offered choice against one observation, locally: no
 snapshot read, backend, reader, executor or callback call, game input, network, MCP or other
-transport. It is not wired into the Runner; objectives use the separate opt-in `ObjectiveSdk`
-below, while progress and events are unimplemented.
+transport. It is not wired into the Runner; objectives, progress and events are separate
+opt-in facades: `ObjectiveSdk` and `ProgressSdk` below, and `EventSdk` in its
+[event SDK guide](event-sdk.md).
 
 ## Prerequisites
 
