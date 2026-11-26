@@ -3,10 +3,14 @@
 An attributed outcome joins one accepted decision claim, one real ``action.started`` and one
 terminal event by ``(run_id, request_id)`` with matching option ids. ``verified`` counts only
 ``details.verified is True`` and ``progressed`` only ``details.progressed is True``; no event
-name, shadow agreement or provider result is proof. No provider, network, scan, write or authority.
+name, shadow agreement or provider result is proof. ``measured_ms`` describes only the accepted
+claim's emitted measurement, excludes missing values and uses nearest-rank percentiles over the
+sorted non-missing samples (ceil(p*count)-1, no interpolation). No provider, network, scan,
+write or authority.
 """
 import argparse
 import json
+import math
 import sys
 from collections.abc import Iterator, Mapping
 from typing import Any
@@ -18,8 +22,9 @@ DECISIONS = {"decision.agent.completed", "decision.systemone.completed", "decisi
 TERMINALS = {"action.verified", "action.failed", "action.interrupted", "option.rejected"}
 NOTE = ("Denominator is attributed terminal actions (one accepted claim, one real action.started, "
         "matching run/request/option ids). verified/progressed count only explicit details true; "
-        "an action.verified event is not proof. Accuracy, story completion, durable outcomes and "
-        "eligibility are not evaluated.")
+        "an action.verified event is not proof. measured_ms is the emitted accepted claim "
+        "measurement, missing values excluded, nearest-rank p50/p95 without interpolation. "
+        "Accuracy, story completion, durable outcomes and eligibility are not evaluated.")
 
 
 class ReportError(Exception):
@@ -38,6 +43,20 @@ def _bool(value: Any, path: str, line: int, field: str) -> Any:
     if value is not None and type(value) is not bool:
         raise ReportError(f"{path}:{line}: field {field}")
     return value
+
+
+def _latency(value: Any, path: str, line: int) -> float | None:
+    """A missing measurement is None; anything else must be a finite non-negative number."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        number = -1.0
+    if (isinstance(value, bool) or type(value) not in (int, float)
+            or not math.isfinite(number) or number < 0):
+        raise ReportError(f"{path}:{line}: field measured_ms")
+    return number
 
 
 def _optional(value: Any, path: str, line: int, field: str) -> str | None:
@@ -69,7 +88,8 @@ def _fields(event_type: Any, record: dict[str, Any], path: str, line: int):
         return 0, run_id, request_id, (
             _text(details.get("option_id"), path, line, "option_id"),
             _optional(record.get("provider"), path, line, "provider"),
-            _optional(details.get("model_id"), path, line, "model_id"))
+            _optional(details.get("model_id"), path, line, "model_id"),
+            _latency(details.get("measured_ms"), path, line))
     if event_type == "action.started":
         return 1, run_id, request_id, (
             _text(details.get("option_id"), path, line, "option_id"),
@@ -138,12 +158,17 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                         raise ReportError(f"{path}:{line}: strata limit {max_strata} exceeded")
                     row = strata[row_key] = [0, dict.fromkeys(STATUSES, 0),
                                              {"true": 0, "false": 0, "unknown": 0},
-                                             {"true": 0, "false": 0, "unknown": 0}, 0]
+                                             {"true": 0, "false": 0, "unknown": 0}, 0,
+                                             [[], 0]]
                 row[0] += 1
                 row[1][values[1]] += 1
                 row[2]["unknown" if values[2] is None else str(values[2]).lower()] += 1
                 row[3]["unknown" if values[3] is None else str(values[3]).lower()] += 1
                 row[4] += values[2] is True and values[3] is True
+                if claim[3] is None:
+                    row[5][1] += 1
+                else:
+                    row[5][0].append(claim[3])
                 records += 1
                 continue
             if key in finished:
@@ -160,9 +185,17 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
     rows = []
     names = ("run_id", "scene_id", "source", "provider", "model_id")
     for key in sorted(strata, key=lambda k: tuple((v is not None, v or "") for v in k)):
+        count, status, verified, progressed, both, latency = strata[key]
+        samples = sorted(latency[0])
         row = dict(zip(names, key))
-        row.update(zip(("terminal_actions", "status", "verified", "progressed",
-                        "verified_progressed"), strata[key]))
+        row.update(
+            terminal_actions=count, status=status, verified=verified, progressed=progressed,
+            verified_progressed=both,
+            measured_ms={"count": len(samples), "missing": latency[1],
+                         "p50": float(samples[max(1, math.ceil(.5 * len(samples))) - 1])
+                         if samples else None,
+                         "p95": float(samples[max(1, math.ceil(.95 * len(samples))) - 1])
+                         if samples else None})
         rows.append(row)
     return {"tool": "action_outcomes", "version": 1, "sources": len(paths),
             "scanned": scanned, "records": records, "no_records": records == 0,
