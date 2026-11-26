@@ -141,8 +141,11 @@ from that commit.
 ## Required check evidence
 
 `tools/check_required_checks.py` evaluates a complete GitHub REST check-runs export for one exact
-head. Export all pages of `GET /repos/{owner}/{repo}/commits/{ref}/check-runs` to a local file;
-the tool reads only that file and does not call GitHub. Name each required check exactly:
+head. The input is one JSON object with a `check_runs` list and a plain-integer `total_count` equal
+to `len(check_runs)`; the list is capped at 5000 rows. Combine every page's rows from
+`GET /repos/{owner}/{repo}/commits/{ref}/check-runs` into that one object. A concatenation of
+paginated response objects is not valid input. The tool reads only the file and does not call
+GitHub. Name each required check exactly:
 
 ```sh
 python -m tools.check_required_checks /path/to/check-runs.json --head HEAD_SHA \
