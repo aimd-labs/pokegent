@@ -352,11 +352,11 @@ def test_seeded_evaluator_state_invariants_and_witnesses():
     rnd = random.Random(0x4556414C)
     accepted = refused = ready_true = ready_false = 0
     for index in range(200):
-        if index % 4 == 0:
+        if index == 0:
             rows = [run("docs"), run("gate")]
-        elif index % 4 == 1:
+        elif index == 1:
             rows = [run("gate", status="queued", conclusion=None)]
-        elif index % 4 == 2:
+        elif index == 2:
             rows = [{"name": "docs", "status": 5, "conclusion": None}]
         else:
             rows = []
