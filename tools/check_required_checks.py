@@ -39,6 +39,11 @@ def evaluate(document, head, required):
     rows = document["check_runs"]
     if len(rows) > MAX_CHECKS:
         raise CheckInputError("check_runs exceeds the supported count")
+    total_count = document.get("total_count")
+    if type(total_count) is not int or not 0 <= total_count <= MAX_CHECKS:
+        raise CheckInputError("total_count must be a bounded nonnegative integer")
+    if total_count != len(rows):
+        raise CheckInputError("check_runs count does not match total_count")
     exact = {}
     unknown = set()
     for index, row in enumerate(rows):
