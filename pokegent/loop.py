@@ -1913,6 +1913,14 @@ class Runner:
                 "measured_ms": shadow.get("measured_ms"),
                 "accepted": False,
                 "authority": "shadow",
+                # The identity the shadow claim was captured against, not the frame that
+                # happens to be current now: an agent refresh must not rewrite it.
+                "snapshot_seq": shadow.get("snapshot_seq"),
+                "state_fingerprint": shadow.get("state_fingerprint"),
+                "goal_id": shadow.get("goal_id"),
+                "goal_revision": shadow.get("goal_revision"),
+                "current_decision_id": frame.decision_id,
+                "frame_matches_current": self._same_shadow_frame(shadow, frame),
                 "agreement": agreement,
                 "accuracy": "unknown",
                 "agent_option_id": chosen.option_id if chosen is not None else None,
