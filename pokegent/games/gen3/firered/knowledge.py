@@ -2,10 +2,10 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``species_training``/``national_dex``/``item``/``item_restoration``/
-``item_training``/``ability``/``type``/``evolution``/``tmhm`` questions from those tables. Not a
-database, cache or plugin registration or a verification claim: the game/profile/ROM labels are
-caller assertions, not digest or live proof.
+native ``move``/``species``/``species_training``/``species_encounter``/``national_dex``/
+``item``/``item_restoration``/``item_training``/``ability``/``type``/``evolution``/``tmhm``
+questions from those tables. Not a database, cache or plugin registration or a verification
+claim: the game/profile/ROM labels are caller assertions, not digest or live proof.
 """
 
 from __future__ import annotations
@@ -112,6 +112,20 @@ class FireRedKnowledge:
             species_id,
             known=True,
             values=_training_values(data),
+        )
+
+    def species_encounter(self, species_id: int) -> LocalRomRecord:
+        """Decoded per-species encounter-parameter subset for one existing native species row."""
+        species_id = _native_id(species_id, "species")
+        try:
+            data = self._tables.species(species_id)
+        except KeyError:
+            return self._record("species_encounter", species_id, known=False, values=())
+        return self._record(
+            "species_encounter",
+            species_id,
+            known=True,
+            values=_encounter_values(data),
         )
 
     def national_dex(self, species_id: int) -> LocalRomRecord:
@@ -321,6 +335,15 @@ def _training_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
         ("ev_yield", (hp, atk, defense, spe, spa, spd)),
         ("growth_rate", data.growth_rate),
         ("friendship", data.friendship),
+    )
+
+
+def _encounter_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
+    return (
+        ("catch_rate", data.catch_rate),
+        ("item_common", data.item_common),
+        ("item_rare", data.item_rare),
+        ("safari_flee_rate", data.safari_flee_rate),
     )
 
 
