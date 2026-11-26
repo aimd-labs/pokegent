@@ -2073,16 +2073,18 @@ def run_offline(
     # Load static tables before the bridge accepts the first objective request.
     early_objective_directory = None
     try:
+        from pokegent.games.gen3.firered.navigation import make_objective_directory
         from pokegent.games.gen3.firered.rom.rom_data import (
             identify_rom_file,
             load_profiles,
             require_supported,
         )
-        from pokegent.goals.directory import RomMapDirectory
 
         profiles = load_profiles()
         early_profile = require_supported(identify_rom_file(rom, profiles), profiles)
-        early_objective_directory = RomMapDirectory(Path(rom).read_bytes(), early_profile)
+        early_objective_directory = make_objective_directory(
+            Path(rom).read_bytes(), early_profile
+        )
     except Exception as exc:
         log(f"WARNING objective ROM tables unavailable before bridge start: {exc}")
 
