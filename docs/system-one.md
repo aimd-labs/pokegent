@@ -126,3 +126,82 @@ An owner-requested model switch follows a controlled single-writer boundary:
    explicit owner reconciliation; do not delete history, promote a successor blindly or keep
    restarting the supervisor. Routine review does not authorize service restarts or changes
    to the owner agent session's model settings.
+
+## Labeled choice evaluation (default off)
+
+PR #267 adds a local evaluation API in `addons/system_one/evaluation.py` for real
+`DecisionFrame`/`ChoiceResult` pairs. It is not connected to the runner or a config flag,
+makes no provider call, and grants no authority. `evaluate_labeled_choices(cases)` is inert
+unless called with `enabled=True`.
+
+Each `LabeledChoiceCase` pairs a frame, an optional result, acceptable option IDs and a
+`family_id`. Labels must be a nonempty `frozenset` of visible option IDs; `None` means the
+label is unknown. Unknown-label cases stay out of label denominators but remain in
+`supplied`. A result is valid only when its `decision_id` matches the frame and
+`check_choice` accepts the option against the visible set, so a missing or hidden option is
+invalid. A duplicate `(run_id, decision_id, provider, model)` case is rejected. Input is
+capped at 1000 cases, 256 label IDs and 128 characters per identity string. A
+no-prediction row has unknown provider and model identity.
+
+The two rates answer different questions. `acceptable_choice_rate` divides acceptable valid
+labeled choices by labeled valid choices, a conditional accuracy over supplied labels.
+`labeled_case_success_rate` divides by every labeled case, so invalid choices and no
+predictions remain in its denominator. Family counts count distinct supplied or labeled
+`family_id` values; they are not independent trials. Labels and family grouping are caller
+supplied and not certified, and the report is not a safety proof. Eligibility is
+`not_evaluated`, `authority_granted` is false, and no Wilson interval, threshold or stage
+promotion follows from the result.
+
+This local API is separate from `hybrid.shadow`, which makes one observational provider call
+during a run ([configuration](configuration.md)), and from the `frame_choice_validity`
+logging switch, which only records `check_choice`'s verdict in
+[provider.py](../addons/system_one/provider.py). It does not change default, shadow or hybrid
+behavior and does not claim guarded or expanded implementation. Tests live in
+[test_labeled_choice_evaluation.py](../tests/test_labeled_choice_evaluation.py).
+
+Example, using synthetic IDs with two visible legal options, four distinct decision IDs in
+one supplied family and labels `{tap:a}`. This is a synthetic sanity case, not independent
+calibration data:
+
+```python
+from addons.system_one.evaluation import LabeledChoiceCase, evaluate_labeled_choices
+from pokegent.options.models import ChoiceResult, DecisionFrame, Legality, Option
+
+OPTIONS = (
+    Option(id="tap:a", label="Legal A", legality=Legality.LEGAL, executor_ref="test.action"),
+    Option(id="tap:b", label="Legal B", legality=Legality.LEGAL, executor_ref="test.action"),
+)
+
+
+def frame(decision_id):
+    return DecisionFrame(
+        decision_id=decision_id, run_id="run-synthetic", snapshot_seq=0,
+        scene_id="field.synthetic", scene_confidence=1.0,
+        state_fingerprint="sha256:" + "0" * 64, options=OPTIONS,
+    )
+
+
+def case(decision_id, option_id):
+    result = None if option_id is None else ChoiceResult(
+        option_id=option_id, decision_id=decision_id,
+        provider_id="synthetic-provider", model_id="synthetic-model",
+    )
+    return LabeledChoiceCase(frame(decision_id), result, frozenset({"tap:a"}), "family-synthetic")
+
+
+cases = (case("dec-a", "tap:a"), case("dec-b", "tap:b"),
+         case("dec-c", "tap:missing"), case("dec-d", None))
+disabled = evaluate_labeled_choices(cases)
+assert disabled["enabled"] is False and disabled["evaluated"] is False
+report = evaluate_labeled_choices(cases, enabled=True)
+assert report["counts"] == {
+    "supplied": 4, "labeled": 4, "unknown_label": 0, "no_prediction": 1,
+    "invalid_choice": 1, "valid_choice": 2, "labeled_valid_choice": 2,
+    "acceptable_choice": 1,
+}
+assert report["rates"]["acceptable_choice_rate"] == 0.5
+assert report["rates"]["labeled_case_success_rate"] == 0.25
+assert report["supplied_family_count"] == 1
+assert report["labeled_family_count"] == 1
+assert report["eligibility"] == "not_evaluated" and not report["authority_granted"]
+```
