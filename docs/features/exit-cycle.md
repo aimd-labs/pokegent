@@ -20,7 +20,8 @@ alone is never enough: the block must contain three distinct ids, exactly two
 `warp:`/`edge:` exits, one `strength:` action, and exactly two map identities. The
 pre-action maps must follow the real two-floor shape: first map different from the second,
 with the second and third equal (`A -> B -> B`); the post-action closure then proves the
-return to `A`. A wrong transition, such as strength staying on `A`, is not this shape.
+return to `A`. A wrong transition such as `A -> A -> B` would imply that strength
+changed maps between the first two actions; that is not this shape.
 
 A map key is supplied only from a usable snapshot whose map identity is ROM-verified and
 whose player position is consistent. Anything less clears the new ring and makes the guard

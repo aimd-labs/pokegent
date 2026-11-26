@@ -171,7 +171,7 @@ def test_wrong_map_transition_does_not_fire():
         ("strength:b:1", "sig-B", (1, 1)),
         ("warp:c:1", "sig-C", (2, 2)),
     ))
-    _close_cycle(m)  # closure alone is not enough: strength must move A -> B
+    _close_cycle(m)  # closure alone is not enough: strength must stay on B after the first warp
     assert m.due_reason() is None
 
 
