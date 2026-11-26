@@ -18,6 +18,8 @@ Per-species training parameters have [their own page](local-species-training-kno
 
 Item training facts have [their own page](local-item-training-knowledge.md).
 
+Per-species encounter parameters have [their own page](local-species-encounter-knowledge.md).
+
 ## Contract
 
 Construct it as `FireRedKnowledge(selection, tables, *, enabled=False)`. `selection` is a
