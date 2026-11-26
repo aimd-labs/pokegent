@@ -3,6 +3,8 @@
 Status: documentation for the default-off `pokegent.evaluation_campaign` helper. It consumes
 caller-supplied labels only; this is not a benchmark result and grants nothing.
 
+See [parsed manifest batch summary](manifest-batch-summary.md) for the dictionary-batch wrapper.
+
 ## Scope
 
 `summarize_attempts(attempts, *, enabled=False)` turns `CampaignAttempt` records into counts and
