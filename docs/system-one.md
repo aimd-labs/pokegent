@@ -296,6 +296,17 @@ else:
     raise AssertionError("duplicate observation must be rejected")
 ```
 
+## Opt-in family breakdown
+
+Pass `family_breakdown=True` with `enabled=True` to add a top-level
+`family_strata` list. Each row groups by `family_id` plus the same scene,
+provider, model and comparison-context dimensions as `strata`, with the same counters.
+Rows are sorted deterministically and sum to the global `counts`; a no-prediction
+case stays in the unknown-provider/model bucket. The flag is default-off, adds no
+key when omitted or disabled, and rejects non-bool values. These rows are diagnostic
+grouping of caller-supplied family labels, not independent trials, calibration,
+Wilson bounds, eligibility or authority.
+
 ## Shadow frame-identity report (opt-in)
 
 `tools/shadow_report.py` can count frame identity separately from agreement. The default
