@@ -25,6 +25,56 @@ def _bag_item_quantity(snapshot, item_id: int) -> int:
     )
 
 
+#: pret/pokefirered 037335f4 include/constants/items.h 121..132; mail_data.c ItemIsMail is
+#: true exactly for those ids and false otherwise.  Public game facts, not table reads.
+MAIL_ITEM_IDS = frozenset(range(121, 133))
+
+
+def _swap_binding(
+    snapshot,
+    *,
+    selected_slot,
+    target_personality,
+    old_held,
+    item_id,
+    bag_count,
+    pre_action,
+) -> bool:
+    """Prove the prompt is the swap question for THIS member/item from owned transition facts."""
+    if not 1 <= item_id <= 65535 or item_id in MAIL_ITEM_IDS:
+        return False
+    if old_held in (0, item_id) or old_held in MAIL_ITEM_IDS:
+        return False
+    if not _party_prompt_candidate(snapshot):
+        return False
+    ui = snapshot.ui
+    party, menu, yes_no, text = ui.menu.party, ui.menu.menu, ui.menu.yes_no, ui.text
+    callback = ui.main.callback2
+    mon = next((member for member in snapshot.party if member.slot == selected_slot), None)
+    script = ui.script
+    if callback is None or callback.name != "CB2_UpdatePartyMenu" or callback.verified is not True:
+        return False
+    if party.slot_id != selected_slot or party.item_id != item_id:
+        return False
+    # The source preserves gPartyMenu.action across CursorCB_Give/CB2_GiveHoldItem.  Require the
+    # same proven pre-give action (START-party choose_mon or give_item), never a synthesized one.
+    if pre_action is None or party.action_name != pre_action:
+        return False
+    if mon is None or mon.personality != target_personality or mon.held_item != old_held:
+        return False
+    if _bag_item_quantity(snapshot, item_id) != bag_count:
+        return False
+    if script is not None and (script.running is True or script.controls_locked is True):
+        return False
+    if text is None or text.valid is not True:
+        return False
+    if yes_no is None or yes_no.window_in_use is not True or menu.cursor_pos != 0:
+        return False
+    if menu.window_id != yes_no.window_id:
+        return False
+    return any(window.window_id == yes_no.window_id for window in text.windows)
+
+
 def _party_prompt_candidate(snapshot) -> bool:
     """A live two-entry party prompt on the give return path, used only to STOP.
 
@@ -123,11 +173,12 @@ def select(ctx: StepContext):
         if not isinstance(item_id, int):
             raise RuntimeError("give-item action has no verified item id")
         selected_slot = ctx.snapshot.ui.menu.party.slot_id  # type: ignore[union-attr]
-        target_personality = next(
-            (mon.personality for mon in ctx.snapshot.party if mon.slot == selected_slot), None
-        )
-        if target_personality is None:
+        target = next((mon for mon in ctx.snapshot.party if mon.slot == selected_slot), None)
+        if target is None:
             raise RuntimeError("party member disappeared before giving the item")
+        target_personality = target.personality
+        old_held = target.held_item
+        pre_action = getattr(ctx.snapshot.ui.menu.party, "action_name", None)
 
         def bag_ready(current):
             ui = current.snapshot.ui
@@ -209,18 +260,35 @@ def select(ctx: StepContext):
         def prompt_candidate(current) -> bool:
             return _party_prompt_candidate(current.snapshot)
 
+        def swap_bound(current) -> bool:
+            return _swap_binding(
+                current.snapshot,
+                selected_slot=selected_slot,
+                target_personality=target_personality,
+                old_held=old_held,
+                item_id=item_id,
+                bag_count=bag_count,
+                pre_action=pre_action,
+            )
+
         observation = yield WaitUntil(
             lambda current: give_applied(current)
+            or swap_bound(current)
             or prompt_candidate(current)
             or _party_input_ready(current),
             max_frames=600,
             failure_reason="party give did not reach a transfer or party menu",
         )
-        if not give_applied(observation) and prompt_candidate(observation):
-            # Existing-held give needs a YES the profile cannot bind to the swap question or the
-            # requested member/item.  Missing identity evidence: Task_SwitchItemsYesNo symbol,
-            # the prompt's text-to-menu binding, and slot_id/member/item corroboration.  Stop with
-            # zero confirmation; the verifier never sees an unproven swap.
+        if not give_applied(observation) and swap_bound(observation):
+            observation = yield Tap("a", hold_frames=4, wait_frames=20)
+            observation = yield WaitUntil(
+                lambda current: give_applied(current) or _party_input_ready(current),
+                max_frames=600,
+                failure_reason="swap YES did not return to the party menu",
+            )
+        elif not give_applied(observation) and prompt_candidate(observation):
+            # No proven swap binding: zero confirmation.  Every identity premise (callback, slot,
+            # PID, old/current item, bag count, YES/NO window) must hold before the single YES.
             yield Interrupt(
                 "party give reached an unverified swap prompt; refusing YES without a proven "
                 "prompt/member/item binding"
