@@ -70,22 +70,18 @@ def _metadata(path, archive, members, limit) -> dict[str, str | None]:
         except UnicodeDecodeError:
             _fail(path, f"{name} is not UTF-8")
 
-    def field(message, name: str) -> str:
+    def field(message, name: str, required: bool = True) -> str | None:
         values = [value.strip() for value in message.get_all(name) or []]
-        if len(values) != 1 or not values[0]:
+        if len(values) > 1 or (values and not values[0]) or (required and not values):
             _fail(path, f"missing or ambiguous metadata {name}")
-        return values[0]
+        return values[0] if values else None
 
     metadatas, wheel = read("METADATA"), read("WHEEL")
     return {"name": field(metadatas, "Name"), "version": field(metadatas, "Version"),
-            "generator": field(wheel, "Generator")}
+            "generator": field(wheel, "Generator", required=False)}
 
 
-def _file_rows(path, archive, members, max_member, max_total) -> list[dict]:
-    files = [info for info in members if not info.is_dir()]
-    if (any(info.file_size > max_member for info in files)
-            or sum(info.file_size for info in files) > max_total):
-        _fail(path, "declared member or total exceeds byte limit")
+def _file_rows(path, archive, files, max_member, max_total) -> list[dict]:
     rows, total = [], 0
     for info in files:
         digest, size = hashlib.sha256(), 0
@@ -104,7 +100,7 @@ def _file_rows(path, archive, members, max_member, max_total) -> list[dict]:
 
 
 def build_manifest(path: str | Path, *, source_commit: str) -> dict:
-    if not COMMIT_RE.fullmatch(source_commit):
+    if not isinstance(source_commit, str) or not COMMIT_RE.fullmatch(source_commit):
         raise ManifestError("source commit must be 40 lowercase hex characters")
     wheel = Path(path)
     with open(wheel, "rb") as handle:
@@ -117,8 +113,12 @@ def build_manifest(path: str | Path, *, source_commit: str) -> dict:
         _fail(wheel, "not a readable ZIP wheel")
     with archive:
         members = _checked_members(wheel, archive, MAX_MEMBERS)
+        files = [info for info in members if not info.is_dir()]
+        if (any(info.file_size > MAX_MEMBER_BYTES for info in files)
+                or sum(info.file_size for info in files) > MAX_TOTAL_BYTES):
+            _fail(wheel, "declared member or total exceeds byte limit")
         metadata = _metadata(wheel, archive, members, MAX_METADATA_BYTES)
-        rows = _file_rows(wheel, archive, members, MAX_MEMBER_BYTES, MAX_TOTAL_BYTES)
+        rows = _file_rows(wheel, archive, files, MAX_MEMBER_BYTES, MAX_TOTAL_BYTES)
     return {
         "tool": "wheel_manifest", "version": 1,
         "wheel": {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)},

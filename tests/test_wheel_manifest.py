@@ -214,10 +214,27 @@ def test_generator_comes_from_the_dist_info_wheel_file(tmp_path):
     }
 
 
-def test_missing_wheel_generator_is_rejected(tmp_path):
+def test_missing_wheel_file_is_rejected(tmp_path):
     wheel = write_wheel(tmp_path / "no-wheel.whl", wheel_file=None)
 
     with pytest.raises(manifest.ManifestError, match="missing"):
+        manifest.build_manifest(wheel, source_commit=COMMIT)
+
+
+def test_optional_wheel_generator_reports_none(tmp_path):
+    wheel_file = WHEEL_TEXT.replace("Generator: synthetic-builder (1.0)\n", "")
+    wheel = write_wheel(tmp_path / "no-generator.whl", wheel_file=wheel_file)
+
+    report = manifest.build_manifest(wheel, source_commit=COMMIT)
+    assert report["dist_info"]["generator"] is None
+
+
+def test_blank_wheel_generator_is_rejected(tmp_path):
+    wheel_file = WHEEL_TEXT.replace(
+        "Generator: synthetic-builder (1.0)\n", "Generator:   \n")
+    wheel = write_wheel(tmp_path / "blank-generator.whl", wheel_file=wheel_file)
+
+    with pytest.raises(manifest.ManifestError, match="Generator"):
         manifest.build_manifest(wheel, source_commit=COMMIT)
 
 
@@ -228,6 +245,16 @@ def test_ambiguous_wheel_generator_is_rejected(tmp_path):
 
     with pytest.raises(manifest.ManifestError, match="ambiguous"):
         manifest.build_manifest(wheel, source_commit=COMMIT)
+
+
+def test_declared_bounds_are_checked_before_metadata_reading(tmp_path, monkeypatch):
+    metadata = METADATA.replace("Version: 0.1.0\n", "Version: one\nVersion: two\n")
+    wheel = write_wheel(tmp_path / "ordering.whl", metadata=metadata)
+    monkeypatch.setattr(manifest, "MAX_MEMBER_BYTES", 8)
+
+    with pytest.raises(manifest.ManifestError, match="declared member") as caught:
+        manifest.build_manifest(wheel, source_commit=COMMIT)
+    assert "metadata" not in str(caught.value)
 
 
 def test_wheel_size_limit_is_checked_before_reading(tmp_path, monkeypatch):
@@ -275,7 +302,8 @@ def test_metadata_size_limit_is_checked(tmp_path, monkeypatch):
         manifest.build_manifest(wheel, source_commit=COMMIT)
 
 
-@pytest.mark.parametrize("commit", ["", "0" * 39, "0" * 41, "Z" * 40, "A" * 40])
+@pytest.mark.parametrize("commit", ["", "0" * 39, "0" * 41, "Z" * 40, "A" * 40,
+                                    None, 123])
 def test_source_commit_must_be_forty_lowercase_hex(tmp_path, commit):
     wheel = write_wheel(tmp_path / "synthetic-0.1.0.whl")
 
