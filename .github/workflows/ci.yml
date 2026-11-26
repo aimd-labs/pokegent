@@ -68,6 +68,11 @@ jobs:
           python -m pip install --require-hashes -r requirements-public-checks.lock
           python -m pip install --no-deps -e .
           python -m pip check
+      - name: Audit locked dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/pip-audit"
+          "$RUNNER_TEMP/pip-audit/bin/python" -m pip install pip-audit==2.10.1
+          "$RUNNER_TEMP/pip-audit/bin/python" -m pip_audit --strict --disable-pip --require-hashes -r requirements-public-checks.lock -r requirements-public-startup.lock
       - name: Lint
         run: ruff check .
       - name: Compile
