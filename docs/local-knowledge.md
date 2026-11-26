@@ -16,6 +16,8 @@ Item restoration facts have [their own page](local-item-restoration-knowledge.md
 
 Per-species training parameters have [their own page](local-species-training-knowledge.md).
 
+Item training facts have [their own page](local-item-training-knowledge.md).
+
 ## Contract
 
 Construct it as `FireRedKnowledge(selection, tables, *, enabled=False)`. `selection` is a
