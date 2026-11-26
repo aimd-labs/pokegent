@@ -3,8 +3,9 @@
 This is evidence tooling: it reads records already written by ``CalibrationLog`` and prints
 bounded response-validity, attempt, truncation, identity and latency aggregates. With the explicit
 ``--choice-validity`` switch it also counts the optional ``framed_choice_valid`` field per stratum;
-old records without it are ``unknown``. It never calls a provider, reads game state, writes files or
-grants eligibility. ``outcome: ok`` means only
+old records without it are ``unknown``. With ``--outcome-latency`` it adds count/p50/p95 of
+``measured_ms`` per existing outcome in each stratum. It never calls a provider, reads game state,
+writes files or grants eligibility. ``outcome: ok`` means only
 that a model response was valid; it is not action acceptance, accuracy or verified progress.
 """
 
@@ -128,7 +129,10 @@ def _key_sort(key: tuple[Any, ...]) -> tuple[Any, ...]:
 
 def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                  max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA,
-                 choice_validity: bool = False) -> dict[str, Any]:
+                 choice_validity: bool = False,
+                 outcome_latency: bool = False) -> dict[str, Any]:
+    if type(outcome_latency) is not bool:
+        raise ReportError("outcome_latency must be an exact bool")
     strata: dict[tuple[Any, ...], dict[str, Any]] = {}
     sequence_state: dict[tuple[int, str], dict[str, Any]] = {}
     records = 0
@@ -152,6 +156,8 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                 if len(strata) >= max_strata:
                     raise ReportError(f"{path}:{line}: strata limit {max_strata} exceeded")
                 strata[key] = _new_stratum()
+                if outcome_latency:
+                    strata[key]["outcome_samples"] = {name: [] for name in OUTCOMES}
             stratum = strata[key]
             stratum["records"] += 1
             if choice_validity:
@@ -175,6 +181,8 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                 stratum["attempts_total"] += fields["attempts"]
             stratum["truncated"] += int(fields["truncated"])
             stratum["samples"].append(fields["measured_ms"])
+            if outcome_latency:
+                stratum["outcome_samples"][fields["outcome"]].append(fields["measured_ms"])
             present = [model for model in fields["stage_models"] if model]
             distinct = set(present)
             if (not fields["stage_models"] or len(present) != len(fields["stage_models"])
@@ -216,6 +224,15 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
         if choice_validity:
             row["choice_validity"] = stratum.get(
                 "choice_validity", {"valid": 0, "invalid": 0, "unknown": 0})
+        if outcome_latency:
+            row["outcome_measured_ms"] = {}
+            for name in OUTCOMES:
+                values = sorted(stratum["outcome_samples"][name])
+                row["outcome_measured_ms"][name] = {
+                    "count": len(values),
+                    "p50": _percentile(values, 0.50) if values else None,
+                    "p95": _percentile(values, 0.95) if values else None,
+                }
         output_strata.append(row)
     diagnostics = [
         {"source": source, "run_id": run_id, "duplicate_count": state["duplicates"],
@@ -237,9 +254,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("paths", nargs="+", metavar="CALIBRATION_JSONL")
     parser.add_argument("--choice-validity", action="store_true",
                         help="count logged framed-choice validity per stratum (default off)")
+    parser.add_argument("--outcome-latency", action="store_true",
+                        help="report per-outcome measured latency per stratum (default off)")
     args = parser.parse_args(argv)
     try:
-        report = build_report(args.paths, choice_validity=args.choice_validity)
+        report = build_report(args.paths, choice_validity=args.choice_validity,
+                              outcome_latency=args.outcome_latency)
     except ReportError as exc:
         print(f"calibration_report: {exc}", file=sys.stderr)
         return 1
