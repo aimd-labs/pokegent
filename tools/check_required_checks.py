@@ -86,7 +86,7 @@ def read_document(path):
     try:
         with Path(path).open("rb") as stream:
             data = stream.read(MAX_FILE_BYTES + 1)
-    except OSError:
+    except (OSError, ValueError):
         raise CheckInputError("input file is unreadable") from None
     if len(data) > MAX_FILE_BYTES:
         raise CheckInputError("input file exceeds the supported size")
