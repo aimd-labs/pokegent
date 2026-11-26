@@ -10,6 +10,8 @@ TM/HM compatibility has [its own page](local-tmhm-knowledge.md).
 
 Ability names have [their own page](local-ability-knowledge.md).
 
+National Dex mapping has [its own page](local-national-dex-knowledge.md).
+
 ## Contract
 
 Construct it as `FireRedKnowledge(selection, tables, *, enabled=False)`. `selection` is a
