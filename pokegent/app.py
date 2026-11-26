@@ -709,16 +709,19 @@ def build_runner(
             )
         registry = ReviewedPluginRegistry(enabled=True)
         registry.register(FireRedPlugin(profile))
+        required_capabilities = (
+            "snapshot_source",
+            "menu_services",
+            "family_registration",
+            "objective_observation",
+        )
+        if config.dex_fallback:
+            required_capabilities += ("dex_fallback",)
         selection = registry.select(
             rom_bytes=plugin_rom_bytes,
             game="firered",
             profile_id=getattr(profile, "profile_id", ""),
-            required_capabilities=(
-                "snapshot_source",
-                "menu_services",
-                "family_registration",
-                "objective_observation",
-            ),
+            required_capabilities=required_capabilities,
         )
         plugin_services = selection.services
     elif plugin_rom_bytes is not None:
@@ -747,6 +750,9 @@ def build_runner(
         stuck_after=config.objective_stuck_after,
         churn_limit=config.objective_churn_limit,
         shop_observation=shop_observation,
+        dex_fallback_factory=(
+            plugin_services.dex_fallback_factory if plugin_services is not None else None
+        ),
     )
     if session is not None and fresh_snapshot is not None:
         session.store.bind_snapshot(fresh_snapshot)
@@ -891,6 +897,7 @@ def make_objective_session(
     stuck_after: int = 120,
     churn_limit: int = 0,
     shop_observation: Callable[[], Any] | None = None,
+    dex_fallback_factory: Callable[[], Any] | None = None,
 ) -> ObjectiveSession | None:
     """``None`` (goal-less / fixed ``goal_id``), or the session over the file, store or session."""
     if dex_fallback and story_fallback:
@@ -925,11 +932,14 @@ def make_objective_session(
             raise AppError(f"objective plan: {exc}") from None
     fallback = None
     if dex_fallback:
-        from pokegent.games.gen3.firered.rom.wild import load_wild_table
-        from pokegent.goals.dex_fallback import DexFallback
+        if dex_fallback_factory is None:
+            from pokegent.games.gen3.firered.objectives import make_dex_fallback
 
+            provider = make_dex_fallback
+        else:
+            provider = dex_fallback_factory
         try:
-            fallback = DexFallback(load_wild_table())
+            fallback = provider()
         except (OSError, ValueError, RuntimeError, TypeError):
             raise AppError("dex fallback requires valid private ROM encounter data",
                            EXIT_ENVIRONMENT) from None

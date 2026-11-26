@@ -21,8 +21,9 @@ FIRERED_CONTRACT_VERSION = 1
 FIRERED_GAME_CODE = "BPRE"
 FIRERED_ROM_VERSION = 0
 #: Only what this composition actually supplies: the existing adapter's readers/rules, the
-#: existing composite snapshot source, the game-owned menu/family constructors, and the fresh
-#: objective observation helper. No verification, input, support or title promotion.
+#: existing composite snapshot source, the game-owned menu/family constructors, the fresh
+#: objective observation helper, and the game-owned Dex fallback factory. No verification,
+#: input, support or title promotion.
 FIRERED_CAPABILITIES = frozenset(
     {
         "snapshot_source",
@@ -30,6 +31,7 @@ FIRERED_CAPABILITIES = frozenset(
         "menu_services",
         "family_registration",
         "objective_observation",
+        "dex_fallback",
     }
 )
 
@@ -44,6 +46,7 @@ class FireRedServices:
     menu_services_factory: Callable[..., Any]
     family_registration_factory: Callable[..., Any]
     objective_observation_factory: Callable[..., Any]
+    dex_fallback_factory: Callable[..., Any]
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -91,6 +94,7 @@ class FireRedPlugin:
         )
         from pokegent.games.gen3.firered.composition import make_menu_services
         from pokegent.games.gen3.firered.families import register_families
+        from pokegent.games.gen3.firered.objectives import make_dex_fallback
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
         from pokegent.games.gen3.firered.reader.snapshot_sources import CompositeSnapshotSource
 
@@ -102,4 +106,5 @@ class FireRedPlugin:
             menu_services_factory=make_menu_services,
             family_registration_factory=register_families,
             objective_observation_factory=make_objective_observation_services,
+            dex_fallback_factory=make_dex_fallback,
         )
