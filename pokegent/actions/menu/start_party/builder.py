@@ -250,6 +250,10 @@ class StartPartyBuilder:
                 if pocket.pocket in {"items", "berries"} and item.quantity > 0 and item.item_id > 0
             )
         for entry in model.entries:
+            if scene == R.START and entry.stable_key == "start:bag":
+                # No supported field-bag decision builder/detector exists yet; keep the
+                # decoded BAG row and its cursor index, but do not offer the choice.
+                continue
             mon = next(
                 (
                     member
