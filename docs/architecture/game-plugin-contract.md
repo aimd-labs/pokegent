@@ -5,8 +5,13 @@ Status: proposal for maintainer review, not implemented or frozen. 2026-11-24, r
 Implementation status (2026-11-26): a default-off, runtime-unwired prototype seam exists in
 `pokegent/games/plugin.py`, exercised by synthetic plugins in
 `tests/test_game_plugin_selection.py`. It covers exact SHA-1 admission, contract/profile/capability
-refusal and duplicate ownership only; there is no FireRed composition, snapshot projection, backend
-injection or plugin discovery, and no title-support claim. [#139](https://github.com/aimd-labs/pokegent/issues/139)
+refusal and duplicate ownership only. An explicit opt-in FireRed composition now lives in
+`pokegent/games/gen3/firered/plugin.py`: `build_runner(experimental_game_plugin=True,
+plugin_rom_bytes=...)` admits those exact caller-supplied bytes and substitutes only the plugin's
+`CompositeSnapshotSource` factory over the existing `FireRedAdapter` at the existing source
+construction point; the default path is unchanged. This supplies source/reader composition only:
+no snapshot projection, option/menu/executor registration, backend injection, ROM-path read,
+discovery, profile/hash addition or title-support claim. [#139](https://github.com/aimd-labs/pokegent/issues/139)
 remains open.
 
 ## Evidence

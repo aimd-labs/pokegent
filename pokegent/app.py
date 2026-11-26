@@ -674,6 +674,8 @@ def build_runner(
     objective_graph: MapGraph | None = None,
     objective_navigation: Any = None,
     sleep=time.sleep,
+    experimental_game_plugin: bool = False,
+    plugin_rom_bytes: bytes | bytearray | memoryview | None = None,
 ) -> RunnerApp:
     """Wire reader, composite source, detectors, builders, executor, decider, events, sink.
 
@@ -686,8 +688,42 @@ def build_runner(
     ``objective_plan`` is a scripted queue (``docs/objective-file.md`` section 9) written through
     the same store; without ``objectives`` its file is ``objective.json`` in the working directory,
     so give the file explicitly.
+
+    ``experimental_game_plugin`` is an explicit Python-API opt-in (default off). When true the
+    built-in reviewed FireRed plugin must admit the exact caller-supplied ``plugin_rom_bytes``
+    before any actor-backed read or reader construction, and its snapshot source factory replaces
+    only the existing source construction below. No ROM path, discovery or filesystem read is
+    implied; the caller already owns those bytes.
     """
     config = config or AppConfig()
+    plugin_services = None
+    if type(experimental_game_plugin) is not bool:
+        raise TypeError("experimental_game_plugin must be exactly bool")
+    if experimental_game_plugin:
+        from pokegent.games.gen3.firered.plugin import FireRedPlugin
+        from pokegent.games.plugin import PluginRefusal, RefusalCode, ReviewedPluginRegistry
+
+        if plugin_rom_bytes is None:
+            raise PluginRefusal(
+                RefusalCode.UNKNOWN_IDENTITY,
+                "experimental game plugin requires caller-supplied ROM bytes",
+            )
+        registry = ReviewedPluginRegistry(enabled=True)
+        registry.register(FireRedPlugin(profile))
+        selection = registry.select(
+            rom_bytes=plugin_rom_bytes,
+            game="firered",
+            profile_id=getattr(profile, "profile_id", ""),
+            required_capabilities=("snapshot_source",),
+        )
+        plugin_services = selection.services
+    elif plugin_rom_bytes is not None:
+        from pokegent.games.plugin import PluginRefusal, RefusalCode
+
+        raise PluginRefusal(
+            RefusalCode.DISABLED,
+            "plugin_rom_bytes requires experimental_game_plugin=True",
+        )
     shop_observation: Callable[[], Any] | None = None
     fresh_snapshot: Callable[[], Any] | None = None
     if actor is not None and profile is not None:
@@ -810,7 +846,12 @@ def build_runner(
 
         register_unknown_recovery(registries)
     world = getattr(getattr(field_family, "builder", None), "world", None)
-    source = CompositeSnapshotSource(
+    source_factory = (
+        plugin_services.snapshot_source_factory
+        if plugin_services is not None
+        else CompositeSnapshotSource
+    )
+    source = source_factory(
         actor,
         profile,
         sidecar=bundle.sidecar,
