@@ -31,6 +31,7 @@ from pokegent.options.models import (
     DeciderError,
     DeciderTimeout,
     DecisionFrame,
+    check_choice,
 )
 
 from .questions import (
@@ -206,6 +207,7 @@ class SyncDecider:
         run_id: str = "",
         goal_id: str | None = None,
         option_order: str = "frame",
+        frame_choice_validity: bool = False,
     ) -> None:
         if timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
@@ -219,6 +221,8 @@ class SyncDecider:
         self.run_id = run_id
         #: ``frame`` | ``shuffle``: the order the criteria are sent in (an experiment switch)
         self.option_order = option_order
+        #: Log ``check_choice``'s verdict on the actual frame/result (never gates or rewrites it)
+        self.frame_choice_validity = frame_choice_validity
         self._clock = clock
         self._loop = _LoopThread()
         self._future_lock = threading.Lock()
@@ -420,7 +424,7 @@ class SyncDecider:
             label = "invalid"
         else:
             label = "error"
-        return {
+        record = {
             "decision_id": frame.decision_id,
             "run_id": frame.run_id,
             "snapshot_seq": frame.snapshot_seq,
@@ -456,6 +460,16 @@ class SyncDecider:
             "error": self._scrub.text(str(error)) if error is not None else None,
             "measured_ms": measured_ms,
         }
+        if self.frame_choice_validity:
+            record["framed_choice_valid"] = (
+                None
+                if outcome is None
+                else check_choice(
+                    frame, outcome, allow_all=outcome.provider_id in {"agent", "external"}
+                )
+                is None
+            )
+        return record
 
 
 def provider_manifest(provider: object, model_id: str = "") -> dict[str, Any]:

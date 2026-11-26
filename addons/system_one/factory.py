@@ -71,6 +71,7 @@ def build_decider(
         ),
         timeout_s=config.timeout_seconds,
         option_order=config.option_order,
+        frame_choice_validity=config.calibration.frame_choice_validity,
         telemetry=telemetry,
         expose_latency=expose_latency,
         clock=clock,
