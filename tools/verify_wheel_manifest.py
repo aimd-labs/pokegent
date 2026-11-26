@@ -49,6 +49,8 @@ def _reference(path: Path) -> dict:
             raw = handle.read(MAX_MANIFEST_BYTES + 1)
     except OSError:
         raise VerifyError(f"{path}: cannot read reference manifest") from None
+    except ValueError:
+        raise VerifyError(f"{path}: invalid reference manifest path") from None
     if len(raw) > MAX_MANIFEST_BYTES:
         raise VerifyError(f"{path}: manifest exceeds {MAX_MANIFEST_BYTES} byte limit")
     try:
@@ -105,6 +107,8 @@ def verify_wheel_manifest(wheel: str | Path, reference: str | Path, *,
         expected = manifest.build_manifest(wheel, source_commit=source_commit)
     except (manifest.ManifestError, OSError) as exc:
         raise VerifyError(str(exc)) from None
+    except ValueError:
+        raise VerifyError("invalid wheel path") from None
     info = root["dist_info"]
     comparisons = (
         ("wheel.sha256", root["wheel"]["sha256"], expected["wheel"]["sha256"]),
