@@ -6,6 +6,8 @@ runtime; it opens no file, cache, network endpoint or emulator.
 
 `move`/`species` are covered here; `item` facts have their own page: [local item knowledge](local-item-knowledge.md).
 
+TM/HM compatibility has [its own page](local-tmhm-knowledge.md).
+
 ## Contract
 
 Construct it as `FireRedKnowledge(selection, tables, *, enabled=False)`. `selection` is a
