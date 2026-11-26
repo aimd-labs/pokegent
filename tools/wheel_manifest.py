@@ -103,7 +103,11 @@ def build_manifest(path: str | Path, *, source_commit: str) -> dict:
     if not isinstance(source_commit, str) or not COMMIT_RE.fullmatch(source_commit):
         raise ManifestError("source commit must be 40 lowercase hex characters")
     wheel = Path(path)
-    with open(wheel, "rb") as handle:
+    try:
+        handle = open(wheel, "rb")
+    except ValueError:
+        _fail(wheel, "invalid wheel path")
+    with handle:
         data = handle.read(MAX_WHEEL_BYTES + 1)
     if len(data) > MAX_WHEEL_BYTES:
         _fail(wheel, f"wheel exceeds {MAX_WHEEL_BYTES} byte limit")
