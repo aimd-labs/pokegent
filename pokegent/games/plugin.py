@@ -147,7 +147,7 @@ class ReviewedPluginRegistry:
             raise PluginRefusal(RefusalCode.DISABLED, "registry is not explicitly enabled")
         if not isinstance(rom_bytes, (bytes, bytearray, memoryview)):
             raise TypeError("rom_bytes must be bytes-like")
-        rom_size = rom_bytes.nbytes if isinstance(rom_bytes, memoryview) else len(rom_bytes)
+        rom_size = memoryview(rom_bytes).nbytes
         if rom_size > MAX_ROM_BYTES:
             raise ValueError("rom_bytes exceeds the bounded input size")
         _identifier(game, "game")
