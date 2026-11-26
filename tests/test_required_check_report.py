@@ -346,3 +346,38 @@ def test_seeded_reader_has_no_unexpected_exceptions(tmp_path):
         if index == 0:
             assert result == {"total_count": 0, "check_runs": []}
     assert parsed > 0 and refused > 0
+
+
+def test_seeded_evaluator_state_invariants_and_witnesses():
+    rnd = random.Random(0x4556414C)
+    accepted = refused = ready_true = ready_false = 0
+    for index in range(200):
+        if index == 0:
+            rows = [run("docs"), run("gate")]
+        elif index == 1:
+            rows = [run("gate", status="queued", conclusion=None)]
+        elif index == 2:
+            rows = [{"name": "docs", "status": 5, "conclusion": None}]
+        else:
+            rows = []
+            for _ in range(rnd.randrange(0, 7)):
+                row = run(rnd.choice(["docs", "gate", "lint"]),
+                          sha=rnd.choice([HEAD, OLD_HEAD, None]),
+                          status=rnd.choice(["queued", "in_progress", "completed", "completed"]),
+                          conclusion=rnd.choice([None, "success", "failure"]))
+                if rnd.random() < 0.1:
+                    row["conclusion"] = ["bad"]
+                rows.append(row)
+        try:
+            report = evaluate(rows, ["docs", "gate"])
+        except checks.CheckInputError:
+            refused += 1
+            continue
+        accepted += 1
+        assert [e["name"] for e in report["checks"]] == ["docs", "gate"]
+        assert {e["state"] for e in report["checks"]} <= {
+            "success", "failed", "pending", "missing", "duplicate", "unknown"}
+        assert report["ready"] == all(e["state"] == "success" for e in report["checks"])
+        ready_true += report["ready"]
+        ready_false += not report["ready"]
+    assert ready_true > 0 and ready_false > 0 and accepted > 0 and refused > 0
