@@ -2,7 +2,7 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species`` questions from those tables. It is not a database, cache, plugin
+native ``move``/``species``/``item`` questions from those tables. Not a database, cache or plugin
 registration or a verification claim: the game/profile/ROM labels are caller assertions, not
 digest or live proof.
 """
@@ -12,7 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pokegent.games.gen3.firered.plugin import FIRERED_GAME
-from pokegent.games.gen3.firered.rom.rom_tables import GameTables, MoveData, SpeciesData
+from pokegent.games.gen3.firered.rom.rom_tables import (
+    GameTables,
+    ItemData,
+    MoveData,
+    SpeciesData,
+)
 from pokegent.games.plugin import PluginRefusal, PluginSelection, RefusalCode
 
 SOURCE_LOCAL_ROM = "local_rom"
@@ -38,7 +43,7 @@ class LocalRomRecord:
 
 
 class FireRedKnowledge:
-    """Native move/species facts from one already-decoded FireRed ``GameTables``."""
+    """Native move/species/item facts from one already-decoded FireRed ``GameTables``."""
 
     def __init__(
         self,
@@ -91,6 +96,14 @@ class FireRedKnowledge:
             return self._record("species", species_id, known=False, values=())
         return self._record("species", species_id, known=True, values=_species_values(data))
 
+    def item(self, item_id: int) -> LocalRomRecord:
+        item_id = _native_id(item_id, "item")
+        try:
+            data = self._tables.item(item_id)
+        except KeyError:
+            return self._record("item", item_id, known=False, values=())
+        return self._record("item", item_id, known=True, values=_item_values(data))
+
     def _record(
         self,
         record_kind: str,
@@ -121,9 +134,9 @@ def _native_id(value: int, field: str) -> int:
     return value
 
 
-def _bounded_name(value: str) -> str:
+def _bounded_name(value: str, kind: str = "move") -> str:
     if type(value) is not str or len(value) > MAX_NAME_CHARS:
-        raise ValueError(f"move name must be a string of at most {MAX_NAME_CHARS} characters")
+        raise ValueError(f"{kind} name must be a string of at most {MAX_NAME_CHARS} characters")
     return value
 
 
@@ -153,4 +166,16 @@ def _species_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
         ("types", tuple(data.types)),
         ("base_stats", tuple((name, stats[name]) for name in _STATS)),
         ("abilities", (data.abilities[0], data.abilities[1])),
+    )
+
+
+def _item_values(data: ItemData) -> tuple[tuple[str, object], ...]:
+    return (
+        ("id", data.item_id),
+        ("name", _bounded_name(data.name, "item")),
+        ("price", data.price),
+        ("pocket", data.pocket),
+        ("hold_effect", data.hold_effect),
+        ("hold_effect_param", data.hold_effect_param),
+        ("battle_usage", data.battle_usage),
     )
