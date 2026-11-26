@@ -59,11 +59,13 @@ runner injection, required capability, CLI flag or discovery.
 
 ## Boundary
 
-Ordinary `StateSnapshot.create` and model validation are used throughout; there
-is no `model_construct` or `model_copy` bypass in production or in the fence. The
-fence below uses an invented profile label, name and coordinates, no ROM bytes,
-and it neither admits a ROM nor starts an actor. It is source-level evidence, not
-native, game, provider or release proof. [#139] stays open.
+The projector only checks that the caller supplied a `StateSnapshot` instance; it
+does not call `StateSnapshot.create` or revalidate that instance. Callers must
+supply a normally validated snapshot: the projector does not repair or revalidate
+instances built via bypass. The fence below uses public `StateSnapshot.create`
+with an invented profile label, name and coordinates, no ROM bytes, and it
+neither admits a ROM nor starts an actor. It is source-level evidence, not native,
+game, provider or release proof. [#139] stays open.
 
 ## Synthetic fence
 
