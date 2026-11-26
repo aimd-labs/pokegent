@@ -4,7 +4,7 @@
 `GameTables` already decoded from one FireRed ROM. Nothing imports it from the default
 runtime; it opens no file, cache, network endpoint or emulator.
 
-`move`/`species` are covered here; `item` facts have their own page: [local item knowledge](local-item-knowledge.md).
+`move`/`species` are covered here; `item` facts have their own page: [local item knowledge](local-item-knowledge.md), and evolution facts have [their own page](local-evolution-knowledge.md).
 
 TM/HM compatibility has [its own page](local-tmhm-knowledge.md).
 
