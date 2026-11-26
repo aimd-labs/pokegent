@@ -9,4 +9,6 @@ PARTY_HELD_ITEM = "party.held_item"
 CLAIMED_SCENES = frozenset({START, PARTY_LIST, PARTY_ACTION, PARTY_REORDER, PARTY_HELD_ITEM})
 
 REF_SELECT = "start_party.select"
+#: Give owns the bag -> party return transit, so it needs its own busy policy.
+REF_GIVE = "start_party.give"
 POST_EXPECTED = "start_party.expected"

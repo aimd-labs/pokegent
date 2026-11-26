@@ -1,9 +1,9 @@
-"""Full-Executor GIVE contract: the legitimate bag transit must not self-interrupt.
+"""Full-Executor GIVE contract: the bag -> party return transit must not self-interrupt.
 
-The registered give option drives the shared START/party macro, which deliberately opens the
-bag and its item context menu before returning.  This exercises the real ``Executor`` boundary
-(``allowed_scenes`` after every step) instead of calling ``spec.fn`` directly, so an omitted
-GIVE transit scene is visible as ``E_INTERRUPTED_SCENE``.
+Pinned ``party_menu.c`` gives the chosen bag item from the item row itself: the bag closes and
+the game transfers the item (or asks the existing-held swap question).  This exercises the real
+``Executor`` boundary (``allowed_scenes``/busy policy after every step) instead of calling
+``spec.fn`` directly, so an omitted GIVE transit scene is visible as ``E_INTERRUPTED_SCENE``.
 """
 
 from types import SimpleNamespace as NS
@@ -182,7 +182,8 @@ def _snapshot(*, held_item=0, quantity=2, bag_ready=False, context=False, cursor
 def _after_give_snapshot(*, personality=TARGET_PID, quantity=1):
     snapshot = _snapshot(held_item=EXP_SHARE, quantity=quantity)
     snapshot.party = (_mon(0, personality, EXP_SHARE),)
-    snapshot.ui.menu.party = None
+    # The real return leaves the party menu live and input-ready; the verifier judges it.
+    snapshot.ui.field.fade_active = False
     return snapshot
 
 
@@ -306,9 +307,8 @@ def test_full_executor_give_traverses_bag_and_verifies_held_item_delta(monkeypat
     registries, option, spec, before, bag_scene = _give_setup(monkeypatch)
     party = _obs(before, R.PARTY_HELD_ITEM)
     bag_ready = _obs(_snapshot(bag_ready=True), bag_scene)
-    context = _obs(_snapshot(bag_ready=True, context=True), bag_scene)
     after = _obs(_after_give_snapshot(), R.PARTY_LIST)
-    perceiver = _Perceiver([party, bag_ready, bag_ready, context, after], after)
+    perceiver = _Perceiver([party, bag_ready, bag_ready, after], after)
 
     result, actor = _run(registries, option, spec, before, perceiver)
 
@@ -316,7 +316,8 @@ def test_full_executor_give_traverses_bag_and_verifies_held_item_delta(monkeypat
     assert result.verified_outcome is True
     assert result.interrupted_scene is None
     assert result.after_hash == after.snapshot.state_hash
-    assert tuple(actor.taps) == ("a", "a", "a")
+    # Party GIVE confirmation + the bag item row only.
+    assert tuple(actor.taps) == ("a", "a")
     # Same-identity held item and the exact bag decrease are both proven.
     assert option.action_contract.expected[0].personality == TARGET_PID
     assert option.action_contract.expected[0].bag_delta == -1
@@ -344,32 +345,30 @@ def test_wrong_bag_delta_cannot_verify_through_full_executor(monkeypatch):
     registries, option, spec, before, bag_scene = _give_setup(monkeypatch)
     party = _obs(before, R.PARTY_HELD_ITEM)
     bag_ready = _obs(_snapshot(bag_ready=True), bag_scene)
-    context = _obs(_snapshot(bag_ready=True, context=True), bag_scene)
     # The held item moved, but the bag quantity did not decrease: the verifier must fail.
     after = _obs(_after_give_snapshot(quantity=2), R.PARTY_LIST)
-    perceiver = _Perceiver([party, bag_ready, bag_ready, context, after], after)
+    perceiver = _Perceiver([party, bag_ready, bag_ready, after], after)
 
     result, actor = _run(registries, option, spec, before, perceiver)
 
     assert result.status is not ActionStatus.APPLIED
     assert result.verified_outcome is not True
     assert result.error_code is ErrorCode.E_POSTCONDITION_NOT_MET
-    assert tuple(actor.taps) == ("a", "a", "a")
+    assert tuple(actor.taps) == ("a", "a")
 
 
 def test_wrong_personality_cannot_verify_through_full_executor(monkeypatch):
     registries, option, spec, before, bag_scene = _give_setup(monkeypatch)
     party = _obs(before, R.PARTY_HELD_ITEM)
     bag_ready = _obs(_snapshot(bag_ready=True), bag_scene)
-    context = _obs(_snapshot(bag_ready=True, context=True), bag_scene)
     wrong = _obs(_after_give_snapshot(personality=OTHER_PID), R.PARTY_LIST)
-    perceiver = _Perceiver([party, bag_ready, bag_ready, context, wrong], wrong)
+    perceiver = _Perceiver([party, bag_ready, bag_ready, wrong], wrong)
 
     result, actor = _run(registries, option, spec, before, perceiver)
 
     assert result.status is not ActionStatus.APPLIED
     assert result.verified_outcome is not True
-    assert tuple(actor.taps) == ("a", "a", "a")
+    assert tuple(actor.taps) == ("a", "a")
 
 
 def test_give_spec_allows_only_the_real_bag_transit_scene(monkeypatch):

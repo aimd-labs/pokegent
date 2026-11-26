@@ -164,15 +164,25 @@ def _expected(
             selected = snapshot.ui.menu.party.slot_id  # type: ignore[union-attr]
             mon = next((member for member in snapshot.party if member.slot == selected), None)
             if mon is not None:
-                return (
+                expected = [
                     ExpectedState(
                         kind="held_item_changed",
                         personality=mon.personality,
                         held_item_id=item_id,
                         bag_item_id=item_id,
                         bag_delta=-1,
-                    ),
-                )
+                    )
+                ]
+                if mon.held_item not in (0, item_id):
+                    # A swap returns the previously held ordinary item to the bag.
+                    expected.append(
+                        ExpectedState(
+                            kind="item_count_changed",
+                            item_id=mon.held_item,
+                            delta=1,
+                        )
+                    )
+                return tuple(expected)
     return (ExpectedState(kind="menu_closed", surface=scene),)
 
 
@@ -391,7 +401,11 @@ class StartPartyBuilder:
             facts={
                 **_facts(ctx, entry, novelty=novelty),
             },
-            executor_ref=R.REF_SELECT if legality.chooseable else None,
+            executor_ref=(
+                (R.REF_GIVE if item_id is not None else R.REF_SELECT)
+                if legality.chooseable
+                else None
+            ),
             # A give option names the verified bag item so the registered macro can drive the
             # bag after confirming the cursor entry; other selections carry no arguments.
             executor_args={"item_id": item_id} if item_id is not None else {},

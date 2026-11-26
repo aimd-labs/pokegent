@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pokegent.actions._exec.menu_executor import select_menu_entry
-from pokegent.actions._exec.models import ExecutionKind, Tap, WaitUntil
+from pokegent.actions._exec.models import ExecutionKind, Interrupt, Tap, WaitUntil
 from pokegent.actions._exec.registry import Arg, ExecutorSpec, StepContext
 from pokegent.actions.field.macros import _field_free_after_bag_failure
 from pokegent.actions.menu.start_party import refs as R
 from pokegent.games.gen3.firered.reader.menu_decoders import (
-    decode_cursor_menu,
     decode_party_action,
     decode_party_menu,
     decode_party_reorder,
@@ -17,12 +16,111 @@ from pokegent.games.gen3.firered.reader.menu_decoders import (
 from pokegent.pipeline import Observation
 
 
-def _give_context_menu(snapshot):
-    """Decode the post-list bag menu whose first semantic entry must be GIVE."""
-    return decode_cursor_menu(
-        snapshot,
-        surface="bag.context",
-        entries=(("bag:give", "GIVE"), ("bag:cancel", "CANCEL")),
+def _bag_item_quantity(snapshot, item_id: int) -> int:
+    return sum(
+        item.quantity
+        for pocket in snapshot.bag
+        for item in pocket.items
+        if item.item_id == item_id
+    )
+
+
+#: pret/pokefirered 037335f4 include/constants/items.h 121..132; mail_data.c ItemIsMail is
+#: true exactly for those ids and false otherwise.  Public game facts, not table reads.
+MAIL_ITEM_IDS = frozenset(range(121, 133))
+
+
+def _swap_binding(
+    snapshot,
+    *,
+    selected_slot,
+    target_personality,
+    old_held,
+    item_id,
+    bag_count,
+    pre_action,
+) -> bool:
+    """Prove the prompt is the swap question for THIS member/item from owned transition facts."""
+    if not 1 <= item_id <= 65535 or item_id in MAIL_ITEM_IDS:
+        return False
+    if old_held in (0, item_id) or old_held in MAIL_ITEM_IDS:
+        return False
+    if not _party_prompt_candidate(snapshot):
+        return False
+    ui = snapshot.ui
+    party, menu, yes_no, text = ui.menu.party, ui.menu.menu, ui.menu.yes_no, ui.text
+    callback = ui.main.callback2
+    mon = next((member for member in snapshot.party if member.slot == selected_slot), None)
+    script = ui.script
+    if callback is None or callback.name != "CB2_UpdatePartyMenu" or callback.verified is not True:
+        return False
+    if party.slot_id != selected_slot or party.item_id != item_id:
+        return False
+    # The source preserves gPartyMenu.action across CursorCB_Give/CB2_GiveHoldItem.  Require the
+    # same proven pre-give action, restricted to the two source-owned give entries.
+    if pre_action not in ("choose_mon", "give_item") or party.action_name != pre_action:
+        return False
+    if mon is None or mon.personality != target_personality or mon.held_item != old_held:
+        return False
+    if _bag_item_quantity(snapshot, item_id) != bag_count:
+        return False
+    if script is not None and (script.running is True or script.controls_locked is True):
+        return False
+    if text is None or text.valid is not True:
+        return False
+    if yes_no is None or yes_no.window_in_use is not True or menu.cursor_pos != 0:
+        return False
+    if menu.window_id != yes_no.window_id:
+        return False
+    return any(window.window_id == yes_no.window_id for window in text.windows)
+
+
+def _party_prompt_candidate(snapshot) -> bool:
+    """A live two-entry party prompt on the give return path, used only to STOP.
+
+    Pinned ``party_menu.c`` opens ``Task_SwitchItemsYesNo`` only when the target already holds an
+    item.  The current profile does not prove that task symbol, so this structural shape cannot
+    prove that YES means swap: it may only withhold input.  (The settled prompt's text printer is
+    deliberately inactive, so text activity is not a valid discriminator either.)
+    """
+    ui = snapshot.ui
+    if ui is None or not ui.valid or ui.main.in_battle is not False:
+        return False
+    party = ui.menu.party
+    menu = ui.menu.menu
+    if party is None or party.active_hint is not True or getattr(party, "menu_type", None) != 0:
+        return False
+    if ui.field is None or ui.field.fade_active is not False:
+        return False
+    if any(task.func.name == "Task_HandleSelectionMenuInput" for task in ui.tasks.active):
+        return False
+    if ui.menu.bag is not None and ui.menu.bag.bag_open:
+        return False
+    listing = ui.menu.list_menu
+    if listing is not None and listing.window_in_use:
+        return False
+    return bool(
+        menu is not None
+        and menu.window_in_use
+        and menu.consistent
+        and menu.min_cursor_pos == 0
+        and menu.max_cursor_pos == 1
+        and menu.cursor_pos in (0, 1)
+    )
+
+
+def _party_input_ready(current) -> bool:
+    """A settled party menu is the verifier's turn, not a reason to send more input."""
+    ui = current.snapshot.ui
+    party = ui.menu.party if ui is not None and ui.valid else None
+    return bool(
+        current.scene.busy is False
+        and current.scene.scene_id
+        in (R.PARTY_LIST, R.PARTY_ACTION, R.PARTY_REORDER, R.PARTY_HELD_ITEM)
+        and party is not None
+        and party.active_hint is True
+        and ui.field is not None
+        and ui.field.fade_active is False
     )
 
 
@@ -75,11 +173,12 @@ def select(ctx: StepContext):
         if not isinstance(item_id, int):
             raise RuntimeError("give-item action has no verified item id")
         selected_slot = ctx.snapshot.ui.menu.party.slot_id  # type: ignore[union-attr]
-        target_personality = next(
-            (mon.personality for mon in ctx.snapshot.party if mon.slot == selected_slot), None
-        )
-        if target_personality is None:
+        target = next((mon for mon in ctx.snapshot.party if mon.slot == selected_slot), None)
+        if target is None:
             raise RuntimeError("party member disappeared before giving the item")
+        target_personality = target.personality
+        old_held = target.held_item
+        pre_action = getattr(ctx.snapshot.ui.menu.party, "action_name", None)
 
         def bag_ready(current):
             ui = current.snapshot.ui
@@ -141,23 +240,60 @@ def select(ctx: StepContext):
             observation = yield Tap(button, hold_frames=4, wait_frames=20)
         else:
             raise RuntimeError("held-item list cursor did not reach the requested item")
-        observation = yield Tap("a", hold_frames=4, wait_frames=20)
-        context = _give_context_menu(observation.snapshot)
-        if context is None or context.selected_key != "bag:give":
-            raise RuntimeError("bag item context menu did not land on Give")
-        observation = yield Tap("a", hold_frames=4, wait_frames=20)
         observation = yield WaitUntil(
-            lambda current: any(
+            bag_ready, max_frames=120, failure_reason="bag declined input before the item row"
+        )
+        bag_count = _bag_item_quantity(observation.snapshot, item_id)
+        # The item row is the give input: ``Task_ItemContext_FieldGive`` closes the bag, then the
+        # game gives directly (empty slot) or asks the two-entry swap question.  There is no bag
+        # context menu and no second bag confirmation.
+        observation = yield Tap("a", hold_frames=4, wait_frames=20)
+
+        def give_applied(current) -> bool:
+            if _bag_item_quantity(current.snapshot, item_id) != bag_count - 1:
+                return False
+            return any(
                 mon.personality == target_personality and mon.held_item == item_id
                 for mon in current.snapshot.party
-            ),
-            max_frames=240,
+            )
+
+        def prompt_candidate(current) -> bool:
+            return _party_prompt_candidate(current.snapshot)
+
+        def swap_bound(current) -> bool:
+            return _swap_binding(
+                current.snapshot,
+                selected_slot=selected_slot,
+                target_personality=target_personality,
+                old_held=old_held,
+                item_id=item_id,
+                bag_count=bag_count,
+                pre_action=pre_action,
+            )
+
+        observation = yield WaitUntil(
+            lambda current: give_applied(current)
+            or swap_bound(current)
+            or prompt_candidate(current)
+            or _party_input_ready(current),
+            max_frames=600,
+            failure_reason="party give did not reach a transfer or party menu",
         )
-        if not any(
-            mon.personality == target_personality and mon.held_item == item_id
-            for mon in observation.snapshot.party
-        ):
-            raise RuntimeError("giving the item did not update the party held item")
+        if not give_applied(observation) and swap_bound(observation):
+            observation = yield Tap("a", hold_frames=4, wait_frames=20)
+            observation = yield WaitUntil(
+                lambda current: give_applied(current) or _party_input_ready(current),
+                max_frames=600,
+                failure_reason="swap YES did not return to the party menu",
+            )
+        elif not give_applied(observation) and prompt_candidate(observation):
+            # No proven swap binding: zero confirmation.  Every identity premise (callback, slot,
+            # PID, old/current item, bag count, YES/NO window) must hold before the single YES.
+            yield Interrupt(
+                "party give reached an unverified swap prompt; refusing YES without a proven "
+                "prompt/member/item binding"
+            )
+        return observation
     if scene != R.PARTY_LIST or stable_key == "party:cancel":
         return observation
 
@@ -204,6 +340,32 @@ def select(ctx: StepContext):
 
 def executor_specs() -> tuple[ExecutorSpec, ...]:
     return (
+        ExecutorSpec(
+            R.REF_GIVE,
+            ExecutionKind.MACRO,
+            select,
+            args={"item_id": Arg(int, required=False, min=1, max=65535)},
+            # Give owns the bag close -> party transfer return.  ``macro_manages_busy`` keeps the
+            # input-waiting swap prompt out of the generic post-step busy settle, which can never
+            # clear without an answer.  No failure cleanup: it would answer an unknown party
+            # prompt with a blind A, so a failed give leaves the menu open for a safe pause.
+            allowed_scenes=frozenset(
+                {
+                    R.START,
+                    R.PARTY_LIST,
+                    R.PARTY_ACTION,
+                    R.PARTY_REORDER,
+                    R.PARTY_HELD_ITEM,
+                    "menu.open",
+                    "scene.unknown",
+                }
+            ),
+            max_inputs=15,
+            max_frames=2400,
+            settle_frames=1800,
+            settle_wall_s=90.0,
+            macro_manages_busy=True,
+        ),
         ExecutorSpec(
             R.REF_SELECT,
             ExecutionKind.DETERMINISTIC,
