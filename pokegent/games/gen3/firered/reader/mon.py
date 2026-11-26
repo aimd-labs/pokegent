@@ -1,3 +1,4 @@
+# coding: utf-8
 """Gen-3 Pokemon struct decoding: pure functions, no memory access.
 
 Layouts and the substructure permutation come from the pret/pokefirered decompile (commit in
