@@ -83,17 +83,23 @@ def _collect(cases: Iterable[LabeledChoiceCase]) -> list[LabeledChoiceCase]:
 
 
 def evaluate_labeled_choices(
-    cases: Iterable[LabeledChoiceCase], *, enabled: bool = False
+    cases: Iterable[LabeledChoiceCase], *, enabled: bool = False,
+    family_breakdown: bool = False,
 ) -> dict[str, Any]:
     """Evaluate supplied labels only when ``enabled is True``; otherwise inert."""
     if type(enabled) is not bool:
         raise EvaluationRejected("enabled must be a bool")
+    if type(family_breakdown) is not bool:
+        raise EvaluationRejected("family_breakdown must be a bool")
     if not enabled:
         return {"kind": "labeled_choice_evaluation/1", "enabled": False, "evaluated": False,
                 "eligibility": "not_evaluated", "authority_granted": False}
     counts = dict.fromkeys(FIELDS, 0)
     rows: dict[
         tuple[str, str | None, str | None, tuple[str, ...] | None], dict[str, int]
+    ] = {}
+    family_rows: dict[
+        tuple[str, str, str | None, str | None, tuple[str, ...] | None], dict[str, int]
     ] = {}
     supplied_families: set[str] = set()
     labeled_families: set[str] = set()
@@ -137,6 +143,13 @@ def evaluate_labeled_choices(
                  "invalid_choice": result is not None and not valid, "valid_choice": valid,
                  "labeled_valid_choice": valid and labels is not None,
                  "acceptable_choice": acceptable}
+        if family_breakdown:
+            family_row = family_rows.setdefault(
+                (case.family_id, frame.scene_id, provider, model, context_key),
+                dict.fromkeys(FIELDS, 0),
+            )
+            for name, flag in flags.items():
+                family_row[name] += 1 if flag else 0
         for name, flag in flags.items():
             increment = 1 if flag else 0
             counts[name] += increment
@@ -152,7 +165,7 @@ def evaluate_labeled_choices(
         ))
     ]
     acceptable = counts["acceptable_choice"]
-    return {
+    report = {
         "kind": "labeled_choice_evaluation/1", "enabled": True, "evaluated": True,
         "counts": counts,
         "rates": {
@@ -175,3 +188,15 @@ def evaluate_labeled_choices(
                    "case_cap": MAX_CASES, "label_cap": MAX_LABELS},
         "eligibility": "not_evaluated", "authority_granted": False,
     }
+    if family_breakdown:
+        report["family_strata"] = [
+            {"family_id": key[0], "scene_id": key[1], "provider": key[2], "model": key[3],
+             "comparison_context": (None if key[4] is None
+                                    else dict(zip(CONTEXT_FIELDS, key[4]))),
+             **family_rows[key]}
+            for key in sorted(family_rows, key=lambda key: (
+                key[0], key[1], key[2] is not None, key[2] or "",
+                key[3] is not None, key[3] or "", key[4] is not None, key[4] or (),
+            ))
+        ]
+    return report
