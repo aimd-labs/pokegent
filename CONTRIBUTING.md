@@ -160,6 +160,8 @@ note. Exit 0 means every required check succeeded at that head, 1 means not read
 input or arguments were rejected. This is check evidence only: it does not establish review,
 mergeability or admin policy, and it is not merge authorization.
 
+For the full independent-check walkthrough, see [release verification](docs/release-verification.md).
+
 New to the project? Read the [README quick start](README.md#quick-start-install-and-run-the-rom-free-checks),
 run the checks, and comment on an [open issue](https://github.com/aimd-labs/pokegent/issues)
 to confirm scope before a larger change. Focused fixes with a clear reproduction are welcome
