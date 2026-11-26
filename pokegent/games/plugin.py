@@ -129,6 +129,7 @@ class ReviewedPluginRegistry:
         game: str,
         profile_id: str,
         required_capabilities: Iterable[str] = (),
+        expected_rom_sha1: str | None = None,
     ) -> PluginSelection:
         """Admit exact private ROM bytes, then compose; no callback before admission."""
         if not self._enabled:
@@ -145,6 +146,14 @@ class ReviewedPluginRegistry:
             limit=MAX_REQUIRED_CAPABILITIES,
             field="required capabilities",
         )
+        if expected_rom_sha1 is not None:
+            if (
+                type(expected_rom_sha1) is not str
+                or _SHA1.fullmatch(expected_rom_sha1) is None
+            ):
+                raise ValueError(
+                    "expected_rom_sha1 must be a lowercase 40-char hex digest"
+                )
 
         digest = hashlib.sha1(rom_bytes).hexdigest()
         admitted = self._plugins.get(digest)
@@ -164,4 +173,9 @@ class ReviewedPluginRegistry:
         if missing:
             detail = "missing capabilities: " + ", ".join(sorted(missing))
             raise PluginRefusal(RefusalCode.MISSING_CAPABILITY, detail)
+        if expected_rom_sha1 is not None and descriptor.rom_sha1 != expected_rom_sha1:
+            raise PluginRefusal(
+                RefusalCode.PROFILE_MISMATCH,
+                "registered ROM digest conflicts with the profile ROM digest",
+            )
         return PluginSelection(descriptor=descriptor, services=plugin.compose())
