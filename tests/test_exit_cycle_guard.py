@@ -33,10 +33,11 @@ from pokegent.pipeline import Perception, PerceptionKind
 from pokegent.recovery import ProgressMonitor
 from pokegent.state.scenes import SceneResult
 
-# One block: exit on map A, strength on map A, exit back from map B.
+# One block: warp from A, strength on B, warp from B back to A.  The post-action
+# observation closes on A, so pre-action maps are A, B, B.
 BLOCK = (
     ("warp:a:1", "sig-A", (1, 1)),
-    ("strength:b:1", "sig-B", (1, 1)),
+    ("strength:b:1", "sig-B", (2, 2)),
     ("warp:c:1", "sig-C", (2, 2)),
 )
 
@@ -163,6 +164,17 @@ def test_fourth_action_same_maps_or_changed_state_do_not_fire():
     assert not_strength.due_reason() is None
 
 
+def test_wrong_map_transition_does_not_fire():
+    m = ProgressMonitor(100, now=0.0, exit_cycle_guard=True)
+    _feed(m, block=(
+        ("warp:a:1", "sig-A", (1, 1)),
+        ("strength:b:1", "sig-B", (1, 1)),
+        ("warp:c:1", "sig-C", (2, 2)),
+    ))
+    _close_cycle(m)  # closure alone is not enough: strength must move A -> B
+    assert m.due_reason() is None
+
+
 def test_clear_loop_clears_but_positional_reset_retains_cycle_evidence():
     m = ProgressMonitor(100, now=0.0, exit_cycle_guard=True)
     _feed(m)
@@ -248,7 +260,7 @@ def _exit_cycle_runner(
     escape_on_ninth: bool = False,
 ):
     events = MemoryEventLog("synthetic")
-    states = [(1, 1, 0), (1, 1, 1), (2, 2, 0)]
+    states = [(1, 1, 0), (2, 2, 0), (2, 2, 1)]
     if escape_on_ninth:
         states.append((3, 3, 2))
     options = ("warp:a:1", "strength:b:1", "warp:c:1")

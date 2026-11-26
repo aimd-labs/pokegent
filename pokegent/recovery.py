@@ -167,6 +167,9 @@ class ProgressMonitor:
         ):
             # The post-action observation must prove the return to the block start.
             return None
+        if first[0][2] == first[1][2] or first[1][2] != first[2][2]:
+            # Real two-floor shape: warp A -> strength on B -> warp B back to A.
+            return None
         options = [entry[0] for entry in first]
         maps = {entry[2] for entry in entries}
         exits = [oid for oid in options if oid.startswith(("warp:", "edge:"))]
