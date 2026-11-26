@@ -1,7 +1,7 @@
 # Campaign attempt summary (R09/#138)
 
 Status: documentation for the default-off `pokegent.evaluation_campaign` helper. It consumes
-caller-supplied synthetic labels only; this is not a benchmark result and grants nothing.
+caller-supplied labels only; this is not a benchmark result and grants nothing.
 
 ## Scope
 
