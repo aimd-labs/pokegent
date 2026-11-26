@@ -15,6 +15,8 @@ from pokegent.games.plugin import (
     MAX_IDENTIFIER_CHARS,
     MAX_REQUIRED_CAPABILITIES,
     GamePluginDescriptor,
+    PluginRefusal,
+    RefusalCode,
     ReviewedPluginRegistry,
 )
 
@@ -202,3 +204,66 @@ def test_select_still_accepts_exact_rom_finite_capability_generator():
     assert selection.services.scene == "synthetic-scene"
     assert plugin.compose_calls == 1
     assert MAX_REQUIRED_CAPABILITIES == 16
+
+
+class _RowsPoison(dict):
+    def values(self):
+        raise AssertionError("descriptors() read registered rows while disabled")
+
+
+def _registered(*entries):
+    registry = ReviewedPluginRegistry(enabled=True)
+    for plugin_id, rom_sha1 in entries:
+        registry.register(_Plugin(_descriptor(
+            plugin_id=plugin_id, rom_sha1=rom_sha1,
+            profile_id=f"profile-{plugin_id}")))
+    return registry
+
+
+def test_descriptors_disabled_refuses_before_reading_rows():
+    registry = ReviewedPluginRegistry(enabled=False)
+    registry._plugins = _RowsPoison()
+
+    with pytest.raises(PluginRefusal) as caught:
+        registry.descriptors()
+
+    assert caught.value.code is RefusalCode.DISABLED
+
+
+def test_descriptors_enabled_empty_returns_empty_tuple():
+    assert ReviewedPluginRegistry(enabled=True).descriptors() == ()
+
+
+def test_descriptors_sort_by_plugin_id_deterministically():
+    registry = _registered(
+        ("zulu", "a" * 40), ("alpha", "b" * 40), ("mike", "c" * 40))
+
+    assert registry.descriptors() == registry.descriptors()
+    assert [descriptor.plugin_id for descriptor in registry.descriptors()] == [
+        "alpha", "mike", "zulu"]
+
+
+def test_descriptors_return_captured_frozen_descriptors_without_recompose():
+    original = _descriptor(plugin_id="alpha")
+    plugin = _Plugin(original)
+    registry = ReviewedPluginRegistry(enabled=True)
+    registry.register(plugin)
+    plugin.descriptor = _descriptor(plugin_id="beta")  # re-point after register()
+
+    assert registry.descriptors() == (original,)
+    assert plugin.compose_calls == 0
+
+
+def test_descriptors_snapshot_unchanged_after_later_registration():
+    alpha = _descriptor(plugin_id="alpha", rom_sha1="a" * 40,
+                        profile_id="profile-alpha")
+    registry = ReviewedPluginRegistry(enabled=True)
+    registry.register(_Plugin(alpha))
+    snapshot = registry.descriptors()
+
+    beta = _descriptor(plugin_id="beta", rom_sha1="b" * 40,
+                       profile_id="profile-beta")
+    registry.register(_Plugin(beta))
+
+    assert snapshot == (alpha,)
+    assert registry.descriptors() == (alpha, beta)
