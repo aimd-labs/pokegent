@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import pytest
 
+import pokegent.games.plugin as plugin_module
 from pokegent.games.plugin import (
     MAX_REQUIRED_CAPABILITIES,
     MAX_ROM_BYTES,
@@ -95,6 +96,12 @@ def test_registry_defaults_off_and_refuses_before_compose():
 
     assert caught.value.code is RefusalCode.DISABLED
     assert plugin.compose_calls == 0
+
+
+@pytest.mark.parametrize("enabled", ["false", 0, 1, None])
+def test_registry_enabled_flag_must_be_exactly_bool(enabled):
+    with pytest.raises(TypeError):
+        ReviewedPluginRegistry(enabled=enabled)
 
 
 def test_exact_identity_selects_each_plugin_and_its_services():
@@ -215,6 +222,31 @@ def test_bounded_inputs_are_rejected_before_compose():
         )
 
     assert plugin.compose_calls == 0
+
+
+def test_memoryview_bound_counts_bytes_not_elements(monkeypatch):
+    plugin = _plugin(game="synthetic-a", profile_id="a-1", data=ROM_A, scene="alpha")
+    registry = _registry(plugin)
+    view = memoryview(ROM_A).cast("I")
+    assert len(view) < view.nbytes
+    monkeypatch.setattr(plugin_module, "MAX_ROM_BYTES", len(view))
+
+    with pytest.raises(ValueError):
+        _select(registry, plugin, view)
+
+    assert plugin.compose_calls == 0
+
+
+@pytest.mark.parametrize("contract_version", [True, 1.0, "1"])
+def test_descriptor_contract_version_must_be_plain_int(contract_version):
+    with pytest.raises(ValueError):
+        GamePluginDescriptor(
+            plugin_id="synthetic-a:a-1",
+            game="synthetic-a",
+            profile_id="a-1",
+            contract_version=contract_version,
+            rom_sha1=_digest(ROM_A),
+        )
 
 
 def test_descriptor_is_immutable():

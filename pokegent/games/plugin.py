@@ -48,8 +48,8 @@ class GamePluginDescriptor:
     def __post_init__(self) -> None:
         if not (self.plugin_id and self.game and self.profile_id):
             raise ValueError("plugin_id, game and profile_id must be non-empty")
-        if self.contract_version < 1:
-            raise ValueError("contract_version must be positive")
+        if type(self.contract_version) is not int or self.contract_version < 1:
+            raise ValueError("contract_version must be a positive plain int")
         if not _SHA1.fullmatch(self.rom_sha1):
             raise ValueError("rom_sha1 must be 40 lowercase hex characters")
         capabilities = frozenset(self.capabilities)
@@ -82,6 +82,8 @@ class ReviewedPluginRegistry:
     """Explicit registry for trusted plugin objects; disabled unless opted in."""
 
     def __init__(self, *, enabled: bool = False) -> None:
+        if not isinstance(enabled, bool):
+            raise TypeError("enabled must be exactly bool")
         self._enabled = enabled
         self._plugins: dict[str, tuple[GamePluginDescriptor, PythonGamePluginProtocol]] = {}
         self._owners: set[tuple[str, str]] = set()
@@ -111,7 +113,8 @@ class ReviewedPluginRegistry:
             raise PluginRefusal(RefusalCode.DISABLED, "registry is not explicitly enabled")
         if not isinstance(rom_bytes, (bytes, bytearray, memoryview)):
             raise TypeError("rom_bytes must be bytes-like")
-        if len(rom_bytes) > MAX_ROM_BYTES:
+        rom_size = rom_bytes.nbytes if isinstance(rom_bytes, memoryview) else len(rom_bytes)
+        if rom_size > MAX_ROM_BYTES:
             raise ValueError("rom_bytes exceeds the bounded input size")
         required = tuple(islice(required_capabilities, MAX_REQUIRED_CAPABILITIES + 1))
         if len(required) > MAX_REQUIRED_CAPABILITIES:
