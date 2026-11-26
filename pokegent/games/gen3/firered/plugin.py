@@ -2,9 +2,9 @@
 
 The plugin is inert unless a caller explicitly enables :class:`ReviewedPluginRegistry` and the
 built-in FireRed plugin is admitted for exact caller-supplied ROM bytes. ``compose`` only builds
-the existing adapter and names the existing composite source class; it does not read an actor,
-touch a ROM file, register options or claim verification/support beyond source + reader
-composition.
+the existing adapter and names the existing composite source and game-owned menu/family helpers;
+it does not read an actor, touch a ROM file, register options or claim verification/support beyond
+source + reader + menu/family composition.
 """
 
 from __future__ import annotations
@@ -20,9 +20,12 @@ FIRERED_GAME = "firered"
 FIRERED_CONTRACT_VERSION = 1
 FIRERED_GAME_CODE = "BPRE"
 FIRERED_ROM_VERSION = 0
-#: Only what this composition actually supplies: the existing adapter's readers/rules and the
-#: existing composite snapshot source. No verification, input, support or title promotion.
-FIRERED_CAPABILITIES = frozenset({"snapshot_source", "reader"})
+#: Only what this composition actually supplies: the existing adapter's readers/rules, the
+#: existing composite snapshot source, and the game-owned menu/family construction helpers.
+#: No verification, input, support or title promotion.
+FIRERED_CAPABILITIES = frozenset(
+    {"snapshot_source", "reader", "menu_services", "family_registration"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +35,8 @@ class FireRedServices:
     profile: RomProfile
     adapter: Any
     snapshot_source_factory: Callable[..., Any]
+    menu_services_factory: Callable[..., Any]
+    family_registration_factory: Callable[..., Any]
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -73,7 +78,9 @@ class FireRedPlugin:
         return self._descriptor
 
     def compose(self) -> FireRedServices:
-        """Lazily build the existing adapter and name the existing composite source class."""
+        """Lazily name the existing adapter, composite source and game-owned helpers."""
+        from pokegent.games.gen3.firered.composition import make_menu_services
+        from pokegent.games.gen3.firered.families import register_families
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
         from pokegent.games.gen3.firered.reader.snapshot_sources import CompositeSnapshotSource
 
@@ -82,4 +89,6 @@ class FireRedPlugin:
             profile=self._profile,
             adapter=adapter,
             snapshot_source_factory=CompositeSnapshotSource,
+            menu_services_factory=make_menu_services,
+            family_registration_factory=register_families,
         )

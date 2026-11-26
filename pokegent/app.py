@@ -689,9 +689,9 @@ def build_runner(
 
     ``experimental_game_plugin`` is an explicit Python-API opt-in (default off). When true the
     built-in reviewed FireRed plugin must admit the exact caller-supplied ``plugin_rom_bytes``
-    before any actor-backed read or reader construction, and its snapshot source factory replaces
-    only the existing source construction below. No ROM path, discovery or filesystem read is
-    implied; the caller already owns those bytes.
+    before any actor-backed read or reader construction, and its snapshot source, menu services
+    and family registration factories replace only the existing constructions below. No ROM path,
+    discovery or filesystem read is implied; the caller already owns those bytes.
     """
     config = config or AppConfig()
     plugin_services = None
@@ -712,7 +712,11 @@ def build_runner(
             rom_bytes=plugin_rom_bytes,
             game="firered",
             profile_id=getattr(profile, "profile_id", ""),
-            required_capabilities=("snapshot_source",),
+            required_capabilities=(
+                "snapshot_source",
+                "menu_services",
+                "family_registration",
+            ),
         )
         plugin_services = selection.services
     elif plugin_rom_bytes is not None:
@@ -770,7 +774,12 @@ def build_runner(
     from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
     from pokegent.games.gen3.firered.composition import make_menu_services
 
-    menu_services = make_menu_services(
+    menu_factory = (
+        plugin_services.menu_services_factory
+        if plugin_services is not None
+        else make_menu_services
+    )
+    menu_services = menu_factory(
         actor,
         profile,
         rom_path,
@@ -786,7 +795,12 @@ def build_runner(
         if objective is not None and objective.kind == "heal":
             logger.warning("heal objective max PP unknown: no ROM tables (rom_path is None)")
 
-    bundle = register_families(
+    family_registrar = (
+        plugin_services.family_registration_factory
+        if plugin_services is not None
+        else register_families
+    )
+    bundle = family_registrar(
         registries,
         config=config,
         menu_services=menu_services,
