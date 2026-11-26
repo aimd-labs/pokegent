@@ -47,6 +47,11 @@ With `--validate-manifests` and no `--enabled`, the command prints
 `campaign_report: --validate-manifests requires --enabled` to stderr and exits 1 before any
 input or output I/O.
 
+The `--validate-manifests` path needs the pinned validator; from an existing Python 3.11
+source checkout, install the optional `evaluation` extra with
+`uv pip install -e '.[evaluation]'`. The bundled `docs/benchmarks/scenario-manifest.schema.json`
+must remain present. The default and validate-off paths never import the extra.
+
 The output is one `json.dumps(..., sort_keys=True)` object of caller-label counts: `supplied`,
 `planned`, `started`, `completed`, `failed`, `timed_out`, `censored`, `infrastructure_invalid`,
 `assisted`, `reported_unassisted_completed`. `reported_unassisted_completion_rate` is
