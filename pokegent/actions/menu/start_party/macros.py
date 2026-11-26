@@ -85,6 +85,38 @@ def _swap_binding(
     return any(window.window_id == yes_no.window_id for window in text.windows)
 
 
+def _swap_message_waiting(snapshot, *, selected_slot, target_personality, old_held, item_id,
+                          bag_count, pre_action) -> bool:
+    """The "already holding X.\\pWould you like to switch..." message paused for A (#274).
+
+    pokefirered party_menu.c prints that text with a ``\\p`` break; ``Task_SwitchItemsYesNo`` only
+    opens the YES/NO window after ``Task_PrintAndWaitForText`` ends.  Both pinned tasks must be
+    active and the same member/item/bag premises as ``_swap_binding`` must hold.  This only
+    licenses acknowledging the message, never the YES.
+    """
+    ui = snapshot.ui
+    if ui is None or getattr(getattr(ui, "menu", None), "party", None) is None:
+        return False
+    if any(getattr(s, "valid", None) is not True for s in (ui.main, ui.tasks, ui.field, ui.script)):
+        return False
+    names = {task.func.name for task in ui.tasks.active}
+    if not {"Task_SwitchItemsYesNo", "Task_PrintAndWaitForText"} <= names:
+        return False
+    party, callback = ui.menu.party, ui.main.callback2
+    mon = next((m for m in snapshot.party if m.slot == selected_slot), None)
+    return bool(
+        old_held not in (0, item_id) and old_held not in MAIL_ITEM_IDS
+        and item_id not in MAIL_ITEM_IDS and ui.main.in_battle is False
+        and ui.field.fade_active is False and ui.script.running is False
+        and callback is not None and callback.name == "CB2_UpdatePartyMenu"
+        and callback.verified is True and party.slot_id == selected_slot
+        and party.item_id == item_id and party.action_name == pre_action
+        and pre_action in ("choose_mon", "give_item")
+        and mon is not None and mon.personality == target_personality
+        and mon.held_item == old_held and _bag_item_quantity(snapshot, item_id) == bag_count
+    )
+
+
 def _party_prompt_candidate(snapshot) -> bool:
     """A live two-entry party prompt on the give return path, used only to STOP.
 
@@ -281,14 +313,33 @@ def select(ctx: StepContext):
                 pre_action=pre_action,
             )
 
+        def swap_message(current) -> bool:
+            return _swap_message_waiting(
+                current.snapshot, selected_slot=selected_slot, bag_count=bag_count,
+                target_personality=target_personality, old_held=old_held, item_id=item_id,
+                pre_action=pre_action,
+            )
+
+        settled = lambda current: (  # noqa: E731
+            give_applied(current) or swap_bound(current) or prompt_candidate(current)
+            or _party_input_ready(current)
+        )
         observation = yield WaitUntil(
-            lambda current: give_applied(current)
-            or swap_bound(current)
-            or prompt_candidate(current)
-            or _party_input_ready(current),
+            lambda current: settled(current) or swap_message(current),
             max_frames=600,
             failure_reason="party give did not reach a transfer or party menu",
         )
+        acknowledged = False
+        for _ in range(3):  # the "already holding" text pauses at \p: A advances it, never YES
+            if give_applied(observation) or not swap_message(observation):
+                break
+            observation = yield Tap("a", hold_frames=4, wait_frames=60)
+            acknowledged = True
+        if acknowledged:
+            observation = yield WaitUntil(
+                settled, max_frames=600,
+                failure_reason="swap message did not reach the yes/no prompt",
+            )
         if not give_applied(observation) and swap_bound(observation):
             observation = yield Tap("a", hold_frames=4, wait_frames=20)
             observation = yield WaitUntil(

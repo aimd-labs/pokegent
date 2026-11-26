@@ -906,6 +906,16 @@ profiles:
         source: "pret pokefirered 037335f4 src/party_menu.c Task_ClosePartyMenuAfterText; pokefirered.sym 081255bc, size 0x34"
         verified_by:
           - "FireRed USA rev0 read-only ROM binding: handler calls IsPartyMenuTextPrinterActive and Task_ClosePartyMenu; gText_MoveNotLearned waits for input before automatic close"
+      Task_SwitchItemsYesNo:
+        address: 0x081238FC
+        source: "pret pokefirered src/party_menu.c Task_SwitchItemsYesNo; pokefirered.sym 081238fc, size 0x34"
+        verified_by:
+          - "FireRed USA rev0 source-bound symbol: opens the YES/NO window only once the party-menu text printer is idle; live #274 saved state: active in slot 0 (priority 0)"
+      Task_PrintAndWaitForText:
+        address: 0x08120328
+        source: "pret pokefirered src/party_menu.c Task_PrintAndWaitForText; pokefirered.sym 08120328, size 0x48"
+        verified_by:
+          - "FireRed USA rev0 source-bound symbol: waits on RunTextPrinters_CheckActive(6); live #274 saved state: active in slot 1 (priority 1, data0=1) with the already-holding message"
       Task_HandleStopLearningMoveYesNoInput:
         address: 0x08126170
         source: "pret pokefirered 037335f4 src/party_menu.c:4688; pokefirered.sym Task_HandleStopLearningMoveYesNoInput"
