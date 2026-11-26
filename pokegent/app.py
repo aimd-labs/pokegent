@@ -644,14 +644,10 @@ def build_facts(
     opponent_knowledge: str = "guide",
 ):
     """The battle family's fact provider: Gen-3 mechanics from the ROM (``None`` = BasicFacts)."""
-    if kind == "basic" or rom_path is None:
-        return None
-    from pokegent.games.gen3.adapters.battle_facts import MechanicsFacts
+    from pokegent.games.gen3.firered.battle import make_battle_facts
 
-    return MechanicsFacts.from_rom_file(
-        rom_path,
-        profile_id=profile.profile_id,
-        opponent_knowledge=opponent_knowledge,
+    return make_battle_facts(
+        profile, rom_path, kind, opponent_knowledge=opponent_knowledge
     )
 
 
