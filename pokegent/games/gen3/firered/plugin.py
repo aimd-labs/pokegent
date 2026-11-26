@@ -2,9 +2,10 @@
 
 The plugin is inert unless a caller explicitly enables :class:`ReviewedPluginRegistry` and the
 built-in FireRed plugin is admitted for exact caller-supplied ROM bytes. ``compose`` only builds
-the existing adapter and names the existing composite source and game-owned menu/family helpers;
-it does not read an actor, touch a ROM file, register options or claim verification/support beyond
-source + reader + menu/family composition.
+the existing adapter and names the existing composite source and game-owned menu/family helpers
+plus the game-owned battle facts factory; it does not read an actor, touch a ROM file, register
+options or claim verification/support beyond source + reader + menu/family/battle-fact
+composition.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ FIRERED_ROM_VERSION = 0
 #: Only what this composition actually supplies: the existing adapter's readers/rules, the existing
 #: composite snapshot source, the existing scene catalog loader, the game-owned menu/family
 #: constructors, the fresh objective observation helper, the game-owned Dex fallback factory, the
-#: game-owned story fallback/identity callables, and the existing local knowledge reader. No action
-#: verification, input, support or title promotion.
+#: game-owned story fallback/identity callables, the existing local knowledge reader, and the
+#: game-owned battle facts factory. No action verification, input, support or title promotion.
 FIRERED_CAPABILITIES = frozenset(
     {
         "snapshot_source",
@@ -37,6 +38,7 @@ FIRERED_CAPABILITIES = frozenset(
         "story_fallback",
         "pre_game_callbacks",
         "local_knowledge",
+        "battle_facts",
     }
 )
 
@@ -57,6 +59,7 @@ class FireRedServices:
     story_identity_validator: Callable[..., Any]
     local_knowledge_factory: Callable[..., Any]
     pre_game_callbacks: frozenset[str]
+    battle_facts_factory: Callable[..., Any] | None = None
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -98,11 +101,12 @@ class FireRedPlugin:
         return self._descriptor
 
     def compose(self) -> FireRedServices:
-        """Lazily name the existing adapter, composite source and game-owned helpers."""
+        """Lazily name the existing adapter, source, game helpers and battle factory."""
         from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
         from pokegent.games.gen3.firered.admission import (
             make_objective_observation_services,
         )
+        from pokegent.games.gen3.firered.battle import make_battle_facts
         from pokegent.games.gen3.firered.composition import make_menu_services
         from pokegent.games.gen3.firered.families import register_families
         from pokegent.games.gen3.firered.knowledge import FireRedKnowledge
@@ -129,4 +133,5 @@ class FireRedPlugin:
             story_identity_validator=verify_story_identity,
             local_knowledge_factory=FireRedKnowledge,
             pre_game_callbacks=PRE_GAME_CALLBACKS,
+            battle_facts_factory=make_battle_facts,
         )
