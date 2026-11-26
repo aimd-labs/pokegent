@@ -41,6 +41,7 @@ from pokegent.actions import FamilyBundle, Registries
 from pokegent.actions._exec.executor import Executor
 from pokegent.addons import AddonConfig, AddonConfigError, AddonStartError, AddonTaps
 from pokegent.events import EventLog, EventSink, EventType, MemoryEventLog
+from pokegent.games.gen3.firered.admission import make_objective_observation_services
 from pokegent.games.gen3.firered.families import register_families
 from pokegent.games.gen3.firered.reader.snapshot_sources import (
     CompositeSnapshotSource,
@@ -716,6 +717,7 @@ def build_runner(
                 "snapshot_source",
                 "menu_services",
                 "family_registration",
+                "objective_observation",
             ),
         )
         plugin_services = selection.services
@@ -726,30 +728,14 @@ def build_runner(
             RefusalCode.DISABLED,
             "plugin_rom_bytes requires experimental_game_plugin=True",
         )
-    shop_observation: Callable[[], Any] | None = None
-    fresh_snapshot: Callable[[], Any] | None = None
-    if actor is not None and profile is not None:
-        from pokegent.games.gen3.firered.reader.live import LiveReader
-        from pokegent.goals.shop_admission import ShopObservation
-
-        observation_reader = LiveReader(actor, profile, run_id=config.run_id)
-
-        def fresh_snapshot() -> Any | None:
-            """Fresh core-only read from the same actor; never a cached decision snapshot."""
-            try:
-                snapshot = observation_reader.read().snapshot
-            except Exception:  # an optional admission fact read stays UNKNOWN
-                return None
-            if not snapshot.usable or snapshot.rom_profile != profile.profile_id:
-                return None
-            return snapshot
-
-        def shop_observation() -> ShopObservation | None:
-            snapshot = fresh_snapshot()
-            if snapshot is None:
-                return None
-            return ShopObservation.from_snapshot(snapshot, rom_sha1=profile.rom.sha1)
-
+    observation_factory = (
+        plugin_services.objective_observation_factory
+        if plugin_services is not None
+        else make_objective_observation_services
+    )
+    observation_services = observation_factory(actor, profile, config.run_id)
+    fresh_snapshot = observation_services.fresh_snapshot
+    shop_observation = observation_services.shop_observation
     session = make_objective_session(
         objectives,
         objective_plan,

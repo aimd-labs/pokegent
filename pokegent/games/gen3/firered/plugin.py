@@ -21,10 +21,16 @@ FIRERED_CONTRACT_VERSION = 1
 FIRERED_GAME_CODE = "BPRE"
 FIRERED_ROM_VERSION = 0
 #: Only what this composition actually supplies: the existing adapter's readers/rules, the
-#: existing composite snapshot source, and the game-owned menu/family construction helpers.
-#: No verification, input, support or title promotion.
+#: existing composite snapshot source, the game-owned menu/family constructors, and the fresh
+#: objective observation helper. No verification, input, support or title promotion.
 FIRERED_CAPABILITIES = frozenset(
-    {"snapshot_source", "reader", "menu_services", "family_registration"}
+    {
+        "snapshot_source",
+        "reader",
+        "menu_services",
+        "family_registration",
+        "objective_observation",
+    }
 )
 
 
@@ -37,6 +43,7 @@ class FireRedServices:
     snapshot_source_factory: Callable[..., Any]
     menu_services_factory: Callable[..., Any]
     family_registration_factory: Callable[..., Any]
+    objective_observation_factory: Callable[..., Any]
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -79,6 +86,9 @@ class FireRedPlugin:
 
     def compose(self) -> FireRedServices:
         """Lazily name the existing adapter, composite source and game-owned helpers."""
+        from pokegent.games.gen3.firered.admission import (
+            make_objective_observation_services,
+        )
         from pokegent.games.gen3.firered.composition import make_menu_services
         from pokegent.games.gen3.firered.families import register_families
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
@@ -91,4 +101,5 @@ class FireRedPlugin:
             snapshot_source_factory=CompositeSnapshotSource,
             menu_services_factory=make_menu_services,
             family_registration_factory=register_families,
+            objective_observation_factory=make_objective_observation_services,
         )

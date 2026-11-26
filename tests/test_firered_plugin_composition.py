@@ -113,6 +113,7 @@ def test_capabilities_cover_exactly_the_supplied_source_factories():
         "reader",
         "menu_services",
         "family_registration",
+        "objective_observation",
     }
     assert not FIRERED_CAPABILITIES & {"verification", "supported", "input"}
 
