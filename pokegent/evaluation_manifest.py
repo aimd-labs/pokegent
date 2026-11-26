@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pokegent.evaluation_campaign import CampaignAttempt, CampaignAttemptRejected
+from pokegent.evaluation_campaign import (
+    MAX_ATTEMPTS,
+    CampaignAttempt,
+    CampaignAttemptRejected,
+    summarize_attempts,
+)
 
 SCHEMA_VERSION = "pokegent-evaluation/1"
 PROJECTED = ("campaign_id", "attempt_id", "status", "operator_interventions")
@@ -35,3 +40,22 @@ def project_attempt(
         status=manifest["status"],
         operator_interventions=manifest["operator_interventions"],
     )
+
+
+def summarize_manifests(
+    manifests: Any, *, cohort_id: Any, enabled: bool = False
+) -> dict[str, Any]:
+    """Summarize a plain manifest batch via the existing helpers when enabled."""
+    if type(enabled) is not bool:
+        raise CampaignAttemptRejected("enabled must be a bool")
+    if not enabled:
+        return summarize_attempts((), enabled=False)
+    if type(manifests) not in (list, tuple):
+        raise CampaignAttemptRejected("manifests must be a plain list or tuple")
+    if len(manifests) > MAX_ATTEMPTS:
+        raise CampaignAttemptRejected(f"manifests exceeds {MAX_ATTEMPTS}")
+    attempts = [
+        project_attempt(manifest, cohort_id=cohort_id, enabled=True)
+        for manifest in manifests
+    ]
+    return summarize_attempts(attempts, enabled=True)
