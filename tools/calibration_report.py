@@ -127,6 +127,44 @@ def _key_sort(key: tuple[Any, ...]) -> tuple[Any, ...]:
     return (key[0], *key[1:5], (key[5] is not None, key[5] or ""), key[6], key[7])
 
 
+def _eligibility_policy(ms: Any, rate: Any, p95: Any) -> tuple[int, float, float]:
+    """Mirror S1 EligibilityPolicy rules, stdlib-only (no pydantic import)."""
+    if not isinstance(ms, int) or isinstance(ms, bool) or ms < 1:
+        raise ValueError("min_samples must be an int >= 1")
+    if not isinstance(rate, (int, float)) or isinstance(rate, bool) or not 0 < rate <= 1:
+        raise ValueError("min_valid_rate must be in (0, 1]")
+    if (not isinstance(p95, (int, float)) or isinstance(p95, bool)
+            or not math.isfinite(p95) or p95 <= 0):
+        raise ValueError("max_p95_ms must be finite and > 0")
+    return ms, float(rate), float(p95)
+
+
+def scene_eligibility_report(scenes: dict[str, dict[str, Any]],
+                             policy: tuple[Any, Any, Any]) -> dict[str, Any]:
+    ms, rate, cap = _eligibility_policy(*policy)
+    rows = []
+    for name, scene in sorted(scenes.items()):
+        samples = sorted(scene["samples"])
+        p95 = _percentile(samples, 0.95) if samples else None
+        if scene["records"] < ms:
+            eligible, reason = "unknown", "below_min_samples"
+        elif scene["unknown"] > 0:
+            eligible, reason = "unknown", "unknown_choices"
+        elif scene["valid"] / (scene["valid"] + scene["invalid"]) < rate:
+            eligible, reason = False, "below_valid_rate"
+        elif p95 is not None and p95 > cap:
+            eligible, reason = False, "over_latency_cap"
+        else:
+            eligible, reason = True, "eligible"
+        rows.append({"scene_id": scene["scene_id"], "records": scene["records"],
+                     "valid": scene["valid"], "invalid": scene["invalid"],
+                     "unknown": scene["unknown"],
+                     "p50_ms": _percentile(samples, 0.50) if samples else None,
+                     "p95_ms": p95, "eligible": eligible, "reason": reason})
+    return {"policy": {"min_samples": ms, "min_valid_rate": rate, "max_p95_ms": cap},
+            "scenes": rows, "accuracy": None, "no_progress": None, "authority_granted": False}
+
+
 def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                  max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA,
                  choice_validity: bool = False,

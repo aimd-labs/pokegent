@@ -15,6 +15,7 @@ from tools.calibration_report import (
     ReportError,
     build_report,
     main,
+    scene_eligibility_report,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -333,3 +334,23 @@ def test_main_returns_zero_for_valid_file_and_nonzero_for_bad_file(tmp_path, cap
     out = capsys.readouterr()
     assert out.out == ""
     assert "malformed JSON" in out.err
+
+
+def test_scene_eligibility_labels_eligible_not_eligible_unknown():
+    data = {"route-1": (1, 1, 0, 0, [10.0]), "shaky": (2, 1, 1, 0, [10.0, 20.0]),
+            "slow": (2, 2, 0, 0, [50.0, 2000.0]), "thin": (0, 0, 0, 0, []),
+            "opaque": (2, 1, 0, 1, [10.0, 20.0])}
+    scenes = {name: {"scene_id": name, "records": rec, "valid": v, "invalid": i,
+                     "unknown": u, "samples": samp}
+              for name, (rec, v, i, u, samp) in data.items()}
+    report = scene_eligibility_report(scenes, (1, 0.8, 100.0))
+    got = {s["scene_id"]: (s["eligible"], s["reason"], s["p50_ms"], s["p95_ms"])
+           for s in report["scenes"]}
+    assert report["policy"] == {"min_samples": 1, "min_valid_rate": 0.8, "max_p95_ms": 100.0}
+    assert (report["accuracy"], report["no_progress"], report["authority_granted"]) \
+        == (None, None, False)
+    assert got["route-1"] == (True, "eligible", 10.0, 10.0)
+    assert got["shaky"] == (False, "below_valid_rate", 10.0, 20.0)
+    assert got["slow"] == (False, "over_latency_cap", 50.0, 2000.0)
+    assert got["thin"] == ("unknown", "below_min_samples", None, None)
+    assert got["opaque"] == ("unknown", "unknown_choices", 10.0, 20.0)
