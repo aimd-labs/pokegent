@@ -36,12 +36,11 @@ class Recorder:
 
 def _wire_navigation(monkeypatch, calls):
     graph, adapter = object(), object()
-    monkeypatch.setattr(navigation_module.MapGraph, "from_rom",
-                        Recorder("graph", calls, graph))
-    monkeypatch.setattr(navigation_module.NavigationGraph, "from_rom",
-                        Recorder("nav_graph", calls, object()))
-    monkeypatch.setattr(navigation_module, "NavigationAdapter",
-                        Recorder("adapter", calls, adapter))
+    monkeypatch.setattr(navigation_module.MapGraph, "from_rom", Recorder("graph", calls, graph))
+    monkeypatch.setattr(
+        navigation_module.NavigationGraph, "from_rom", Recorder("nav_graph", calls, object())
+    )
+    monkeypatch.setattr(navigation_module, "NavigationAdapter", Recorder("adapter", calls, adapter))
     return graph, adapter
 
 
@@ -84,7 +83,8 @@ def test_navigation_factory_uses_the_helper_only_when_directory_is_needed(monkey
     profile = _profile()
     graph, adapter = _wire_navigation(monkeypatch, calls)
     monkeypatch.setattr(
-        navigation_module, "make_objective_directory",
+        navigation_module,
+        "make_objective_directory",
         Recorder("directory", calls, directory),
     )
 
@@ -92,9 +92,7 @@ def test_navigation_factory_uses_the_helper_only_when_directory_is_needed(monkey
         ROM, profile, events=object(), needs_directory=True
     )
 
-    assert [label for label, _, _ in calls] == [
-        "graph", "nav_graph", "adapter", "directory"
-    ]
+    assert [label for label, _, _ in calls] == ["graph", "nav_graph", "adapter", "directory"]
     assert calls[3][1:] == ((ROM, profile), {})
     assert services.graph is graph
     assert services.navigation is adapter
@@ -123,7 +121,17 @@ def test_compose_names_the_directory_helper_without_invoking_it(monkeypatch):
 
 def test_manual_services_construction_keeps_the_optional_factory():
     services = FireRedServices(
-        _profile(), object(), object(), object(), object(), object(),
-        object(), object(), object(), object(), object(), frozenset(),
+        _profile(),
+        object(),
+        object(),
+        object(),
+        object(),
+        object(),
+        object(),
+        object(),
+        object(),
+        object(),
+        object(),
+        frozenset(),
     )
     assert services.objective_directory_factory is None
