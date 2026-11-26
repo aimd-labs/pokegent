@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from contextlib import closing
 from os import PathLike
 
@@ -205,6 +206,38 @@ def _migrate(db: sqlite3.Connection) -> None:
         raise
 
 
+def _activate_wal(db: sqlite3.Connection) -> None:
+    """Activate WAL within one monotonic second, retrying only SQLITE_BUSY."""
+    deadline = time.monotonic() + 1.0
+    prior = db.execute("PRAGMA busy_timeout").fetchone()[0]
+    busy: sqlite3.OperationalError | None = None
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            db.execute(f"PRAGMA busy_timeout={max(0, int(remaining * 1000))}")
+            try:
+                mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+            except sqlite3.OperationalError as exc:
+                if getattr(exc, "sqlite_errorcode", None) != sqlite3.SQLITE_BUSY:
+                    raise
+                busy = exc
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(0.01, remaining))
+                continue
+            if mode != "wal":
+                raise LedgerSchemaError("WAL unavailable for ledger database")
+            return
+    finally:
+        db.execute(f"PRAGMA busy_timeout={int(prior)}")
+    if busy is not None:
+        raise busy
+    raise LedgerSchemaError("WAL activation budget expired")
+
+
 def open_ledger(path: str | PathLike[str]) -> sqlite3.Connection:
     """Open/migrate an owned file, with WAL and FK enforcement, or fail closed.
 
@@ -227,8 +260,7 @@ def open_ledger(path: str | PathLike[str]) -> sqlite3.Connection:
     try:
         db.execute("PRAGMA foreign_keys=ON")
         _migrate(db)
-        if db.execute("PRAGMA journal_mode=WAL").fetchone()[0] != "wal":
-            raise LedgerSchemaError("WAL unavailable for ledger database")
+        _activate_wal(db)
         db.isolation_level = ""  # Restore sqlite3's implicit transactions for `with db:`.
         return db
     except BaseException:
