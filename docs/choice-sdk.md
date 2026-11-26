@@ -119,7 +119,7 @@ already-satisfied rejection and history stay the store's; there is no revision b
 completion, independent snapshot provider or read path, server/MCP/runtime wiring or game input.
 The store's own already-bound admission snapshot may still be read during `propose()`. FireRed
 namespace only. The supplied selection and store are trusted, not cryptographically bound to a ROM
-or running process. See [the objective file](objective-file.md).
+or running process. See the [Objective SDK guide](objective-sdk.md) and [the objective file](objective-file.md).
 
 ## Progress (separate opt-in snapshot evaluation)
 
