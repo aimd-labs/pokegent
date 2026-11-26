@@ -17,7 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 from addons.system_one.factory import build_decider
-from addons.system_one.policy import CalibrationPolicy, SystemOneConfig
+from addons.system_one.policy import CalibrationPolicy, EligibilityPolicy, SystemOneConfig
 from addons.system_one.provider import SyncDecider
 from addons.system_one.telemetry import CalibrationLog, DecisionTelemetry
 from pokegent.options.models import (
@@ -317,3 +317,37 @@ def test_report_cli_switch_is_opt_in(tmp_path):
     assert enabled.returncode == 0
     counts = json.loads(enabled.stdout)["strata"][0]["choice_validity"]
     assert counts == {"valid": 0, "invalid": 1, "unknown": 0}
+
+
+def test_eligibility_policy_requires_min_samples():
+    with pytest.raises(ValidationError):
+        EligibilityPolicy(min_samples=0, min_valid_rate=0.5, max_p95_ms=1000)
+
+
+def test_eligibility_policy_rejects_bad_rate_and_latency():
+    for min_samples, rate, latency in [
+        (1, 0.0, 1000),
+        (1, 1.1, 1000),
+        (1, 0.5, -1),
+        (1, 0.5, float("inf")),
+    ]:
+        with pytest.raises(ValidationError):
+            EligibilityPolicy(min_samples=min_samples, min_valid_rate=rate, max_p95_ms=latency)
+
+
+def test_eligibility_policy_rejects_bools_and_extra_fields():
+    for kwargs in [
+        {"min_samples": True, "min_valid_rate": 0.5, "max_p95_ms": 1000},
+        {"min_samples": 1, "min_valid_rate": True, "max_p95_ms": 1000},
+        {"min_samples": 1, "min_valid_rate": 0.5, "max_p95_ms": True},
+        {"min_samples": 1, "min_valid_rate": 0.5, "max_p95_ms": 1000, "extra": "x"},
+    ]:
+        with pytest.raises(ValidationError):
+            EligibilityPolicy(**kwargs)
+
+
+def test_eligibility_policy_accepts_boundary_values():
+    policy = EligibilityPolicy(min_samples=1, min_valid_rate=1.0, max_p95_ms=0.5)
+    assert policy.min_samples == 1
+    assert policy.min_valid_rate == 1.0
+    assert policy.max_p95_ms == 0.5
