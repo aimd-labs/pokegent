@@ -22,9 +22,9 @@ FIRERED_GAME_CODE = "BPRE"
 FIRERED_ROM_VERSION = 0
 #: Only what this composition actually supplies: the existing adapter's readers/rules, the existing
 #: composite snapshot source, the existing scene catalog loader, the game-owned menu/family
-#: constructors, the fresh objective observation helper, the game-owned Dex fallback factory, and
-#: the game-owned story fallback/identity callables. No action verification, input, support or title
-#: promotion.
+#: constructors, the fresh objective observation helper, the game-owned Dex fallback factory, the
+#: game-owned story fallback/identity callables, and the existing local knowledge reader. No action
+#: verification, input, support or title promotion.
 FIRERED_CAPABILITIES = frozenset(
     {
         "snapshot_source",
@@ -36,6 +36,7 @@ FIRERED_CAPABILITIES = frozenset(
         "dex_fallback",
         "story_fallback",
         "pre_game_callbacks",
+        "local_knowledge",
     }
 )
 
@@ -54,6 +55,7 @@ class FireRedServices:
     dex_fallback_factory: Callable[..., Any]
     story_fallback_factory: Callable[..., Any]
     story_identity_validator: Callable[..., Any]
+    local_knowledge_factory: Callable[..., Any]
     pre_game_callbacks: frozenset[str]
 
 
@@ -103,6 +105,7 @@ class FireRedPlugin:
         )
         from pokegent.games.gen3.firered.composition import make_menu_services
         from pokegent.games.gen3.firered.families import register_families
+        from pokegent.games.gen3.firered.knowledge import FireRedKnowledge
         from pokegent.games.gen3.firered.objectives import make_dex_fallback
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
         from pokegent.games.gen3.firered.reader.snapshot_sources import CompositeSnapshotSource
@@ -124,5 +127,6 @@ class FireRedPlugin:
             dex_fallback_factory=make_dex_fallback,
             story_fallback_factory=make_story_fallback,
             story_identity_validator=verify_story_identity,
+            local_knowledge_factory=FireRedKnowledge,
             pre_game_callbacks=PRE_GAME_CALLBACKS,
         )
