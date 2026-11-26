@@ -295,3 +295,63 @@ except EvaluationRejected:
 else:
     raise AssertionError("duplicate observation must be rejected")
 ```
+
+## Shadow frame-identity report (opt-in)
+
+`tools/shadow_report.py` can count frame identity separately from agreement. The default
+`build_report(paths)` and CLI output are unchanged. Pass `frame_identity=True` or add
+`--frame-identity`, and each stratum also gets `frame_identity` with `true`, `false` and
+`unknown` counts. The CLI form is `python -m tools.shadow_report --frame-identity EVENTS_JSONL`.
+
+`frame_identity` is independent of `agreement`, which still counts true/false/unknown from
+`details.agreement`. Only an explicit JSON `true` or `false` in
+`details.frame_matches_current` counts as true or false; a missing, `null` or older-record
+field is `unknown`. Under opt-in a non-boolean value is a typed `field frame_matches_current`
+error (CLI exit 1, no stdout); the message does not echo the record. Default reports ignore
+the field entirely.
+
+A producer that records the observed snapshot, goal and fingerprint separately from the
+current decision can compare them and set `frame_matches_current`. `false` means that
+comparison differed at capture time. It is not proof of a cause, a poor choice or reduced
+accuracy, and `true` is not correctness. The report still records `authority: shadow`,
+`action_acceptance: not_inferred`, `accuracy: null` and `eligibility: not_evaluated`; it
+accepts no shadow output and enables no Shadow, Guarded or Expanded stage.
+
+Synthetic example, run from the repository root with CPython 3.11 (invented events only):
+
+```python
+import json
+import tempfile
+from pathlib import Path
+
+from tools.shadow_report import build_report
+
+
+def event(seq, details):
+    return {
+        "type": "decision.systemone.completed", "run_id": "run-synthetic", "seq": seq,
+        "scene_id": "scene-synthetic", "provider": "local", "outcome": "observed",
+        "details": {"accepted": False, "authority": "shadow", "agreement": True,
+                    "model_id": "m-synthetic", **details},
+    }
+
+
+events = [event(1, {"frame_matches_current": True}),
+          event(2, {"frame_matches_current": False}), event(3, {})]
+assert all(item["details"]["accepted"] is False for item in events)
+with tempfile.TemporaryDirectory() as tmp:
+    path = Path(tmp) / "events.jsonl"
+    path.write_text("".join(json.dumps(item) + "\n" for item in events),
+                    encoding="utf-8")
+    default = build_report([str(path)])
+    opted = build_report([str(path)], frame_identity=True)
+
+row = opted["strata"][0]
+assert row["frame_identity"] == {"true": 1, "false": 1, "unknown": 1}
+assert row["agreement"] == {"true": 3, "false": 0, "unknown": 0}
+assert "frame_identity" not in default["strata"][0]
+assert default["strata"][0]["agreement"] == row["agreement"]
+assert opted["authority"] == "shadow"
+assert opted["action_acceptance"] == "not_inferred"
+assert opted["accuracy"] is None and opted["eligibility"] == "not_evaluated"
+```
