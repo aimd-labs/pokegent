@@ -23,7 +23,7 @@ must admit those exact bytes before any actor-backed read or reader construction
 now supply the existing adapter and composite source together with menu, family-registration and
 objective-observation factories
 ([#271](https://github.com/aimd-labs/pokegent/pull/271),
-[#273](https://github.com/aimd-labs/pokegent/pull/273)). The optional battle-facts factory is described in the [battle-facts guide](firered-battle-facts.md); the internal projection is in the [observation projection guide](firered-observation-projection.md); navigation composition is in the [navigation services guide](firered-navigation-services.md), and the objective-directory helper is in the [objective directory guide](firered-objective-directory.md). The
+[#273](https://github.com/aimd-labs/pokegent/pull/273)). The optional battle-facts factory is described in the [battle-facts guide](firered-battle-facts.md); the internal projection is in the [observation projection guide](firered-observation-projection.md); navigation composition is in the [navigation composition guide](plugin-navigation-composition.md) and the [navigation services guide](firered-navigation-services.md), and the objective-directory helper is in the [objective directory guide](firered-objective-directory.md). The
 [objective helper](https://github.com/aimd-labs/pokegent/blob/9519735445fece6c609cff727adbbd901d65d694/pokegent/games/gen3/firered/admission.py#L23-L52)
 creates one `LiveReader` per `build_runner` call only when both the actor and profile are present;
 without either it returns two `None` providers and constructs no reader. Each admission callback
