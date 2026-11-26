@@ -2,7 +2,8 @@
 
 `pokegent.sdk.ChoiceSdk` validates one offered choice against one observation, locally: no
 snapshot read, backend, reader, executor or callback call, game input, network, MCP or other
-transport. It is not wired into the Runner; objectives, progress and events are unimplemented.
+transport. It is not wired into the Runner; objectives use the separate opt-in `ObjectiveSdk`
+below, while progress and events are unimplemented.
 
 ## Prerequisites
 
@@ -108,3 +109,13 @@ print("ok: offer/submit accepted; stale and consumed calls refused")
 The example exits 0; `plugin.composed == 1` confirms selection composed once, then the SDK
 validates locally only. Not included: input, backend, reader, objective/progress/events, MCP,
 new transport, second-title provenance, redaction guarantee or compatibility promise (#139).
+
+## Objectives (separate opt-in facade)
+
+`pokegent.sdk_objectives.ObjectiveSdk` is separate from `ChoiceSdk`: it reads `current()` from a
+caller-owned `ObjectiveStore` and forwards one copied mapping to `store.propose()` with a mandatory
+plain-int `expected_revision` and `set_by` bound to `agent`. Admission, CAS, source priority,
+already-satisfied rejection and history stay the store's; there is no revision bump, retry,
+completion, snapshot read, server/MCP/runtime wiring or game input. FireRed namespace only. The
+supplied selection and store are trusted, not cryptographically bound to a ROM or running process.
+See [the objective file](objective-file.md).
