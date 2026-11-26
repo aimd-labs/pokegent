@@ -816,6 +816,10 @@ class GameTables:
             return ()
         return self._evolutions[species]
 
+    def has_evolution_data(self, species: int) -> bool:
+        """Whether a decoded ``gEvolutionTable`` row exists for ``species`` (not its content)."""
+        return 0 <= species < len(self._evolutions)
+
     def evolution_for_item(self, species: int, item_id: int) -> EvolutionData | None:
         return next(
             (

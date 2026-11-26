@@ -2,7 +2,8 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``item`` questions from those tables. Not a database, cache or plugin
+native ``move``/``species``/``item``/``evolution`` questions from those tables. Not a database,
+cache or plugin
 registration or a verification claim: the game/profile/ROM labels are caller assertions, not
 digest or live proof.
 """
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 
 from pokegent.games.gen3.firered.plugin import FIRERED_GAME
 from pokegent.games.gen3.firered.rom.rom_tables import (
+    EVOLUTIONS_PER_SPECIES,
+    EvolutionData,
     GameTables,
     ItemData,
     MoveData,
@@ -104,6 +107,27 @@ class FireRedKnowledge:
             return self._record("item", item_id, known=False, values=())
         return self._record("item", item_id, known=True, values=_item_values(data))
 
+    def evolutions(self, species_id: int) -> LocalRomRecord:
+        species_id = _native_id(species_id, "species")
+        try:
+            self._tables.species(species_id)
+        except KeyError:
+            return self._record("evolution", species_id, known=False, values=())
+        if not self._tables.has_evolution_data(species_id):
+            return self._record("evolution", species_id, known=False, values=())
+        row = self._tables.evolutions_for(species_id)
+        if len(row) > EVOLUTIONS_PER_SPECIES:
+            raise ValueError(
+                f"evolution row for species {species_id} has {len(row)} slots; "
+                f"at most {EVOLUTIONS_PER_SPECIES} are allowed"
+            )
+        return self._record(
+            "evolution",
+            species_id,
+            known=True,
+            values=(("evolutions", tuple(_evolution_triple(row_entry) for row_entry in row)),),
+        )
+
     def _record(
         self,
         record_kind: str,
@@ -138,6 +162,10 @@ def _bounded_name(value: str, kind: str = "move") -> str:
     if type(value) is not str or len(value) > MAX_NAME_CHARS:
         raise ValueError(f"{kind} name must be a string of at most {MAX_NAME_CHARS} characters")
     return value
+
+
+def _evolution_triple(data: EvolutionData) -> tuple[int, int, int]:
+    return (data.method, data.parameter, data.target_species)
 
 
 def _move_values(data: MoveData) -> tuple[tuple[str, object], ...]:
