@@ -31,6 +31,8 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    StrictFloat,
+    StrictInt,
     ValidationError,
     field_validator,
     model_validator,
@@ -115,6 +117,21 @@ class CalibrationPolicy(_Strict):
                 "decisions before real FireRed calibration (spec 8.4)"
             )
         return v
+
+
+class EligibilityPolicy(_Strict):
+    """Operator thresholds for the offline per-scene report (#400); grants no authority."""
+
+    min_samples: StrictInt = Field(ge=1)
+    min_valid_rate: StrictFloat = Field(gt=0, le=1)
+    max_p95_ms: StrictFloat = Field(gt=0)
+
+    @field_validator("max_p95_ms")
+    @classmethod
+    def _finite_latency(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("max_p95_ms must be finite")
+        return value
 
 
 class SystemOneConfig(_Strict):
