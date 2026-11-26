@@ -238,3 +238,44 @@ def test_cli_requires_a_required_name_and_never_echoes_row_values(tmp_path):
     result = cli(tmp_path, document, "--head", HEAD, "--required", "gate")
     assert result.returncode == 2 and result.stdout == ""
     assert "secret-marker" not in result.stderr and "nope" not in result.stderr
+
+
+def test_json_integer_limit_exceeded_is_typed_input_error(tmp_path, capsys):
+    """JSON with integer exceeding sys.set_int_max_str_digits becomes CheckInputError."""
+    # Save and restore the integer limit
+    import sys
+    original_limit = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(640)
+    try:
+        # Create JSON with raw 1000-digit integer (not a string)
+        large_int = "1" + "0" * 999
+        json_text = (
+            '{"total_count": 1, "check_runs": [{"id": 1, "name": "gate", '
+            '"head_sha": "'
+            + "a" * 40
+            + '", "status": "completed", "conclusion": "success", '
+            '"started_at": "2026-01-01T00:00:00Z", "big_number": '
+            + large_int
+            + "}]}"
+        )
+        path = tmp_path / "bigint.json"
+        path.write_text(json_text, encoding="utf-8")
+
+        # read_document should raise CheckInputError, not ValueError
+        with pytest.raises(checks.CheckInputError) as caught:
+            checks.read_document(path)
+        assert "not valid UTF-8 JSON or is too deeply nested" in str(caught.value)
+
+        # CLI (main) should return 2 with no stdout, no traceback
+        # Call main directly in the same process with limit=640
+        exit_code = checks.main([str(path), "--head", HEAD, "--required", "gate"])
+        assert exit_code == 2
+
+        # Capture stdout/stderr
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("required-check evaluation failed: ")
+        assert "Traceback" not in captured.err
+        assert "1000" not in captured.err  # no raw digits echoed
+    finally:
+        sys.set_int_max_str_digits(original_limit)

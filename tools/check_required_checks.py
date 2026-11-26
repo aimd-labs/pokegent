@@ -92,7 +92,7 @@ def read_document(path):
         raise CheckInputError("input file exceeds the supported size")
     try:
         return json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
         raise CheckInputError("input is not valid UTF-8 JSON or is too deeply nested") from None
 
 
