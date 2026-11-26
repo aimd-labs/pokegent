@@ -2,10 +2,10 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``national_dex``/``item``/``ability``/``type``/``evolution``/``tmhm``
-questions from those tables. Not a database, cache or plugin
-registration or a verification claim: the game/profile/ROM labels are caller assertions, not
-digest or live proof.
+native ``move``/``species``/``species_training``/``national_dex``/``item``/``item_restoration``/
+``ability``/``type``/``evolution``/``tmhm`` questions from those tables. Not a database, cache or
+plugin registration or a verification claim: the game/profile/ROM labels are caller assertions,
+not digest or live proof.
 """
 
 from __future__ import annotations
@@ -99,6 +99,20 @@ class FireRedKnowledge:
         except KeyError:
             return self._record("species", species_id, known=False, values=())
         return self._record("species", species_id, known=True, values=_species_values(data))
+
+    def species_training(self, species_id: int) -> LocalRomRecord:
+        """Decoded per-species training subset for one existing native species row."""
+        species_id = _native_id(species_id, "species")
+        try:
+            data = self._tables.species(species_id)
+        except KeyError:
+            return self._record("species_training", species_id, known=False, values=())
+        return self._record(
+            "species_training",
+            species_id,
+            known=True,
+            values=_training_values(data),
+        )
 
     def national_dex(self, species_id: int) -> LocalRomRecord:
         """National number for an existing native species row, from the supplied mapping."""
@@ -281,6 +295,16 @@ def _species_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
         ("types", tuple(data.types)),
         ("base_stats", tuple((name, stats[name]) for name in _STATS)),
         ("abilities", (data.abilities[0], data.abilities[1])),
+    )
+
+
+def _training_values(data: SpeciesData) -> tuple[tuple[str, object], ...]:
+    hp, atk, defense, spe, spa, spd = data.ev_yield
+    return (
+        ("exp_yield", data.exp_yield),
+        ("ev_yield", (hp, atk, defense, spe, spa, spd)),
+        ("growth_rate", data.growth_rate),
+        ("friendship", data.friendship),
     )
 
 
