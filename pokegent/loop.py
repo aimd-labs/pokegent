@@ -271,6 +271,8 @@ class RunnerConfig:
     loop_distinct_limit: int = 2
     loop_signature_limit: int = 4
     loop_min_cycles: int = 3
+    #: Default-off #133 guard: three identical three-action/two-map blocks (9 verified decisions).
+    exit_cycle_guard: bool = False
     invalid_retries: int = 2
     unknown_retries: int = 2
     settle_frames: int = 2
@@ -323,6 +325,8 @@ class RunnerConfig:
         if (type(self.decision_idle_stale_limit) is not int
                 or self.decision_idle_stale_limit < 1):
             raise ValueError("decision_idle_stale_limit must be an integer >= 1")
+        if not isinstance(self.exit_cycle_guard, bool):
+            raise ValueError("exit_cycle_guard must be a bool")
         if self.system1_outage not in ("wait", "pause"):
             raise ValueError("system1_outage must be wait|pause")
         if self.system1_max_outage_s < 0:
@@ -535,6 +539,7 @@ class Runner:
             loop_distinct_limit=self.config.loop_distinct_limit,
             loop_signature_limit=self.config.loop_signature_limit,
             loop_min_cycles=self.config.loop_min_cycles,
+            exit_cycle_guard=self.config.exit_cycle_guard,
         )
         # Loop evidence belongs to one objective revision: a new objective must not inherit
         # a closed-loop suspicion collected under the previous one.
@@ -789,6 +794,7 @@ class Runner:
             semantic_progress_signature(perception.snapshot, perception.frame),
             now=observed_at,
             iteration=self.counters.iterations,
+            map_key=self._snapshot_map_key(perception.snapshot),
         )
         # The objective refresh above may have adopted a new id/revision. Retire loop evidence
         # from the previous objective BEFORE the loop check so a genuine new objective is never
@@ -817,6 +823,8 @@ class Runner:
             and self._progress_tracks_scene(perception.scene.scene_id)
         ):
             loop_due = self._progress.loop_reason()
+            if loop_due is None:
+                loop_due = self._progress.exit_cycle_reason()
             if loop_due is not None:
                 return self._report_no_progress(loop_due, perception.frame)
         if (
@@ -1448,6 +1456,20 @@ class Runner:
         self.counters.decided += 1
         source = "route" if self._route_owned_decision == frame.decision_id else "decider"
         return self._act(frame, option_id, source=source)
+
+    @staticmethod
+    def _snapshot_map_key(snapshot: StateSnapshot) -> tuple[int, int] | None:
+        """Exact (group, number) only from a readable map identity and player proof."""
+        state = getattr(snapshot, "map", None)
+        if getattr(state, "identity", None) is None:
+            return None
+        position = Runner._player_position(snapshot)
+        if position is None:
+            return None
+        group, number = position[0], position[1]
+        if type(group) is not int or type(number) is not int:
+            return None
+        return (group, number)
 
     @staticmethod
     def _player_position(snapshot: StateSnapshot) -> tuple[int, int, int, int, int] | None:
@@ -2110,6 +2132,10 @@ class Runner:
                     or self._interrupted_by_battle(result)
                 ),
                 option_id=option_id,
+                cycle_verified=(
+                    result.status is ActionStatus.APPLIED
+                    and result.verified_outcome is True
+                ),
             )
         self._record_dialog_block(frame, option_id, result, source=source)
         self._record_result(frame, option_id, result)
