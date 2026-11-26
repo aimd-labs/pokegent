@@ -273,7 +273,7 @@ def test_build_runner_passes_app_config_churn_limit(tmp_path, monkeypatch):
     fake_bundle = SimpleNamespace(plugins={}, sidecar=None, confirm_policy=lambda catalog: None)
     monkeypatch.setattr(app_module, "load_scene_catalog", lambda: object())
     monkeypatch.setattr(app_module.Registries, "new", lambda catalog: fake_registries)
-    monkeypatch.setattr(app_module, "register_all", lambda *args, **kwargs: fake_bundle)
+    monkeypatch.setattr(app_module, "register_families", lambda *args, **kwargs: fake_bundle)
     monkeypatch.setattr(app_module, "CompositeSnapshotSource", DecisionSource)
     monkeypatch.setattr(app_module, "Perceiver", lambda *args, **kwargs: SimpleNamespace())
     monkeypatch.setattr(
