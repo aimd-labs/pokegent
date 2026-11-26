@@ -1,8 +1,10 @@
 """Offline, read-only report over existing schema-1 calibration JSONL files.
 
 This is evidence tooling: it reads records already written by ``CalibrationLog`` and prints
-bounded response-validity, attempt, truncation, identity and latency aggregates. It never calls
-a provider, reads game state, writes files or grants eligibility. ``outcome: ok`` means only
+bounded response-validity, attempt, truncation, identity and latency aggregates. With the explicit
+``--choice-validity`` switch it also counts the optional ``framed_choice_valid`` field per stratum;
+old records without it are ``unknown``. It never calls a provider, reads game state, writes files or
+grants eligibility. ``outcome: ok`` means only
 that a model response was valid; it is not action acceptance, accuracy or verified progress.
 """
 
@@ -125,7 +127,8 @@ def _key_sort(key: tuple[Any, ...]) -> tuple[Any, ...]:
 
 
 def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
-                 max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA) -> dict[str, Any]:
+                 max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA,
+                 choice_validity: bool = False) -> dict[str, Any]:
     strata: dict[tuple[Any, ...], dict[str, Any]] = {}
     sequence_state: dict[tuple[int, str], dict[str, Any]] = {}
     records = 0
@@ -151,6 +154,20 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                 strata[key] = _new_stratum()
             stratum = strata[key]
             stratum["records"] += 1
+            if choice_validity:
+                if "framed_choice_valid" not in record:
+                    bucket = "unknown"
+                else:
+                    framed = record["framed_choice_valid"]
+                    if framed is None:
+                        bucket = "unknown"
+                    elif isinstance(framed, bool):
+                        bucket = "valid" if framed else "invalid"
+                    else:
+                        _fail(path, line, "framed_choice_valid")
+                counts = stratum.setdefault(
+                    "choice_validity", {"valid": 0, "invalid": 0, "unknown": 0})
+                counts[bucket] += 1
             stratum["outcomes"][fields["outcome"]] += 1
             if fields["attempts"] is None:
                 stratum["attempts_missing"] += 1
@@ -196,6 +213,9 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
             identity_mixed=stratum["identity_mixed"],
             distinct_stage_models=len(stratum["stage_models"]),
         )
+        if choice_validity:
+            row["choice_validity"] = stratum.get(
+                "choice_validity", {"valid": 0, "invalid": 0, "unknown": 0})
         output_strata.append(row)
     diagnostics = [
         {"source": source, "run_id": run_id, "duplicate_count": state["duplicates"],
@@ -215,9 +235,11 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("paths", nargs="+", metavar="CALIBRATION_JSONL")
+    parser.add_argument("--choice-validity", action="store_true",
+                        help="count logged framed-choice validity per stratum (default off)")
     args = parser.parse_args(argv)
     try:
-        report = build_report(args.paths)
+        report = build_report(args.paths, choice_validity=args.choice_validity)
     except ReportError as exc:
         print(f"calibration_report: {exc}", file=sys.stderr)
         return 1

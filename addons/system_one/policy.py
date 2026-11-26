@@ -96,6 +96,15 @@ class CalibrationPolicy(_Strict):
         "disabled_until_firered_validated"
     )
     log_path: str | None = None  # append-only JSONL; None = no calibration file
+    #: Log whether ``check_choice`` accepts the actual frame/result; never gates or rewrites it.
+    frame_choice_validity: bool = False
+
+    @field_validator("frame_choice_validity", mode="before")
+    @classmethod
+    def _strict_bool(cls, v: Any) -> Any:
+        if not isinstance(v, bool):
+            raise ValueError("must be a boolean")
+        return v
 
     @field_validator("confidence_gate", mode="before")
     @classmethod
