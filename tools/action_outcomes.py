@@ -49,6 +49,8 @@ def _optional(value: Any, path: str, line: int, field: str) -> str | None:
 
 def _fields(event_type: Any, record: dict[str, Any], path: str, line: int):
     """Return ``(slot, run_id, request_id, values)`` or ``None`` for irrelevant records."""
+    if not isinstance(event_type, str):
+        raise ReportError(f"{path}:{line}: field type")
     if event_type not in DECISIONS | TERMINALS | {"action.started"}:
         return None
     details = record.get("details")

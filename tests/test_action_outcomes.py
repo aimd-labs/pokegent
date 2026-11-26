@@ -529,6 +529,22 @@ def test_record_pending_strata_and_line_bounds_fail(tmp_path):
     assert "line exceeds" in result.stderr
 
 
+@pytest.mark.parametrize("bad_type", [[], {}, 3, 1.5, True, None])
+def test_non_string_event_type_fails_without_traceback_or_raw_echo(tmp_path, bad_type):
+    path = tmp_path / "bad-type.jsonl"
+    record = envelope("scene.entered")
+    record["type"] = bad_type
+    record["details"] = {"secret": "RAW_SECRET"}
+    raw(path, [record])
+
+    result = run_cli(path)
+
+    assert result.returncode != 0 and result.stdout == ""
+    assert f"{path}:1: field type" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "RAW_SECRET" not in result.stderr
+
+
 def test_output_allowlist_privacy_and_input_untouched(tmp_path):
     path = tmp_path / "private.jsonl"
     event = terminal(seq=3)
