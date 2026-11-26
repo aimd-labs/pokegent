@@ -228,6 +228,42 @@ def test_load_failure_closes_once_and_keeps_original_error(monkeypatch):
     assert events == ["profiles", "identify", "require", "factory", "load", "close"]
 
 
+def test_actor_constructor_rejection_closes_loaded_backend_once(monkeypatch):
+    events = []
+    patch_admission(monkeypatch, events)
+    backend = RecordingBackend(events)
+    backend.button_down = None
+    with pytest.raises(TypeError, match="button_down"):
+        with open_emulator(
+            "/unused.gba", experimental_backend=True,
+            backend_factory=factory_for(backend, events),
+        ):
+            pass
+    assert backend.close_count == 1
+    assert backend.frames_run == 0
+    assert not backend.pressed_keys()
+
+
+def test_clock_setup_failure_closes_loaded_backend_once(monkeypatch):
+    events = []
+    patch_admission(monkeypatch, events)
+    backend = RecordingBackend(events)
+
+    class BrokenClock:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("synthetic clock setup failure")
+
+    monkeypatch.setattr("pokegent.emulator.EmuClock", BrokenClock)
+    with pytest.raises(RuntimeError, match="synthetic clock setup failure"):
+        with open_emulator(
+            "/unused.gba", fps=60, experimental_backend=True,
+            backend_factory=factory_for(backend, events),
+        ):
+            pass
+    assert backend.close_count == 1
+    assert backend.frames_run == 0
+
+
 def test_cleanup_failure_does_not_mask_load_failure(monkeypatch):
     events = []
     patch_admission(monkeypatch, events)

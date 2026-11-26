@@ -1319,8 +1319,9 @@ def open_emulator(
     needs frames (``idle_frames=False``): the game advances exactly as in an unpaced run, only
     slower, so a human can watch it and the run stays replayable. Opt-in decision idle uses
     60 fps when no addon pacing was selected; only provider waits gain extra no-input frames.
-    A trusted opt-in ``backend_factory`` may supply another already-admitted GBA backend; it is
-    called only after ROM admission and must return an :class:`Emulator`.
+    A trusted opt-in ``backend_factory`` may supply another GBA-compatible backend; it is
+    called only after ROM admission and must return an :class:`Emulator`. Actual backend
+    compatibility remains the caller's responsibility.
     """
     from pokegent.emulator import EmuClock, Emulator, EmulatorActor, PyGBAEmulator
     from pokegent.games.gen3.firered.rom.rom_data import (
@@ -1344,18 +1345,19 @@ def open_emulator(
         raise AppError("backend_factory must return an Emulator instance")
     try:
         emulator.load(str(rom_path))
+        if realtime_idle_while_deciding and fps is None:
+            fps = 60.0
+        clock = EmuClock(emulator, fps=fps, idle_frames=False) if fps else None
+        actor = EmulatorActor(
+            emulator, clock=clock, realtime_idle_while_deciding=realtime_idle_while_deciding
+        )
     except Exception:
         try:
             emulator.close()
         except Exception:
             pass
         raise
-    if realtime_idle_while_deciding and fps is None:
-        fps = 60.0
-    clock = EmuClock(emulator, fps=fps, idle_frames=False) if fps else None
-    with EmulatorActor(
-        emulator, clock=clock, realtime_idle_while_deciding=realtime_idle_while_deciding
-    ) as actor:
+    with actor:
         yield actor, profile
 
 
