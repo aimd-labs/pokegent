@@ -36,9 +36,20 @@ uv pip compile pyproject.toml --extra dev --extra stream --python-version 3.11 \
 ```
 
 The lock covers the `public-checks` job on Linux CPython 3.11. It is not a native, other-Python
-or cross-platform claim; `public-startup-latency` and `native-helper` keep their own commands.
-CI installs it with `--require-hashes`, then installs the project with `--no-deps -e .` and runs
-`pip check`, so runtime ranges and metadata stay consistent.
+or cross-platform claim; `native-helper` keeps its own commands. CI installs it with
+`--require-hashes`, then installs the project with `--no-deps -e .` and runs `pip check`, so
+runtime ranges and metadata stay consistent.
+
+`requirements-public-startup.lock` is the matching lock for `public-startup-latency`. It pins
+the base and `dev` dependencies only (no `stream` or `mgba` extras) against the public-checks
+lock as a constraint, so shared versions stay aligned. It includes `ruff` through `dev` even
+though the startup job only runs `pytest`; it is not a minimal runtime-only lock:
+
+```sh
+uv pip compile pyproject.toml --extra dev --python-version 3.11 \
+  --universal --generate-hashes --no-emit-package pokegent \
+  --constraint requirements-public-checks.lock -o requirements-public-startup.lock
+```
 
 To update a dependency deliberately, work from the checkout and keep the regenerated lock in a
 fresh scratch directory so the repository file only changes when you accept the diff:

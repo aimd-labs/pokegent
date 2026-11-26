@@ -19,8 +19,11 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: '3.11'
-      - name: Install public runtime dependencies
-        run: python -m pip install -e . pytest
+      - name: Install hash-pinned public startup dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-public-startup.lock
+          python -m pip install --no-deps -e .
+          python -m pip check
       - name: Check timeout failure handling without waiting
         run: python -m pytest -q tests/test_public_startup_latency.py
       - name: Verify public ROM factory startup under 30 seconds

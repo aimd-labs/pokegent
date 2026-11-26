@@ -46,12 +46,14 @@ isolation, so use a package index or a warm cache. They need no credentials, gam
 services or ROM. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and review path.
 
 `requirements-public-checks.lock` pins the ROM-free `public-checks` environment (base, `dev`
-and `stream` extras) with hashes. It was generated once with uv 0.13.8 for CPython 3.11 from
-the command in [CONTRIBUTING.md](CONTRIBUTING.md#locked-public-checks-environment); the
-`--no-deps` edit install keeps the declared ranges subject to `pip check`. This is a Linux
-CPython 3.11 lock and covers only the `public-checks` job; `public-startup-latency` and
-`native-helper` keep their existing dependency commands, and it is not a native or
-cross-platform claim.
+and `stream` extras) with hashes. `requirements-public-startup.lock` separately pins the
+`public-startup-latency` environment (base and `dev`, so it includes `ruff` even though that
+job only runs `pytest`; the job needs the runtime base and `pytest`, not a bare-minimum
+runtime). Both were generated with uv 0.13.8 for CPython 3.11 from the commands in
+[CONTRIBUTING.md](CONTRIBUTING.md#locked-public-checks-environment), and the startup lock
+uses the public-checks lock as constraints so shared versions stay aligned. The `--no-deps`
+edit install keeps the declared ranges subject to `pip check`. These are Linux CPython 3.11
+locks and are not native or cross-platform claims; `native-helper` keeps its own commands.
 
 ## Tested combinations
 
