@@ -2,7 +2,7 @@
 
 The caller supplies a trusted ``PluginSelection`` and the already-decoded immutable
 ``GameTables``. This module checks that both name the same FireRed profile, then answers only
-native ``move``/``species``/``item``/``evolution``/``tmhm`` questions from those
+native ``move``/``species``/``item``/``ability``/``evolution``/``tmhm`` questions from those
 tables. Not a database, cache or plugin
 registration or a verification claim: the game/profile/ROM labels are caller assertions, not
 digest or live proof.
@@ -106,6 +106,19 @@ class FireRedKnowledge:
         except KeyError:
             return self._record("item", item_id, known=False, values=())
         return self._record("item", item_id, known=True, values=_item_values(data))
+
+    def ability(self, ability_id: int) -> LocalRomRecord:
+        ability_id = _native_id(ability_id, "ability")
+        try:
+            data = self._tables.ability_name(ability_id)
+        except KeyError:
+            return self._record("ability", ability_id, known=False, values=())
+        return self._record(
+            "ability",
+            ability_id,
+            known=True,
+            values=(("id", ability_id), ("name", _bounded_name(data, "ability"))),
+        )
 
     def evolutions(self, species_id: int) -> LocalRomRecord:
         species_id = _native_id(species_id, "species")
