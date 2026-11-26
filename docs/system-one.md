@@ -205,3 +205,93 @@ assert report["supplied_family_count"] == 1
 assert report["labeled_family_count"] == 1
 assert report["eligibility"] == "not_evaluated" and not report["authority_granted"]
 ```
+
+## Evaluation context tags
+
+`evaluate_labeled_choices(..., enabled=True)` still accepts the original four positional
+`LabeledChoiceCase(frame, result, acceptable_option_ids, family_id)` arguments. An optional
+fifth `context` accepts a five-tag `EvaluationContext`; leaving it out keeps the existing
+`None` bucket. Evaluation remains default-off and caller-labeled: these tags group comparison
+rows and do not certify labels, grant eligibility or authority, or verify runtime state.
+
+`EvaluationContext` requires nonblank exact strings of at most 128 characters for
+`game_profile`, `backend_version`, `provider_protocol`, `prompt_profile` and `knowledge_policy`.
+All five tags identify one comparison context. The evaluator never infers a tag from the model,
+frame or absent data, so a missing context is not filled in.
+
+Strata group by scene, provider, model and the complete tag tuple. Two cases with identical
+tags share a row; any differing tag, or absent versus supplied context, creates a separate
+row. A supplied context is a known bucket; absent context stays a distinct
+`comparison_context: null` bucket. Global `counts` and `rates` still cover every case, so
+splitting strata never changes their denominators. A duplicate observation is rejected on
+`(run_id, decision_id, provider, model)` even when the context differs; label and duplicate
+handling are unchanged.
+
+Complete ROM-free example:
+
+```python
+from addons.system_one.evaluation import (
+    EvaluationContext,
+    EvaluationRejected,
+    LabeledChoiceCase,
+    evaluate_labeled_choices,
+)
+from pokegent.options.models import ChoiceResult, DecisionFrame, Legality, Option
+
+
+def frame(decision_id):
+    options = (
+        Option(id="tap:left", label="Left", legality=Legality.LEGAL, executor_ref="test.left"),
+        Option(id="tap:right", label="Right", legality=Legality.LEGAL, executor_ref="test.right"),
+    )
+    return DecisionFrame(decision_id=decision_id, run_id="run-1", snapshot_seq=1,
+                         scene_id="field.free", scene_confidence=1.0,
+                         state_fingerprint="sha256:" + "0" * 64, options=options)
+
+
+def observation(decision_id, option_id, labels, context):
+    result = ChoiceResult(option_id=option_id, decision_id=decision_id,
+                          provider_id="system1", model_id="model-1")
+    return LabeledChoiceCase(frame(decision_id), result, frozenset(labels), "family-1", context)
+
+
+def context(prompt_profile):
+    return EvaluationContext(
+        game_profile="firered-us-1.0", backend_version="mgba-0.10.3",
+        provider_protocol="openai-compatible/1", prompt_profile=prompt_profile,
+        knowledge_policy="game-facts-only",
+    )
+
+
+cases = (
+    observation("d1", "tap:left", {"tap:left"}, context("scene-v3")),
+    observation("d2", "tap:right", {"tap:left"}, context("scene-v4")),
+    observation("d3", "tap:left", {"tap:left"}, None),
+)
+report = evaluate_labeled_choices(cases, enabled=True)
+
+contexts = [row["comparison_context"] for row in report["strata"]]
+assert len(report["strata"]) == 3
+assert contexts.count(None) == 1
+assert sum(item is not None for item in contexts) == 2
+assert report["counts"]["supplied"] == 3
+assert report["counts"]["labeled"] == 3
+assert report["counts"]["valid_choice"] == 3
+assert report["counts"]["acceptable_choice"] == 2
+assert report["rates"]["acceptable_choice_rate"] == 2 / 3
+assert report["rates"]["labeled_case_success_rate"] == 2 / 3
+assert report["counts"]["supplied"] == sum(row["supplied"] for row in report["strata"])
+assert report["counts"]["labeled_valid_choice"] == sum(
+    row["labeled_valid_choice"] for row in report["strata"]
+)
+
+try:
+    evaluate_labeled_choices(
+        [cases[0], observation("d1", "tap:left", {"tap:left"}, context("scene-v4"))],
+        enabled=True,
+    )
+except EvaluationRejected:
+    pass
+else:
+    raise AssertionError("duplicate observation must be rejected")
+```
