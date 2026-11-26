@@ -8,6 +8,8 @@ runtime; it opens no file, cache, network endpoint or emulator.
 
 TM/HM compatibility has [its own page](local-tmhm-knowledge.md).
 
+Ability names have [their own page](local-ability-knowledge.md).
+
 ## Contract
 
 Construct it as `FireRedKnowledge(selection, tables, *, enabled=False)`. `selection` is a
