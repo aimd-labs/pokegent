@@ -145,7 +145,10 @@ def scene_eligibility_report(scenes: dict[str, dict[str, Any]],
     rows = []
     for name, scene in sorted(scenes.items()):
         samples = sorted(scene["samples"])
-        p95 = _percentile(samples, 0.95) if samples else None
+        if (scene["valid"] + scene["invalid"] + scene["unknown"] != scene["records"]
+                or len(samples) != scene["records"]):
+            raise ValueError(f"scene {name}: counts or samples do not match records")
+        p95 =_percentile(samples, 0.95) if samples else None
         if scene["records"] < ms:
             eligible, reason = "unknown", "below_min_samples"
         elif scene["unknown"] > 0:

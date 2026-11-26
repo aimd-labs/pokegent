@@ -354,3 +354,12 @@ def test_scene_eligibility_labels_eligible_not_eligible_unknown():
     assert got["slow"] == (False, "over_latency_cap", 50.0, 2000.0)
     assert got["thin"] == ("unknown", "below_min_samples", None, None)
     assert got["opaque"] == ("unknown", "unknown_choices", 10.0, 20.0)
+
+
+def test_scene_eligibility_rejects_inconsistent_scene_counts():
+    base = {"scene_id": "s", "records": 2, "valid": 1, "invalid": 1, "unknown": 0,
+            "samples": [10.0, 20.0]}
+    for change in ({"valid": 0, "invalid": 0, "unknown": 0}, {"samples": []},
+                   {"samples": [10.0]}, {"unknown": 1}):
+        with pytest.raises(ValueError, match="do not match records"):
+            scene_eligibility_report({"s": {**base, **change}}, (1, 0.5, 100.0))
