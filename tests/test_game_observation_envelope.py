@@ -262,41 +262,37 @@ def test_mapping_reports_zero_len_but_iterates_max_plus_one_rejected():
 
 
 class _PoisonedMapping(Mapping):
-    """Mapping that reports exact MAX but whose iterator poisons if consumed beyond MAX+1."""
+    """Mapping that reports len<=MAX but yields 34 items; poisons if item34 consumed."""
 
-    def __init__(self, num_items: int):
-        self._num_items = num_items
-        self._data = {f"k{i}": i for i in range(num_items)}
+    def __init__(self):
         self._consumed = 0
 
     def __len__(self) -> int:
-        return self._num_items
+        return MAX_PAYLOAD_FIELDS  # reports 32, early check passes
 
     def __iter__(self):
         self._consumed = 0
         return self
 
     def __next__(self):
-        if self._consumed >= self._num_items:
+        if self._consumed >= MAX_PAYLOAD_FIELDS + 2:  # yields 34 items
             raise StopIteration
         self._consumed += 1
-        if self._consumed > MAX_PAYLOAD_FIELDS + 1:
-            raise RuntimeError("iterator consumed beyond MAX_PAYLOAD_FIELDS+1")
+        if self._consumed > MAX_PAYLOAD_FIELDS + 1:  # poisons at item34
+            raise RuntimeError("iterator consumed beyond MAX_PAYLOAD_FIELDS+1 (item34)")
         return f"k{self._consumed - 1}"
 
     def __getitem__(self, key):
-        return self._data[key]
+        idx = int(key[1:]) if key.startswith("k") else 0
+        return idx
 
 
 def test_bounded_iterator_poisons_if_consumed_beyond_max_plus_one():
-    """Iterator that poisons if consumed beyond MAX+1 proves finite guard exists."""
-    # This test verifies the guard by using a mapping that reports exact MAX
-    # but whose iterator would poison if the code iterated beyond MAX+1
-    poisoned = _PoisonedMapping(MAX_PAYLOAD_FIELDS)
+    """Mapping reports len=32 but yields 34 items; guard must reject at item33 before poison."""
+    poisoned = _PoisonedMapping()
     assert len(poisoned) == MAX_PAYLOAD_FIELDS
-    # Should be accepted since it has exactly MAX items
-    obs = make(payload=poisoned)
-    assert len(obs.payload) == MAX_PAYLOAD_FIELDS
+    with pytest.raises(ObservationRejected, match="too many fields"):
+        make(payload=poisoned)
 
 
 def test_mapping_reports_zero_len_and_has_exact_max_accepted_frozen_snapshot():
