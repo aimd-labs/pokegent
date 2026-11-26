@@ -1,18 +1,25 @@
 # R10 — Proposed GamePlugin and backend contract
 
-Status: proposal for maintainer review, not implemented or frozen. 2026-11-24, runtime baseline c73774285e5e164d01629ca14a5e8e551e03493f. Implements research scope of [#139](https://github.com/aimd-labs/pokegent/issues/139), not issue closure. R04, R05, R08 and R09 are inputs; this contract owns generic admission, and R08 only supplies DS evidence. Current v1.x contracts are authoritative. No runtime API change, profile promotion, backend selection, ROM or test execution.
+Status: historical proposal written 2026-11-24 for maintainer review, not frozen. Runtime baseline c73774285e5e164d01629ca14a5e8e551e03493f. Implements research scope of [#139](https://github.com/aimd-labs/pokegent/issues/139), not issue closure. R04, R05, R08 and R09 are inputs; this contract owns generic admission, and R08 only supplies DS evidence. Current v1.x contracts are authoritative. That proposal made no runtime API change, profile promotion, backend selection, ROM or test execution. The current dated implementation status is below.
 
-Implementation status (2026-11-26): a default-off, runtime-unwired prototype seam exists in
-`pokegent/games/plugin.py`, exercised by synthetic plugins in
-`tests/test_game_plugin_selection.py`. It covers exact SHA-1 admission, contract/profile/capability
-refusal and duplicate ownership only. An explicit opt-in FireRed composition now lives in
-`pokegent/games/gen3/firered/plugin.py`: `build_runner(experimental_game_plugin=True,
-plugin_rom_bytes=...)` admits those exact caller-supplied bytes and substitutes only the plugin's
-`CompositeSnapshotSource` factory over the existing `FireRedAdapter` at the existing source
-construction point; the default path is unchanged. This supplies source/reader composition only:
-no snapshot projection, option/menu/executor registration, backend injection, ROM-path read,
-discovery, profile/hash addition or title-support claim. [#139](https://github.com/aimd-labs/pokegent/issues/139)
-remains open.
+Implementation status (2026-11-26, source base `7e949140`): the reviewed
+[plugin registry](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/games/plugin.py)
+is disabled by default and admits only explicit reviewed plugins against exact SHA-1 ROM bytes,
+with profile, contract-version, capability and duplicate-ownership refusal
+([#246](https://github.com/aimd-labs/pokegent/pull/246)). The
+[observation envelope](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/games/observation.py)
+provides internal, immutable flat projections and is explicitly not a redaction or provider
+payload ([#250](https://github.com/aimd-labs/pokegent/pull/250)). The
+[choice SDK](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/sdk.py)
+validates a caller-supplied frame and result locally and never reads a snapshot or sends input
+([#253](https://github.com/aimd-labs/pokegent/pull/253)). The
+[FireRed plugin](https://github.com/aimd-labs/pokegent/blob/7e949140c3ce6e22374132adee4d96dd3f9618f3/pokegent/games/gen3/firered/plugin.py)
+replaces only the snapshot-source factory, and only when
+`build_runner(experimental_game_plugin=True, plugin_rom_bytes=...)` is set; registration, menu and
+objective validators remain FireRed-specific
+([#254](https://github.com/aimd-labs/pokegent/pull/254)). No fully generic runner, backend
+injection, plugin discovery, second-title implementation or native acceptance proof exists.
+[#139](https://github.com/aimd-labs/pokegent/issues/139) remains open.
 
 ## Evidence
 
