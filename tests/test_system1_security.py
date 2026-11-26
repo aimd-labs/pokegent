@@ -62,9 +62,12 @@ def test_success_metadata_in_saved_summary_and_probe(
     monkeypatch.setattr(app, "open_emulator", emulator)
     monkeypatch.setattr(app, "load_config_file", lambda *_: {})
     monkeypatch.setattr(app, "build_facts", lambda *args, **kwargs: None)
-    monkeypatch.setattr(app, "MapGraph", SimpleNamespace(from_rom=lambda *args: None))
-    monkeypatch.setattr("pokegent.navigation.NavigationGraph.from_rom", lambda *args: None)
-    monkeypatch.setattr("pokegent.goals.directory.RomMapDirectory", lambda *args: None)
+    monkeypatch.setattr(
+        "pokegent.games.gen3.firered.navigation.make_navigation_services",
+        lambda *args, **kwargs: SimpleNamespace(
+            graph=None, navigation=None, directory=None
+        ),
+    )
     monkeypatch.setattr(app, "play_state", play)
     source = tmp_path / "synthetic-input"
     source.write_text("invented input; never opened by an emulator")
