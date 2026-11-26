@@ -76,6 +76,7 @@ from pokegent.state.scenes import SceneCoverageReport
 
 if TYPE_CHECKING:
     from pokegent.emulator import Emulator
+    from pokegent.games.plugin import ReviewedPluginRegistry
 
 #: process exit codes of ``pokegent run``
 EXIT_OK = 0  # the step budget (or deadline) was reached without a stop
@@ -675,6 +676,7 @@ def build_runner(
     sleep=time.sleep,
     experimental_game_plugin: bool = False,
     plugin_rom_bytes: bytes | bytearray | memoryview | None = None,
+    plugin_registry: ReviewedPluginRegistry | None = None,
 ) -> RunnerApp:
     """Wire reader, composite source, detectors, builders, executor, decider, events, sink.
 
@@ -693,6 +695,10 @@ def build_runner(
     before any actor-backed read or reader construction, and its snapshot source, menu services
     and family registration factories replace only the existing constructions below. No ROM path,
     discovery or filesystem read is implied; the caller already owns those bytes.
+
+    ``plugin_registry`` may supply that reviewed registry explicitly (FireRed only): it is used
+    as-is for one ``firered`` selection, never registered into or replaced by the built-in one.
+    The same built-in FireRed profile gate still runs; a foreign game namespace is refused.
     """
     config = config or AppConfig()
     plugin_services = None
@@ -707,8 +713,14 @@ def build_runner(
                 RefusalCode.UNKNOWN_IDENTITY,
                 "experimental game plugin requires caller-supplied ROM bytes",
             )
-        registry = ReviewedPluginRegistry(enabled=True)
-        registry.register(FireRedPlugin(profile))
+        if plugin_registry is not None and not isinstance(plugin_registry, ReviewedPluginRegistry):
+            raise TypeError("plugin_registry must be a ReviewedPluginRegistry")
+        builtin_plugin = FireRedPlugin(profile)
+        if plugin_registry is None:
+            registry = ReviewedPluginRegistry(enabled=True)
+            registry.register(builtin_plugin)
+        else:
+            registry = plugin_registry
         required_capabilities = (
             "snapshot_source",
             "menu_services",
@@ -726,6 +738,13 @@ def build_runner(
             required_capabilities=required_capabilities,
         )
         plugin_services = selection.services
+    elif plugin_registry is not None:
+        from pokegent.games.plugin import PluginRefusal, RefusalCode
+
+        raise PluginRefusal(
+            RefusalCode.DISABLED,
+            "plugin_registry requires experimental_game_plugin=True",
+        )
     elif plugin_rom_bytes is not None:
         from pokegent.games.plugin import PluginRefusal, RefusalCode
 
