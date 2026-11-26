@@ -32,7 +32,7 @@ from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 import yaml
@@ -72,6 +72,9 @@ from pokegent.options.models import Decider, FirstLegalDecider, ForcedDecider
 from pokegent.pipeline import Perceiver
 from pokegent.state.catalog import SceneCatalog, load_scene_catalog
 from pokegent.state.scenes import SceneCoverageReport
+
+if TYPE_CHECKING:
+    from pokegent.emulator import Emulator
 
 #: process exit codes of ``pokegent run``
 EXIT_OK = 0  # the step budget (or deadline) was reached without a stop
@@ -1306,6 +1309,8 @@ def startup_snapshot_allowed(snapshot: Any, scene_id: str | None) -> bool:
 def open_emulator(
     rom_path: str | os.PathLike[str], *, fps: float | None = None,
     realtime_idle_while_deciding: bool = False,
+    experimental_backend: bool = False,
+    backend_factory: Callable[[], Emulator] | None = None,
 ) -> Iterator[tuple[Any, RomProfile]]:
     """The real headless emulator behind its single-writer actor, plus the ROM's profile.
 
@@ -1314,24 +1319,45 @@ def open_emulator(
     needs frames (``idle_frames=False``): the game advances exactly as in an unpaced run, only
     slower, so a human can watch it and the run stays replayable. Opt-in decision idle uses
     60 fps when no addon pacing was selected; only provider waits gain extra no-input frames.
+    A trusted opt-in ``backend_factory`` may supply another GBA-compatible backend; it is
+    called only after ROM admission and must return an :class:`Emulator`. Actual backend
+    compatibility remains the caller's responsibility.
     """
-    from pokegent.emulator import EmuClock, EmulatorActor, PyGBAEmulator
+    from pokegent.emulator import EmuClock, Emulator, EmulatorActor, PyGBAEmulator
     from pokegent.games.gen3.firered.rom.rom_data import (
         identify_rom_file,
         load_profiles,
         require_supported,
     )
 
+    if type(experimental_backend) is not bool:
+        raise AppError("experimental_backend must be a boolean")
+    if experimental_backend:
+        if not callable(backend_factory):
+            raise AppError("experimental_backend=True requires a callable backend_factory")
+    elif backend_factory is not None:
+        raise AppError("backend_factory requires experimental_backend=True")
+
     profiles = load_profiles()
     profile = require_supported(identify_rom_file(rom_path, profiles), profiles)
-    emulator = PyGBAEmulator()
-    emulator.load(str(rom_path))
-    if realtime_idle_while_deciding and fps is None:
-        fps = 60.0
-    clock = EmuClock(emulator, fps=fps, idle_frames=False) if fps else None
-    with EmulatorActor(
-        emulator, clock=clock, realtime_idle_while_deciding=realtime_idle_while_deciding
-    ) as actor:
+    emulator = backend_factory() if experimental_backend else PyGBAEmulator()
+    if experimental_backend and not isinstance(emulator, Emulator):
+        raise AppError("backend_factory must return an Emulator instance")
+    try:
+        emulator.load(str(rom_path))
+        if realtime_idle_while_deciding and fps is None:
+            fps = 60.0
+        clock = EmuClock(emulator, fps=fps, idle_frames=False) if fps else None
+        actor = EmulatorActor(
+            emulator, clock=clock, realtime_idle_while_deciding=realtime_idle_while_deciding
+        )
+    except Exception:
+        try:
+            emulator.close()
+        except Exception:
+            pass
+        raise
+    with actor:
         yield actor, profile
 
 
