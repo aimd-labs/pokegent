@@ -731,6 +731,8 @@ def build_runner(
             required_capabilities += ("dex_fallback",)
         if config.story_fallback:
             required_capabilities += ("story_fallback",)
+        if catalog is None:
+            required_capabilities += ("scene_catalog",)
         selection = registry.select(
             rom_bytes=plugin_rom_bytes,
             game="firered",
@@ -752,6 +754,21 @@ def build_runner(
             RefusalCode.DISABLED,
             "plugin_rom_bytes requires experimental_game_plugin=True",
         )
+    plugin_catalog = None
+    if plugin_services is not None and catalog is None:
+        from pokegent.games.plugin import PluginRefusal, RefusalCode
+
+        scene_catalog_factory = getattr(plugin_services, "scene_catalog_factory", None)
+        if not callable(scene_catalog_factory):
+            raise PluginRefusal(
+                RefusalCode.MISSING_CAPABILITY, "missing capabilities: scene_catalog"
+            )
+        plugin_catalog = scene_catalog_factory()
+        if not isinstance(plugin_catalog, SceneCatalog):
+            raise PluginRefusal(
+                RefusalCode.MISSING_CAPABILITY,
+                "scene_catalog factory did not return a SceneCatalog",
+            )
     observation_factory = (
         plugin_services.objective_observation_factory
         if plugin_services is not None
@@ -792,7 +809,8 @@ def build_runner(
         bind_planning(session.store)
     goal_source = session
     objective_source = session.objective_source() if session is not None else None
-    catalog = catalog or load_scene_catalog()
+    if catalog is None:
+        catalog = plugin_catalog if plugin_catalog is not None else load_scene_catalog()
     registries = Registries.new(catalog)
     from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
     from pokegent.games.gen3.firered.composition import make_menu_services

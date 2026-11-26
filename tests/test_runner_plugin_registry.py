@@ -63,6 +63,7 @@ def _invented_services(profile, label: str, recorder: list[tuple[str, str]]):
         return call
 
     return SimpleNamespace(
+        scene_catalog_factory=wrap("scene_catalog", real.scene_catalog_factory),
         snapshot_source_factory=wrap("snapshot_source", real.snapshot_source_factory),
         menu_services_factory=wrap("menu_services", real.menu_services_factory),
         family_registration_factory=wrap("family_registration", real.family_registration_factory),
@@ -168,6 +169,7 @@ def test_caller_registry_admits_its_own_firered_bundle(label, rom_bytes, monkeyp
 
     assert plugin.composed == 1
     assert recorder == [
+        (label, "scene_catalog"),
         (label, "objective_observation"),
         (label, "menu_services"),
         (label, "family_registration"),

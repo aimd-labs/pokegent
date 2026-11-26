@@ -111,6 +111,7 @@ def test_capabilities_cover_exactly_the_supplied_source_factories():
     assert FIRERED_CAPABILITIES == {
         "snapshot_source",
         "reader",
+        "scene_catalog",
         "menu_services",
         "family_registration",
         "objective_observation",
