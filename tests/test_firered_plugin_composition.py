@@ -117,6 +117,7 @@ def test_capabilities_cover_exactly_the_supplied_source_factories():
         "objective_observation",
         "dex_fallback",
         "story_fallback",
+        "pre_game_callbacks",
     }
     assert not FIRERED_CAPABILITIES & {"verification", "supported", "input"}
 

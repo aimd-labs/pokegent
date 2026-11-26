@@ -655,6 +655,31 @@ def build_facts(
     )
 
 
+def _require_plugin_pre_game_callbacks(services: Any) -> frozenset[str]:
+    """The selected plugin's pre-game set, narrowed and never widened by plugin data."""
+    from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
+    from pokegent.games.plugin import PluginRefusal, RefusalCode
+
+    callbacks = getattr(services, "pre_game_callbacks", None)
+    if type(callbacks) is not frozenset:
+        raise PluginRefusal(
+            RefusalCode.MISSING_CAPABILITY,
+            "pre_game_callbacks must be a frozenset of plain strings",
+        )
+    for name in callbacks:
+        if type(name) is not str:
+            raise PluginRefusal(
+                RefusalCode.MISSING_CAPABILITY,
+                "pre_game_callbacks must be a frozenset of plain strings",
+            )
+        if name not in PRE_GAME_CALLBACKS:
+            raise PluginRefusal(
+                RefusalCode.PROFILE_MISMATCH,
+                "pre_game_callbacks contains a name outside the FireRed pre-game set",
+            )
+    return callbacks
+
+
 def build_runner(
     *,
     actor: Any,
@@ -702,6 +727,7 @@ def build_runner(
     """
     config = config or AppConfig()
     plugin_services = None
+    plugin_pre_game_callbacks = None
     if type(experimental_game_plugin) is not bool:
         raise TypeError("experimental_game_plugin must be exactly bool")
     if experimental_game_plugin:
@@ -733,6 +759,8 @@ def build_runner(
             required_capabilities += ("story_fallback",)
         if catalog is None:
             required_capabilities += ("scene_catalog",)
+        if config.new_game.enabled:
+            required_capabilities += ("pre_game_callbacks",)
         selection = registry.select(
             rom_bytes=plugin_rom_bytes,
             game="firered",
@@ -740,6 +768,8 @@ def build_runner(
             required_capabilities=required_capabilities,
         )
         plugin_services = selection.services
+        if config.new_game.enabled:
+            plugin_pre_game_callbacks = _require_plugin_pre_game_callbacks(plugin_services)
     elif plugin_registry is not None:
         from pokegent.games.plugin import PluginRefusal, RefusalCode
 
@@ -814,6 +844,12 @@ def build_runner(
     registries = Registries.new(catalog)
     from pokegent.actions.menu.system_flow.symbols import PRE_GAME_CALLBACKS
     from pokegent.games.gen3.firered.composition import make_menu_services
+
+    pre_game_callbacks = None
+    if config.new_game.enabled:
+        pre_game_callbacks = (
+            plugin_pre_game_callbacks if plugin_services is not None else PRE_GAME_CALLBACKS
+        )
 
     menu_factory = (
         plugin_services.menu_services_factory
@@ -892,7 +928,7 @@ def build_runner(
         max_visible_options=config.max_visible_options,
         tables=tables,
         world=world,
-        pre_game_callbacks=PRE_GAME_CALLBACKS if config.new_game.enabled else None,
+        pre_game_callbacks=pre_game_callbacks,
         allow_unknown_scene=allow_unknown_scene,
     )
     executor = Executor(
