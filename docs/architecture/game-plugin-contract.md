@@ -117,3 +117,88 @@ Process-separated bridge candidate: authenticated/controlled local transport, ve
 | G12 unsupported visual/hardware | no native/RAM proof claim; explicit limited observation capabilities |
 
 R09 supplies manifests and scenario/campaign evidence, R12 release gate. This is a contract proposal requiring ADR and senior review, not implementation authorization or support upgrade. No tests run.
+
+## Explicit caller registry injection (`build_runner`)
+
+Later implementation status (2026-11-26, source base
+`d83e823a6dc19e1e496a6d10d1b015293c7d9eb1`): `build_runner` accepts an optional
+`plugin_registry` ([#284](https://github.com/aimd-labs/pokegent/pull/284)). Python-API-only:
+no new CLI flag, loader or discovery; the existing experimental Python kwarg is the only opt-in.
+
+- The opt-in stays explicit: only with `experimental_game_plugin=True` is `plugin_registry`
+  accepted; otherwise the call refuses with `RefusalCode.DISABLED` before ROM bytes are
+  required, so an orphan registry cannot fall back to the built-in path. A value must be a
+  `ReviewedPluginRegistry`; other objects raise `TypeError`. The caller still owns the bytes:
+  `plugin_rom_bytes` stays required, with no path, discovery or filesystem read implied.
+- A supplied registry is used as-is for one `firered` selection and only that instance. It is
+  never copied, merged, registered into the built-in registry or replaced by it; an empty,
+  disabled or non-matching caller registry refuses instead.
+- The existing FireRed profile gate remains mandatory: `FireRedPlugin(profile)` is constructed
+  before selection even with a caller registry, so `supported`, `BPRE` and ROM version 0 are
+  still checked.
+- Required capabilities are the `required_capabilities` that `build_runner`'s selection path
+  derives for the chosen composition, including its conditional dex/story fallback service
+  flags; they are checked before `compose()`. That selection path owns the exact set, so this
+  page does not freeze it.
+- Selection always requests the `firered` namespace, so a plugin registered under another game
+  name is refused with `RefusalCode.PROFILE_MISMATCH` before compose. Unknown digests,
+  unsupported contracts, profile mismatches and missing capabilities also refuse before
+  compose and before any actor read.
+- `plugin_registry=None` is unchanged: the opt-in still builds a fresh enabled registry and
+  registers the built-in `FireRedPlugin`; the opt-in-off path with no inputs is untouched.
+
+Boundary: FireRed-only composition and source proof in synthetic
+[`tests/test_runner_plugin_registry.py`](https://github.com/aimd-labs/pokegent/blob/d83e823a6dc19e1e496a6d10d1b015293c7d9eb1/tests/test_runner_plugin_registry.py);
+it does not establish a second game, discovery, native support, input authority or action
+verification. The fence exercises the disabled registry only, proving refusal before
+`compose()` and any actor attribute, not admitted wiring.
+
+```python
+"""Disabled caller registry: refuse before compose or any actor read."""
+import hashlib
+from pokegent.app import AppConfig, build_runner
+from pokegent.games.gen3.firered.plugin import FireRedPlugin
+from pokegent.games.gen3.firered.rom.rom_data import load_profiles
+from pokegent.games.plugin import PluginRefusal, RefusalCode, ReviewedPluginRegistry
+
+ROM_BYTES = b"docs-runner-registry-invented-bytes" * 8  # invented, not a ROM
+base = load_profiles().get("firered-us-rev0")
+PROFILE = base.model_copy(
+    update={"rom": base.rom.model_copy(update={"sha1": hashlib.sha1(ROM_BYTES).hexdigest()})}
+)
+
+class NoReadActor:
+    realtime_idle_while_deciding = False
+
+    def __getattr__(self, name):
+        raise AssertionError(f"actor.{name} touched before refusal")
+
+class ComposeSpy:
+    def __init__(self):
+        self.composes, self.descriptor = 0, FireRedPlugin(PROFILE).descriptor
+
+    def compose(self):
+        self.composes += 1
+
+plugin = ComposeSpy()
+registry = ReviewedPluginRegistry(enabled=False)
+registry.register(plugin)
+
+try:
+    build_runner(
+        actor=NoReadActor(),
+        profile=PROFILE,
+        events=object(),
+        config=AppConfig(run_id="runner-registry-guide", map_mode="always"),
+        experimental_game_plugin=True,
+        plugin_rom_bytes=ROM_BYTES,
+        plugin_registry=registry,
+    )
+except PluginRefusal as refusal:
+    assert refusal.code is RefusalCode.DISABLED, refusal.code
+else:
+    raise AssertionError("disabled caller registry was admitted")
+
+assert plugin.composes == 0
+print("refused before compose:", RefusalCode.DISABLED.value)
+```
