@@ -2167,17 +2167,19 @@ def run_offline(
                 directory = graph = navigation = None
                 # Both explicit and generated objectives need long-distance route hints. Deep
                 # objective-file target checks remain conditional on an actual file.
-                graph = MapGraph.from_rom(rom_bytes, profile)
-                from pokegent.navigation import NavigationAdapter, NavigationGraph
+                from pokegent.games.gen3.firered.navigation import make_navigation_services
 
-                navigation = NavigationAdapter(
-                    NavigationGraph.from_rom(rom_bytes, profile), events=events
+                services = make_navigation_services(
+                    rom_bytes,
+                    profile,
+                    events=events,
+                    needs_directory=objective is not None,
                 )
-                directory = None
-                if objective is not None:
-                    from pokegent.goals.directory import RomMapDirectory
-
-                    directory = RomMapDirectory(rom_bytes, profile)
+                graph, navigation, directory = (
+                    services.graph,
+                    services.navigation,
+                    services.directory,
+                )
                 log(
                     f"run {run_id}: state={state_path.name if state_path else 'cold-boot'} "
                     f"decider={decider} "

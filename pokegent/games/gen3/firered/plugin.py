@@ -41,6 +41,7 @@ FIRERED_CAPABILITIES = frozenset(
         "local_knowledge",
         "battle_facts",
         "observation_projection",
+        "navigation",
     }
 )
 
@@ -63,6 +64,7 @@ class FireRedServices:
     pre_game_callbacks: frozenset[str]
     battle_facts_factory: Callable[..., Any] | None = None
     observation_factory: Callable[..., Any] | None = None
+    navigation_factory: Callable[..., Any] | None = None
 
 
 def _require_supported_firered_profile(profile: Any) -> RomProfile:
@@ -113,6 +115,7 @@ class FireRedPlugin:
         from pokegent.games.gen3.firered.composition import make_menu_services
         from pokegent.games.gen3.firered.families import register_families
         from pokegent.games.gen3.firered.knowledge import FireRedKnowledge
+        from pokegent.games.gen3.firered.navigation import make_navigation_services
         from pokegent.games.gen3.firered.objectives import make_dex_fallback
         from pokegent.games.gen3.firered.observation import project_observation
         from pokegent.games.gen3.firered.reader.adapter import FireRedAdapter
@@ -139,4 +142,5 @@ class FireRedPlugin:
             pre_game_callbacks=PRE_GAME_CALLBACKS,
             battle_facts_factory=make_battle_facts,
             observation_factory=project_observation,
+            navigation_factory=make_navigation_services,
         )
