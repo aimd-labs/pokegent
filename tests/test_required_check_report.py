@@ -279,3 +279,33 @@ def test_json_integer_limit_exceeded_is_typed_input_error(tmp_path, capsys):
         assert "1000" not in captured.err  # no raw digits echoed
     finally:
         sys.set_int_max_str_digits(original_limit)
+
+
+def test_embedded_null_byte_in_path_is_typed_input_error(tmp_path, capsys):
+    """Path containing embedded NUL byte raises CheckInputError, not ValueError."""
+    valid_path = tmp_path / "valid.json"
+    valid_path.write_text(
+        '{"total_count": 1, "check_runs": [{"id": 1, "name": "gate", '
+        '"head_sha": "'
+        + "a" * 40
+        + '", "status": "completed", "conclusion": "success", '
+        '"started_at": "2026-01-01T00:00:00Z"}]}',
+        encoding="utf-8",
+    )
+
+    # read_document with embedded NUL in path should raise CheckInputError
+    nul_path = str(valid_path) + "\0malicious"
+    with pytest.raises(checks.CheckInputError) as caught:
+        checks.read_document(nul_path)
+    assert "input file is unreadable" in str(caught.value)
+
+    # CLI (main) should return 2 with no stdout, no traceback
+    exit_code = checks.main([nul_path, "--head", HEAD, "--required", "gate"])
+    assert exit_code == 2
+
+    # Capture stdout/stderr
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("required-check evaluation failed: ")
+    assert "Traceback" not in captured.err
+    assert "embedded null" not in captured.err.lower()  # no raw error echoed
