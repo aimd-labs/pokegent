@@ -215,6 +215,13 @@ def test_oversized_auth_rejection_remains_terminal_before_input(
 def test_http11_chunked_deadline_and_cancellation_own_response_cleanup(method, phase):
     connected, closed = threading.Event(), threading.Event()
     dribble = [True]
+    server_seen = {
+        "header_bytes_written": 0,
+        "chunks_started": 0,
+        "chunks_written": 0,
+        "write_errors": 0,
+        "last_error": None,
+    }
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -227,21 +234,27 @@ def test_http11_chunked_deadline_and_cancellation_own_response_cleanup(method, p
                     if phase == "headers":
                         for byte in header:
                             self.wfile.write(bytes([byte]))
+                            server_seen["header_bytes_written"] += 1
                             self.wfile.flush()
                             time.sleep(.01)
                     else:
                         self.wfile.write(header)
+                        server_seen["header_bytes_written"] += len(header)
                     for _ in range(100):
+                        server_seen["chunks_started"] += 1
                         self.wfile.write(b"1\r\nx\r\n")
                         self.wfile.flush()
+                        server_seen["chunks_written"] += 1
                         time.sleep(.01)
                 else:
                     body = b'{"model":"actual","answers":{"action":{"choice":"red"}}}'
                     self.wfile.write(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
                     self.wfile.write(f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n")
                     self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
-                closed.set()
+            except (BrokenPipeError, ConnectionResetError) as error:
+                closed.set()  # Original signal remains the first operation in this handler.
+                server_seen["write_errors"] += 1
+                server_seen["last_error"] = type(error).__name__
             self.close_connection = True
 
         def do_GET(self):
@@ -276,7 +289,19 @@ def test_http11_chunked_deadline_and_cancellation_own_response_cleanup(method, p
                         await task
                 asyncio.run(cancel())
             assert time.monotonic() - started < .5
-            assert closed.wait(.5)
+            try:
+                assert closed.wait(.5)
+            except AssertionError as failure:
+                failure.add_note("cleanup_observation=" + repr({
+                    "method": method,
+                    "phase": phase,
+                    "connected": connected.is_set(),
+                    "closed_after_wait": closed.is_set(),
+                    "elapsed_s": time.monotonic() - started,
+                    "active_count": len(provider.client._active),
+                    "server": dict(server_seen),
+                }))
+                raise
             deadline = time.monotonic() + .3
             while provider.client._active and time.monotonic() < deadline:
                 time.sleep(.005)
