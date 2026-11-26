@@ -3,6 +3,7 @@
 No ROM, app, provider, native backend or FireRed type is involved.
 """
 
+from collections.abc import Mapping
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -233,3 +234,73 @@ def test_unusable_stays_unknown_and_never_becomes_ready():
         unknown.require_usable()
 
     assert make(usable=True).require_usable() is not None
+
+
+class _DeceptiveMapping(Mapping):
+    """Mapping that reports len=0 but iterates a specified number of items."""
+
+    def __init__(self, num_items: int):
+        self._num_items = num_items
+        self._data = {f"k{i}": i for i in range(num_items)}
+
+    def __len__(self) -> int:
+        return 0
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+
+def test_mapping_reports_zero_len_but_iterates_max_plus_one_rejected():
+    """Mapping reports len=0 but yields MAX_PAYLOAD_FIELDS+1 items -> must reject."""
+    deceptive = _DeceptiveMapping(MAX_PAYLOAD_FIELDS + 1)
+    assert len(deceptive) == 0
+    with pytest.raises(ObservationRejected):
+        make(payload=deceptive)
+
+
+class _PoisonedMapping(Mapping):
+    """Mapping that reports len<=MAX but yields 34 items; poisons if item34 consumed."""
+
+    def __init__(self):
+        self._consumed = 0
+
+    def __len__(self) -> int:
+        return MAX_PAYLOAD_FIELDS  # reports 32, early check passes
+
+    def __iter__(self):
+        self._consumed = 0
+        return self
+
+    def __next__(self):
+        if self._consumed >= MAX_PAYLOAD_FIELDS + 2:  # yields 34 items
+            raise StopIteration
+        self._consumed += 1
+        if self._consumed > MAX_PAYLOAD_FIELDS + 1:  # poisons at item34
+            raise RuntimeError("iterator consumed beyond MAX_PAYLOAD_FIELDS+1 (item34)")
+        return f"k{self._consumed - 1}"
+
+    def __getitem__(self, key):
+        idx = int(key[1:]) if key.startswith("k") else 0
+        return idx
+
+
+def test_bounded_iterator_poisons_if_consumed_beyond_max_plus_one():
+    """Mapping reports len=32 but yields 34 items; guard must reject at item33 before poison."""
+    poisoned = _PoisonedMapping()
+    assert len(poisoned) == MAX_PAYLOAD_FIELDS
+    with pytest.raises(ObservationRejected, match="too many fields"):
+        make(payload=poisoned)
+
+
+def test_mapping_reports_zero_len_and_has_exact_max_accepted_frozen_snapshot():
+    """Mapping reports len=0 but has exactly MAX_PAYLOAD_FIELDS items -> accepted."""
+    deceptive = _DeceptiveMapping(MAX_PAYLOAD_FIELDS)
+    assert len(deceptive) == 0
+    obs = make(payload=deceptive)
+    assert len(obs.payload) == MAX_PAYLOAD_FIELDS
+    # Verify it's a frozen snapshot (immutable)
+    with pytest.raises(TypeError):
+        obs.payload["k0"] = 999

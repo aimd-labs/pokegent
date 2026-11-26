@@ -38,10 +38,15 @@ def _counter(value: object, field_name: str) -> None:
 def _frozen_payload(payload: object) -> Mapping[str, Scalar]:
     if not isinstance(payload, Mapping):
         raise ObservationRejected("payload must be a flat mapping of JSON scalars")
+    # Early len check for normal mappings that report correct length
     if len(payload) > MAX_PAYLOAD_FIELDS:
         raise ObservationRejected("payload has too many fields")
     copied: dict[str, Scalar] = {}
-    for key, value in payload.items():
+    # Bounded iteration: consume at most MAX_PAYLOAD_FIELDS + 1 items to detect
+    # deceptive mappings that report len <= MAX but iterate more items
+    for index, (key, value) in enumerate(payload.items()):
+        if index >= MAX_PAYLOAD_FIELDS:
+            raise ObservationRejected("payload has too many fields")
         if type(key) is not str or not key or len(key) > MAX_KEY_LENGTH:
             raise ObservationRejected("payload keys must be non-empty bounded strings")
         if type(value) is str and len(value) > MAX_STRING_LENGTH:
