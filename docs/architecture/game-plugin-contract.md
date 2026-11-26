@@ -123,7 +123,7 @@ R09 supplies manifests and scenario/campaign evidence, R12 release gate. This is
 Later implementation status (2026-11-26, source base
 `d83e823a6dc19e1e496a6d10d1b015293c7d9eb1`): `build_runner` accepts an optional
 `plugin_registry` ([#284](https://github.com/aimd-labs/pokegent/pull/284)). Python-API-only:
-no flag, loader, discovery or entry point was added.
+no new CLI flag, loader or discovery; the existing experimental Python kwarg is the only opt-in.
 
 - The opt-in stays explicit: only with `experimental_game_plugin=True` is `plugin_registry`
   accepted; otherwise the call refuses with `RefusalCode.DISABLED` before ROM bytes are
@@ -136,10 +136,10 @@ no flag, loader, discovery or entry point was added.
 - The existing FireRed profile gate remains mandatory: `FireRedPlugin(profile)` is constructed
   before selection even with a caller registry, so `supported`, `BPRE` and ROM version 0 are
   still checked.
-- Required capabilities are derived by the current selection path, not a frozen catalogue:
-  `snapshot_source`, `menu_services`, `family_registration` and `objective_observation` are
-  always required, plus `dex_fallback` and `story_fallback` only when their config flags are
-  set. Everything is checked before `compose()`.
+- Required capabilities are the `required_capabilities` that `build_runner`'s selection path
+  derives for the chosen composition, including its conditional dex/story fallback service
+  flags; they are checked before `compose()`. That selection path owns the exact set, so this
+  page does not freeze it.
 - Selection always requests the `firered` namespace, so a plugin registered under another game
   name is refused with `RefusalCode.PROFILE_MISMATCH` before compose. Unknown digests,
   unsupported contracts, profile mismatches and missing capabilities also refuse before
