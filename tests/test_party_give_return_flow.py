@@ -618,6 +618,30 @@ def test_choose_mon_bound_swap_taps_yes_once_and_verifies(monkeypatch):
     assert tuple(actor.taps) == ("a", "a", "a")
 
 
+def test_unknown_pre_give_action_gets_zero_yes(monkeypatch):
+    """An unchanged but non-source-owned party action is not a swap authority."""
+    registries, option, spec, before = _give_setup(
+        monkeypatch, held_item=OLD_ITEM, action_name="unknown_action"
+    )
+    bag = _bag_snapshot(held_item=OLD_ITEM, quantity=2)
+    prompt = _swap_prompt_snapshot(action_name="unknown_action")
+    perceiver = _Perceiver(
+        [
+            _obs(before, _party_scene(before)),
+            _obs(bag, _bag_scene(registries, bag)),
+            _obs(bag, _bag_scene(registries, bag)),
+            _obs(prompt, _party_scene(prompt)),
+        ],
+        _obs(prompt, _party_scene(prompt)),
+    )
+
+    result, actor = _run(registries, option, spec, before, perceiver)
+
+    assert result.status is ActionStatus.INTERRUPTED
+    assert result.verified_outcome is not True
+    assert tuple(actor.taps) == ("a", "a")
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

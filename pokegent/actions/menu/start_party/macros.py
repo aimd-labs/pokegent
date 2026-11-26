@@ -57,8 +57,8 @@ def _swap_binding(
     if party.slot_id != selected_slot or party.item_id != item_id:
         return False
     # The source preserves gPartyMenu.action across CursorCB_Give/CB2_GiveHoldItem.  Require the
-    # same proven pre-give action (START-party choose_mon or give_item), never a synthesized one.
-    if pre_action is None or party.action_name != pre_action:
+    # same proven pre-give action, restricted to the two source-owned give entries.
+    if pre_action not in ("choose_mon", "give_item") or party.action_name != pre_action:
         return False
     if mon is None or mon.personality != target_personality or mon.held_item != old_held:
         return False
