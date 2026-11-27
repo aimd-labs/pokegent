@@ -32,7 +32,8 @@ def _mon(slot, pid):
 def _storage(boxes, bo=0, ca=0, cp=0, popup=None):
     s = NS(boxes=boxes, names=tuple(f"B{i}" for i in range(len(boxes))), box_option=bo,
            cursor_area=ca, cursor_position=cp, cursor_settled=True, ui_state=0,
-           current_box=0, deposit_box_cursor=popup, options_button_mode=0)
+           current_box=0, deposit_box_cursor=popup, options_button_mode=0,
+           get=lambda box, slot: boxes[box][slot])
     return s
 
 
@@ -98,3 +99,26 @@ def test_destination_box_full_fails_without_applying(monkeypatch):
                     [ready] * 7 + [popup, popup], popup)
     assert (result.status, result.verified_outcome) != (ActionStatus.APPLIED, True)
     assert "destination box full" in result.reason
+
+
+def test_withdraw_moves_box_mon_into_party_and_applies(monkeypatch):
+    party = (_mon(0, QID), _mon(1, 3))
+    boxes = ((_mon(0, PID), _mon(1, 44), None, None, None, None), ())
+    before = _snap(party, _storage(boxes, 0, 0, 0), "before")
+    after = _snap(party + (_mon(2, PID),),
+                  _storage(((None, _mon(1, 44), None, None, None, None), ()), 0, 0, 0), "after")
+    result = _drive(monkeypatch, before, {"pid": PID, "operation": 0},
+                    [before] * 7 + [after], after)
+    assert result.status is ActionStatus.APPLIED and result.verified_outcome is True
+
+
+def test_deposit_moves_party_member_into_roomy_box_and_applies(monkeypatch):
+    party = (_mon(0, PID), _mon(1, QID), _mon(2, 3))
+    boxes = ((None,) * 6, ())
+    ready = _snap(party, _storage(boxes, 1, 1), "ready")
+    popup = _snap(party, _storage(boxes, 1, 1, 0, popup=0), "popup")
+    after_party = (_mon(0, QID), _mon(1, 3))
+    after = _snap(after_party, _storage(((_mon(0, PID),) + (None,) * 5, ()), 1, 1), "after")
+    result = _drive(monkeypatch, ready, {"pid": PID, "operation": 1, "box": 0},
+                    [ready] * 7 + [popup], after)
+    assert result.status is ActionStatus.APPLIED and result.verified_outcome is True
