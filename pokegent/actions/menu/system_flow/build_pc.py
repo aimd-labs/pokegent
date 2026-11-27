@@ -14,6 +14,7 @@ from pokegent.options.models import Legality, Option, Risk, fingerprint
 from pokegent.options.registry import BuildContext, FrameDraft
 
 PARTY_SIZE = 6
+MAX_ROSTER = 150
 
 
 def _level(mon: Any, tables: Any) -> int | None:
@@ -215,6 +216,20 @@ def _storage_main(snapshot: Any, verdict: Verdict, options: SystemFlowOptions) -
         )
     storage = snapshot.storage
     boxes = _box_content_facts(storage)
+    roster: list[dict[str, Any]] = []
+    total = 0
+    if storage is not None:
+        tables = options.game_tables()
+        total = sum(1 for mons in storage.boxes for mon in mons if mon is not None)
+        for box, mons in enumerate(storage.boxes):
+            for slot, mon in enumerate(mons):
+                if mon is None or len(roster) >= MAX_ROSTER:
+                    continue
+                f = _mon_facts(mon, tables)
+                roster.append({"box": box, "slot": slot, "species_name": f["species_name"],
+                               "level": f["level"], "types": f["types"],
+                               "moves": [m["name"] for m in f["key_moves"][:4]]})
+    box_roster = {"entries": roster, "total": total, "truncated": len(roster) < total}
     party_count = _party_count(snapshot)
     semantic = {
         "pc_storage:withdraw": (
@@ -270,6 +285,7 @@ def _storage_main(snapshot: Any, verdict: Verdict, options: SystemFlowOptions) -
                     "repeat_count": 0,
                     "party_count": party_count,
                     "box_contents": boxes,
+                    "box_roster": box_roster,
                     "target_screen": {
                         "scene": R.PC_MAIN,
                         "callback": "CB2_PokeStorage",
