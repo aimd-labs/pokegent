@@ -10,6 +10,12 @@ from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
 
 _SUPPORTED_WILD_METHODS = frozenset({"land", "water"})
 
+# Static legendaries have no wild-table rows but a fixed ROM map (pret FIRERED keys).
+_STATIC_SOURCES: dict[int, tuple[tuple[int, int], str]] = {
+    144: ((1, 87), "Seafoam Islands B4F"),  # Articuno; Mewtwo (150) deferred
+    145: ((1, 95), "Power Plant"),  # Zapdos
+}
+
 
 def resolve_collect_navigation(snapshot, resolved: ResolvedObjective | None, world):
     """Resolve item and Pokemon acquisition objectives from the shared ROM index."""
@@ -31,6 +37,11 @@ def resolve_collect_navigation(snapshot, resolved: ResolvedObjective | None, wor
     )
     if dex_probe is not None:
         species = dex_probe.species
+    static_source = _STATIC_SOURCES.get(species) if species is not None else None
+    if static_source is not None:
+        (group, number), map_name = static_source
+        target = ResolvedTarget(group=group, number=number, map_name=map_name, species=species)
+        return replace(resolved, navigation_target=target, navigation_reason=None), ()
     is_wild = (
         species is not None
         and resolved.objective.kind in {"collect", "dex"}
