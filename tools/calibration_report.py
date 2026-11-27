@@ -170,11 +170,13 @@ def scene_eligibility_report(scenes: dict[str, dict[str, Any]],
 
 def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                  max_records: int = MAX_RECORDS, max_strata: int = MAX_STRATA,
-                 choice_validity: bool = False,
-                 outcome_latency: bool = False) -> dict[str, Any]:
+                 choice_validity: bool = False, outcome_latency: bool = False,
+                 scene_eligibility: bool = False,
+                 policy: tuple[Any, Any, Any] | None = None) -> dict[str, Any]:
     if type(outcome_latency) is not bool:
         raise ReportError("outcome_latency must be an exact bool")
     strata: dict[tuple[Any, ...], dict[str, Any]] = {}
+    scenes: dict[str, dict[str, Any]] = {}
     sequence_state: dict[tuple[int, str], dict[str, Any]] = {}
     records = 0
     for source, path in enumerate(paths):
@@ -215,6 +217,19 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                 counts = stratum.setdefault(
                     "choice_validity", {"valid": 0, "invalid": 0, "unknown": 0})
                 counts[bucket] += 1
+            if scene_eligibility:
+                scene = scenes.setdefault(fields["scene_id"], {
+                    "scene_id": fields["scene_id"], "records": 0, "valid": 0,
+                    "invalid": 0, "unknown": 0, "samples": []})
+                scene["records"] += 1
+                framed = record.get("framed_choice_valid")
+                if framed is None:
+                    scene["unknown"] += 1
+                elif isinstance(framed, bool):
+                    scene["valid" if framed else "invalid"] += 1
+                else:
+                    _fail(path, line, "framed_choice_valid")
+                scene["samples"].append(fields["measured_ms"])
             stratum["outcomes"][fields["outcome"]] += 1
             if fields["attempts"] is None:
                 stratum["attempts_missing"] += 1
@@ -280,7 +295,7 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
          "non_monotonic_count": state["non_monotonic"]}
         for (source, run_id), state in sorted(sequence_state.items())
         if state["duplicates"] or state["non_monotonic"]]
-    return {
+    report = {
         "tool": "calibration_report", "version": 1,
         "calibration_schema": 1, "outcome_semantics": "response_validity",
         "sources": len(paths), "records": records, "no_records": records == 0,
@@ -288,6 +303,9 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
         "labels": "none", "accuracy": None, "disagreement": None,
         "verified_progress": None, "eligibility": "not_evaluated", "note": NOTE,
     }
+    if scene_eligibility:
+        report["scene_eligibility"] = scene_eligibility_report(scenes, policy)
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -297,10 +315,23 @@ def main(argv: list[str] | None = None) -> int:
                         help="count logged framed-choice validity per stratum (default off)")
     parser.add_argument("--outcome-latency", action="store_true",
                         help="report per-outcome measured latency per stratum (default off)")
+    parser.add_argument("--scene-eligibility", action="store_true",
+                        help="report per-scene eligibility rollup (default off)")
+    parser.add_argument("--min-samples", type=int, help="min records per scene")
+    parser.add_argument("--min-valid-rate", type=float, help="min valid rate in (0, 1]")
+    parser.add_argument("--max-p95-ms", type=float, help="max p95 latency in ms")
     args = parser.parse_args(argv)
+    policy = None
+    if args.scene_eligibility:
+        try:
+            policy = _eligibility_policy(args.min_samples, args.min_valid_rate,
+                                         args.max_p95_ms)
+        except ValueError as exc:
+            parser.error(str(exc))
     try:
         report = build_report(args.paths, choice_validity=args.choice_validity,
-                              outcome_latency=args.outcome_latency)
+                              outcome_latency=args.outcome_latency,
+                              scene_eligibility=args.scene_eligibility, policy=policy)
     except ReportError as exc:
         print(f"calibration_report: {exc}", file=sys.stderr)
         return 1
