@@ -138,12 +138,14 @@ def _state(warp_rows, extra=(), identity=SOURCE, name="InventedB2F"):
     )
 
 
-def _warp(index, x, y, dest_warp, *, behavior, kind, trigger, direction=None, dest=DEST):
+def _warp(
+    index, x, y, dest_warp, *, behavior, kind, trigger, direction=None, dest=DEST, elevation=0
+):
     return WarpInfo(
         index=index,
         x=x,
         y=y,
-        elevation=0,
+        elevation=elevation,
         dest_group=dest[0],
         dest_number=dest[1],
         dest_name="InventedB1F",
@@ -296,6 +298,33 @@ def _step(graph, x, y, direction):
 
 def test_readable_ladder_still_routes_as_a_warp_edge():
     edge = _step(_graph(), 2, 2, "N")
+    assert edge is not None and edge.kind == "warp"
+    assert edge.destination.map_key == DEST
+    assert (edge.destination.x, edge.destination.y) == (2, 1)
+
+
+def test_step_warp_fires_from_a_differing_elevation_neighbor():
+    # Seafoam B3F shape: a ladder whose warp row carries elevation while the walkable
+    # approach tile sits at another elevation.  The step warp fires on entry regardless
+    # of approach elevation; the elevation filter in ``_warp_at`` must only gate the
+    # directional/arrow/door presses, not the automatic step branch.
+    rows = (
+        _warp(
+            1,
+            2,
+            1,
+            1,
+            behavior=MB["MB_LADDER"],
+            kind="ladder",
+            trigger="step",
+            elevation=3,
+        ),
+    )
+    state = _state(rows, extra=(((2, 1), 2),))
+    graph = NavigationGraph({SOURCE: state, DEST: _dest_state()}, provider=_Provider())
+    edge = graph._step_edge(
+        state, NavigationNode(*SOURCE, 2, 2, 0), "N", CapabilityState(), live=None
+    )
     assert edge is not None and edge.kind == "warp"
     assert edge.destination.map_key == DEST
     assert (edge.destination.x, edge.destination.y) == (2, 1)

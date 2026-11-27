@@ -1179,6 +1179,12 @@ class NavigationGraph:
         # or unknown trigger is not proof, so those rows never route (the Mansion loop was the
         # cave case of this).
         automatic_warp = warp is not None and warp.trigger == "step"
+        if warp is None:
+            # Ladders, holes and warp pads fire on entry at any approach elevation; only the
+            # directional/arrow/door presses are elevation-gated.  A step warp row reached
+            # from a different-elevation walkable edge (Seafoam B3F ladders) must still route.
+            warp = self._step_warp_at(state, nx, ny)
+            automatic_warp = warp is not None
         if warp is not None and (fall_tile or automatic_warp):
             edge = self._warp_edge(state, node, warp, direction, capabilities)
             if edge is not None and fall_tile:
@@ -3481,6 +3487,24 @@ class NavigationGraph:
                 warp
                 for warp in state.warps
                 if (warp.x, warp.y) == (x, y) and warp.elevation in (0, elevation)
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _step_warp_at(state: MapState, x: int, y: int) -> WarpInfo | None:
+        """A step-triggered warp row on a tile, whatever its elevation.
+
+        Ladders, holes and warp pads fire when the player enters the tile, independent of
+        the elevation of the walkable approach (Seafoam B3F ladders sit on ledges beside
+        an elevation-0 walk).  The elevation filter in :meth:`_warp_at` gates only the
+        directional/arrow/door press warps.
+        """
+        return next(
+            (
+                warp
+                for warp in state.warps
+                if (warp.x, warp.y) == (x, y) and warp.trigger == "step"
             ),
             None,
         )
