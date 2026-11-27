@@ -1178,9 +1178,13 @@ class NavigationGraph:
         # pads, warp pad, fall warp, union room) may become an automatic step edge.  A missing
         # or unknown trigger is not proof, so those rows never route (the Mansion loop was the
         # cave case of this).
-        automatic_warp = warp is not None and warp.trigger == "step"
-        if warp is not None and (fall_tile or automatic_warp):
-            edge = self._warp_edge(state, node, warp, direction, capabilities)
+        #
+        # The step warp fires when the player stands on the ENTERED tile: the row must match
+        # that tile's elevation (warp.elevation == tile elevation or 0), never the approach
+        # node's (undefined tiles report 0 → fail-closed).  See _step_warp_at.
+        step_warp = self._step_warp_at(state, nx, ny)
+        if step_warp is not None:
+            edge = self._warp_edge(state, node, step_warp, direction, capabilities)
             if edge is not None and fall_tile:
                 return NavigationEdge(
                     edge.stable_key.replace("warp:", "fall:", 1),
@@ -1190,7 +1194,11 @@ class NavigationGraph:
                     edge.cost,
                     edge.requirements,
                     edge.direction,
-                    (("kind", "fall"), ("warp", warp.index), ("dest", edge.destination.map_key)),
+                    (
+                        ("kind", "fall"),
+                        ("warp", step_warp.index),
+                        ("dest", edge.destination.map_key),
+                    ),
                 )
             return edge
         if info.kind == "cracked_ice":
@@ -3481,6 +3489,27 @@ class NavigationGraph:
                 warp
                 for warp in state.warps
                 if (warp.x, warp.y) == (x, y) and warp.elevation in (0, elevation)
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _step_warp_at(state: MapState, x: int, y: int) -> WarpInfo | None:
+        """A step-triggered warp row matching the ENTERED tile's elevation.
+
+        The row fires when the player stands on the entered tile, so it must match that
+        tile's elevation (warp.elevation == tile elevation or 0), never the approach node's
+        (Seafoam B3F ladders beside an elevation-0 walk).  Undefined tiles report 0, so
+        only elevation-0 rows match there (fail-closed).
+        """
+        elevation = state.elevation(x, y)
+        return next(
+            (
+                warp
+                for warp in state.warps
+                if (warp.x, warp.y) == (x, y)
+                and warp.trigger == "step"
+                and warp.elevation in (0, elevation)
             ),
             None,
         )
