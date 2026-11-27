@@ -386,3 +386,10 @@ def test_cli_scene_eligibility_reports_per_scene_labels(tmp_path):
                   "--min-valid-rate", "1", "--max-p95-ms", "1")):
         bad = run_cli(path, *args)
         assert (bad.returncode, bad.stdout, "min_samples" in bad.stderr) == (2, "", True)
+
+
+def test_build_report_scene_eligibility_requires_a_policy(tmp_path):
+    path = tmp_path / "none.jsonl"
+    produced(path, [record(scene_id="s", measured_ms=1.0)])
+    with pytest.raises(ReportError, match="requires a policy"):
+        build_report([str(path)], scene_eligibility=True)
