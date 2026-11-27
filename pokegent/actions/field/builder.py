@@ -837,6 +837,7 @@ class FieldBuilder:
                 for option in options
             ]
         options = self._filter_closed_navigation_warps(options, snap, navigation_plan)
+        options = self._filter_map_only_arrived_exits(options, navigation_plan)
         if navigation_result is not None and navigation_result.unknown_reason is not None:
             options.append(
                 self._diagnostic(
@@ -1095,6 +1096,7 @@ class FieldBuilder:
             in {"warp", "edge", "ladder", "elevator", "door", "stairs"}
             and option.facts.get("selection_reason") != "alternating_without_progress"
             and option.facts.get("selection_reason") != "closed"
+            and option.facts.get("selection_reason") != "arrived_map_only"
         )
         if hidden_transitions:
             promoted_ids = {option.id for option in hidden_transitions}
@@ -1335,6 +1337,39 @@ class FieldBuilder:
             # This is the one visibility exception: ``warp_is_closed`` is a current RAM/ROM
             # proof, so the warp becomes a normal unavailable diagnostic.
             out.append(self._selection_suppressed(option, "closed", preserve_legal=False))
+        return out
+
+    def _filter_map_only_arrived_exits(
+        self, options: list[Option], navigation_plan=None
+    ) -> list[Option]:
+        """An arrived map-only target must not be re-driven out of its own map: the planner
+        matcher arrives on any tile, so its exit warps are suppressed (the PP bounce)."""
+        if navigation_plan is None:
+            return options
+        target = navigation_plan.target
+        arrived = (
+            navigation_plan.cost is not None
+            and not navigation_plan.route
+            and navigation_plan.start.map_key == target.map_key
+            and target.x is None and target.y is None
+            and target.warp_index is None and target.local_id is None
+        )
+        if not arrived:
+            return options
+        out = []
+        for option in options:
+            facts_target = option.facts.get("target")
+            leaving = (
+                option.chooseable
+                and isinstance(facts_target, dict)
+                and facts_target.get("kind") in {"warp", "edge"}
+                and facts_target.get("dest") is not None
+                and tuple(facts_target["dest"]) != tuple(target.map_key)
+            )
+            if leaving:
+                out.append(self._selection_suppressed(option, "arrived_map_only"))
+            else:
+                out.append(option)
         return out
 
     @staticmethod
