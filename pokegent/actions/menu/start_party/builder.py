@@ -240,6 +240,8 @@ class StartPartyBuilder:
         if scene == R.PARTY_REORDER:
             ui = ctx.snapshot.ui
             selected = ui.menu.party.slot_id2 if ui and ui.menu.party else None
+        choose_task = any(t.func.name == "Task_HandleChooseMonInput"
+                          for t in (ctx.snapshot.ui.tasks.active if ctx.snapshot.ui else ()))
         options: list[Option] = []
         give_items: tuple[tuple[int, int], ...] = ()
         if scene == R.PARTY_HELD_ITEM:
@@ -263,6 +265,9 @@ class StartPartyBuilder:
                 None,
             )
             if scene == R.PARTY_REORDER and (mon is None or mon.slot == selected):
+                continue
+            # rendered list without its choose task may only be closed (B); SELECT_MON stays gated
+            if scene == R.PARTY_LIST and not choose_task and entry.stable_key != "party:cancel":
                 continue
             item_entries: tuple[tuple[int | None, MenuEntry], ...] = ((None, entry),)
             if scene == R.PARTY_HELD_ITEM and entry.stable_key == "party_action:give":
