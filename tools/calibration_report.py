@@ -175,6 +175,8 @@ def build_report(paths: list[str], *, max_line_bytes: int = MAX_LINE_BYTES,
                  policy: tuple[Any, Any, Any] | None = None) -> dict[str, Any]:
     if type(outcome_latency) is not bool:
         raise ReportError("outcome_latency must be an exact bool")
+    if scene_eligibility and policy is None:
+        raise ReportError("scene_eligibility requires a policy")
     strata: dict[tuple[Any, ...], dict[str, Any]] = {}
     scenes: dict[str, dict[str, Any]] = {}
     sequence_state: dict[tuple[int, str], dict[str, Any]] = {}
