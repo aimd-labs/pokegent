@@ -138,12 +138,14 @@ def _state(warp_rows, extra=(), identity=SOURCE, name="InventedB2F"):
     )
 
 
-def _warp(index, x, y, dest_warp, *, behavior, kind, trigger, direction=None, dest=DEST):
+def _warp(
+    index, x, y, dest_warp, *, behavior, kind, trigger, direction=None, dest=DEST, elevation=0
+):
     return WarpInfo(
         index=index,
         x=x,
         y=y,
-        elevation=0,
+        elevation=elevation,
         dest_group=dest[0],
         dest_number=dest[1],
         dest_name="InventedB1F",
@@ -294,11 +296,48 @@ def _step(graph, x, y, direction):
     return graph._step_edge(_source_state(), node, direction, CapabilityState(), live=None)
 
 
+def _ladder_step(warp_elevation, tile_elevation):
+    """Step N from (2,2) onto a MB_LADDER at (2,1) with the given warp/tile elevations."""
+    rows = (
+        _warp(
+            1,
+            2,
+            1,
+            1,
+            behavior=MB["MB_LADDER"],
+            kind="ladder",
+            trigger="step",
+            elevation=warp_elevation,
+        ),
+    )
+    block = (tile_elevation << 12) | 2  # elevation bits | MB_LADDER id, so (2,1) reads elev
+    state = _state(rows, extra=(((2, 1), block),))
+    graph = NavigationGraph({SOURCE: state, DEST: _dest_state()}, provider=_Provider())
+    return graph._step_edge(
+        state, NavigationNode(*SOURCE, 2, 2, 0), "N", CapabilityState(), live=None
+    )
+
+
 def test_readable_ladder_still_routes_as_a_warp_edge():
     edge = _step(_graph(), 2, 2, "N")
     assert edge is not None and edge.kind == "warp"
     assert edge.destination.map_key == DEST
     assert (edge.destination.x, edge.destination.y) == (2, 1)
+
+
+def test_step_warp_fires_from_a_differing_elevation_neighbor():
+    # Seafoam B3F shape: warp elevation == entered tile (3), approach walk at 0; routes.
+    edge = _ladder_step(3, 3)
+    assert edge is not None and edge.kind == "warp"
+    assert edge.destination.map_key == DEST
+    assert (edge.destination.x, edge.destination.y) == (2, 1)
+
+
+def test_step_warp_mismatched_entry_elevation_stays_a_walk():
+    # Chief #416 gate: a step row claiming 3 on an elevation-0 entered tile fails closed
+    # and never becomes a warp edge (warp.elevation must be 0 or == the entered tile's).
+    edge = _ladder_step(3, 0)
+    assert edge is None or edge.kind != "warp"
 
 
 def test_readable_non_warp_tiles_are_walked_not_warps():
