@@ -70,9 +70,11 @@ class StartPartyDetector:
             scene, phase = R.PARTY_ACTION, "build_action_menu"
         elif choose:
             scene, phase = R.PARTY_LIST, "choose_mon"
+        elif "Task_HandleMenuInput" in task_names:
+            scene, phase = R.PARTY_LIST, "close_only"  # idle resume list: B closes it (fail-closed)
         else:
             scene, phase = R.PARTY_LIST, "load_party"
-        busy = fade or building or not (choose or submenu)
+        busy = fade or building or phase == "load_party"
         return SceneResult(
             scene_id=scene,
             confidence=0.98 if choose or submenu else 0.9,
