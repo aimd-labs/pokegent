@@ -58,8 +58,7 @@ def _drive(monkeypatch, before, args, staged, fallback, ref, post):
     registries = Registries.new()
     register_all(registries)
     perceiver = _P()
-    perceiver.obs = list(staged)
-    perceiver._fb = fallback
+    perceiver.obs, perceiver._fb = list(staged), fallback
     exe = Executor(_A(), registries.executors, registries.verifiers, perceiver,
                    clock=lambda: 0.0, interrupt_requested=lambda: False)
     ctx = NS(option=NS(facts={}, action_contract=None, executor_args=args), args=args,
@@ -91,10 +90,11 @@ def test_caught_throw_verifies_bag_minus_one_mon_added_nickname_declined(monkeyp
     assert done.snapshot.party[1].nickname == "" and done.snapshot.bag[2].items[0].quantity == 2
 
 
-def test_failed_catch_is_not_verified_and_battle_continues(monkeypatch):
+def test_break_free_ball_commits_and_battle_continues(monkeypatch):
     before = _obs([ME], 3, "battle.action")
     broke = _obs([ME], 2, "battle.action", used=BALL)
     result = _drive(monkeypatch, before, {"item_id": BALL}, _throw(before) + [broke],
                     broke, R.THROW_BALL, R.PC_BALL)
-    # PC_BALL proves the throw commitment (spec 11.3): a spent ball verifies on a break-free.
-    assert result.verified_outcome is not True and broke.snapshot.party == before.snapshot.party
+    # PC_BALL verifies the throw commitment, never the catch (verifiers.py L10).
+    assert result.status is ActionStatus.APPLIED and result.verified_outcome is True
+    assert broke.snapshot.party == before.snapshot.party and broke.scene.scene_id == "battle.action"
