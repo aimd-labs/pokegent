@@ -363,3 +363,26 @@ def test_scene_eligibility_rejects_inconsistent_scene_counts():
                    {"samples": [10.0]}, {"unknown": 1}):
         with pytest.raises(ValueError, match="do not match records"):
             scene_eligibility_report({"s": {**base, **change}}, (1, 0.5, 100.0))
+
+
+def test_cli_scene_eligibility_reports_per_scene_labels(tmp_path):
+    path = tmp_path / "elig.jsonl"
+    produced(path, [
+        record(scene_id="route-1", measured_ms=10.0, framed_choice_valid=True),
+        record(scene_id="route-1", measured_ms=20.0, framed_choice_valid=False),
+        record(scene_id="opaque", measured_ms=40.0),
+        record(scene_id="route-2", measured_ms=50.0, framed_choice_valid=True),
+        record(scene_id="route-2", measured_ms=60.0, framed_choice_valid=True),
+    ])
+    report = report_of(run_cli(path, "--scene-eligibility", "--min-samples", "2",
+                               "--min-valid-rate", "0.6", "--max-p95-ms", "100"))
+    scenes = report["scene_eligibility"]["scenes"]
+    assert all(s["valid"] + s["invalid"] + s["unknown"] == s["records"] for s in scenes)
+    assert [(s["scene_id"], s["eligible"], s["reason"]) for s in scenes] == \
+        [("opaque", "unknown", "below_min_samples"), ("route-1", False, "below_valid_rate"),
+         ("route-2", True, "eligible")]
+    for args in (("--scene-eligibility",),
+                 ("--scene-eligibility", "--min-samples", "0",
+                  "--min-valid-rate", "1", "--max-p95-ms", "1")):
+        bad = run_cli(path, *args)
+        assert (bad.returncode, bad.stdout, "min_samples" in bad.stderr) == (2, "", True)
