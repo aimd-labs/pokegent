@@ -56,6 +56,43 @@ def test_snorlax_static_objective_resolves_to_route_12() -> None:
     assert resolved.navigation_reason is None
 
 
+def _snorlax_world(hide_flags: dict[tuple[int, int], int]) -> SimpleNamespace:
+    def read_static(group: int, number: int) -> SimpleNamespace:
+        flag = hide_flags[(group, number)]
+        obj = SimpleNamespace(role="snorlax", hidden_flag_id=flag)
+        return SimpleNamespace(usable=True, state=SimpleNamespace(objects=(obj,)))
+
+    world = _world()
+    world.map_reader = SimpleNamespace(read_static=read_static)
+    return world
+
+
+def _flags(*set_ids: int) -> SimpleNamespace:
+    return SimpleNamespace(flags=SimpleNamespace(is_set=lambda flag: flag in set_ids))
+
+
+_HIDE = {(3, 30): 0x11, (3, 34): 0x22}
+
+
+def test_snorlax_goes_to_route_12_while_neither_sleeper_is_gone() -> None:
+    resolved, _ = resolve_collect_navigation(_flags(), _resolved(143), _snorlax_world(_HIDE))
+    assert resolved.navigation_target.map_key == (3, 30)
+
+
+def test_snorlax_goes_to_route_16_once_route_12_sleeper_is_gone() -> None:
+    resolved, _ = resolve_collect_navigation(_flags(0x11), _resolved(143), _snorlax_world(_HIDE))
+    assert resolved.navigation_target.map_key == (3, 34)
+    assert resolved.navigation_target.map_name == "Route 16"
+
+
+def test_snorlax_refuses_when_both_sleepers_are_gone() -> None:
+    resolved, _ = resolve_collect_navigation(
+        _flags(0x11, 0x22), _resolved(143), _snorlax_world(_HIDE)
+    )
+    assert resolved.navigation_target is None
+    assert "no remaining static source" in resolved.navigation_reason
+
+
 def _surf_gate_graph() -> RegionGraph:
     return RegionGraph({"maps": {
         "3:44": {"connections": [{"dest": "3:3", "pairs": [{"from": 0, "to": 0}]}]},
