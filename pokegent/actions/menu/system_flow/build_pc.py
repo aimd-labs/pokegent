@@ -199,7 +199,18 @@ def _resolved_menu(options: SystemFlowOptions, method: str, snapshot: Any):
     return getattr(resolver, method)(count)
 
 
-def _storage_main(snapshot: Any, verdict: Verdict, options: SystemFlowOptions) -> FrameDraft:
+def _storage_main(
+    snapshot: Any,
+    verdict: Verdict,
+    options: SystemFlowOptions,
+    level_goals: tuple[tuple[int | None, int | None, int], ...] = (),
+) -> FrameDraft:
+    """Storage menu options with a bounded ``box_roster``.
+
+    Roster rows carry no personality or party slot, so only all-party level goals
+    ``(None, None, level)`` apply: such a row gets ``below_goal`` and ``goal_level`` (the highest
+    goal above its level). Personality- and slot-specific goals are ignored. No goals, no keys.
+    """
     entries = _resolved_menu(options, "pokemon_storage", snapshot)
     if entries is None:
         return FrameDraft(
@@ -226,9 +237,15 @@ def _storage_main(snapshot: Any, verdict: Verdict, options: SystemFlowOptions) -
                 if mon is None or len(roster) >= MAX_ROSTER:
                     continue
                 f = _mon_facts(mon, tables)
-                roster.append({"box": box, "slot": slot, "species_name": f["species_name"],
-                               "level": f["level"], "types": f["types"],
-                               "moves": [m["name"] for m in f["key_moves"][:4]]})
+                row = {"box": box, "slot": slot, "species_name": f["species_name"],
+                       "level": f["level"], "types": f["types"],
+                       "moves": [m["name"] for m in f["key_moves"][:4]]}
+                goal = max((g for p, s, g in level_goals if p is None and s is None), default=None)
+                if goal is not None:
+                    row["below_goal"] = f["level"] < goal
+                    if row["below_goal"]:
+                        row["goal_level"] = goal
+                roster.append(row)
     box_roster = {"entries": roster, "total": total, "truncated": len(roster) < total}
     party_count = _party_count(snapshot)
     semantic = {
@@ -586,7 +603,7 @@ def pc_main(
     storage = snapshot.storage
     mode = storage.box_option if menu == "pc_storage" and storage is not None else None
     if menu == "pc_menu":
-        return _storage_main(snapshot, verdict, options)
+        return _storage_main(snapshot, verdict, options, ctx.objective_levels)
     if menu == "pc_storage" and phase == "storage_error":
         return FrameDraft(
             options=(
