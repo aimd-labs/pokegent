@@ -24,7 +24,29 @@ def heal_stock(snap: Any) -> tuple[int, int, int]:
     return full + sum(stock.get(i, 0) for i in _HEALS), full, revives
 
 
-def heal_advice(snap: Any):
+def _items_hp(snap: Any, tables: Any, missing: int) -> int | None:
+    """HP the bag's heal items could restore, capped at ``missing``; None if unreadable."""
+    stock: dict[int, int] = {}
+    for pocket in getattr(snap, "bag", ()):
+        for item in pocket.items:
+            stock[item.item_id] = stock.get(item.item_id, 0) + item.quantity
+    total = 0
+    try:
+        for item_id in (I.ITEM_FULL_RESTORE, *_HEALS):
+            if stock.get(item_id, 0) <= 0:
+                continue
+            effect = tables.item(item_id).effect
+            if effect.heal_hp_full:
+                return missing
+            if not isinstance(effect.heal_hp, int):
+                return None
+            total += effect.heal_hp * stock[item_id]
+    except (AttributeError, IndexError, KeyError, TypeError):
+        return None
+    return min(total, missing)
+
+
+def heal_advice(snap: Any, tables: Any = None):
     mons = [
         m
         for m in getattr(snap, "party", ())
@@ -45,7 +67,13 @@ def heal_advice(snap: Any):
         suggest = "use_items"
     else:
         return None
+    missing = sum(m.max_hp - m.hp for m in mons if m.hp < m.max_hp)
+    items_hp = _items_hp(snap, tables, missing) if tables is not None else None
+    if items_hp is not None and suggest == "use_items" and items_hp < missing and lowest < 40:
+        suggest = "heal_at_center"
+    amounts = {} if items_hp is None else {"items_hp": items_hp, "missing_hp": missing}
     return {
+        **amounts,
         "party_hp_pct": {"lowest": lowest, "average": average},
         "fainted": fainted,
         "status_afflicted": sum(1 for m in mons if getattr(m, "status", 0)),
