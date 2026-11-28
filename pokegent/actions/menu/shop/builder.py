@@ -124,7 +124,11 @@ class ShopBuilder:
                 objective_quantity=ctx.objective_quantity,
             )
         if scene == R.BUY_CONFIRM:
-            return self.buy_confirm(ctx.snapshot)
+            return self.buy_confirm(
+                ctx.snapshot,
+                objective_item=ctx.objective_item,
+                objective_quantity=ctx.objective_quantity,
+            )
         if scene == R.BUY_DONE:
             return self.buy_done(
                 ctx.snapshot,
@@ -569,6 +573,8 @@ class ShopBuilder:
                         "objective_target": objective_quantity,
                     }
                 )
+                if owned + value > objective_quantity:
+                    facts["exceeds_goal"] = True
                 if value == objective_serving_quantity:
                     facts["shop_serves_goal"] = True
                     if objective_affordable_max is not None:
@@ -617,7 +623,13 @@ class ShopBuilder:
             },
         )
 
-    def buy_confirm(self, snapshot: StateSnapshot) -> FrameDraft:
+    def buy_confirm(
+        self,
+        snapshot: StateSnapshot,
+        *,
+        objective_item: int | None = None,
+        objective_quantity: int | None = None,
+    ) -> FrameDraft:
         item_id = E.selected_item(snapshot)
         item = self._item(item_id)
         if item is None:
@@ -632,6 +644,20 @@ class ShopBuilder:
             "money": _money(snapshot),
             "money_after": _money(snapshot) - total,
         }
+        context: dict[str, Any] = {
+            "summary": f"Confirm {quantity} {item.name} for {total} money.",
+            "item": item.name,
+            "quantity": quantity,
+            "total_cost": total,
+        }
+        if objective_item == item.item_id and objective_quantity is not None:
+            owned = _owned(snapshot, item.item_id)
+            context.update(
+                objective_owned=owned,
+                objective_target=objective_quantity,
+                objective_after=owned + quantity,
+                objective_goal_met_after=owned + quantity >= objective_quantity,
+            )
         return FrameDraft(
             options=(
                 _option(
@@ -672,12 +698,7 @@ class ShopBuilder:
             state_fingerprint=fingerprint(
                 R.BUY_CONFIRM, item=item.item_id, quantity=quantity, money=_money(snapshot)
             ),
-            context={
-                "summary": f"Confirm {quantity} {item.name} for {total} money.",
-                "item": item.name,
-                "quantity": quantity,
-                "total_cost": total,
-            },
+            context=context,
         )
 
     def buy_done(
