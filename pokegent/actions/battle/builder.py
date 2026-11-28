@@ -387,6 +387,7 @@ class BattleBuilder:
 
     def _action(self, ctx: BuildContext, view: BattleView, phase: str) -> FrameDraft:
         heading_to_heal = view.kind == "wild" and self._heading_to_heal(ctx)
+        training = view.kind == "wild" and ctx.objective_kind == "train"
         options: list[Option] = []
         options += self._move_options(view, verb="USE_MOVE", prefix="Use")
         options += self._switch_options(view, forced=False)
@@ -409,6 +410,12 @@ class BattleBuilder:
                             "facts": {**esc.facts, "heal_escape_reason": reason},
                         }
                     )
+            if training:
+                note = "; escaping gives no experience toward the train objective"
+                facts = {**esc.facts, "cancels_training": True}
+                esc = esc.model_copy(
+                    update={"description": esc.description.rstrip(".") + note, "facts": facts}
+                )
             options.append(esc)
         escape = [option for option in options if option.id == "escape"]
         non_escape = [option for option in options if option.id != "escape"]
@@ -416,6 +423,15 @@ class BattleBuilder:
         extra = foe_facts(view, ctx.snapshot, ctx.objective) if view.kind == "wild" else {}
         extra["foe_hp_percent"] = view.opponent.hp_percent
         extra["foe_species"] = view.opponent.species
+        if training:
+            lv = [m.level for m in view.party if not m.fainted and not m.is_egg]
+            extra["training_in_battle"] = {
+                "target_levels": [
+                    {"personality": p, "slot": s, "level": g} for p, s, g in ctx.objective_levels
+                ],
+                "lowest_party_level": min(lv, default=None),
+                "note": "this wild battle is how this objective trains",
+            }
         matchup = self._party_matchup(options)
         if matchup:
             extra["party_matchup"] = matchup
