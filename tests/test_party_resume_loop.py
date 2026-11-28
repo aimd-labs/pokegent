@@ -73,6 +73,8 @@ def _give_ack_snapshot(*task_names: str) -> SimpleNamespace:
     ui.main.callback2 = SimpleNamespace(name="CB2_UpdatePartyMenu", verified=True)
     ui.menu.party.action_name, ui.menu.party.slot_id, ui.menu.party.item_id = "choose_mon", 5, 182
     ui.menu.yes_no = SimpleNamespace(window_in_use=True, window_id=6)
+    holder = SimpleNamespace(**{**vars(snap.party[0]), "slot": 5, "held_item": 182})
+    snap.party = (*snap.party, holder)
     return snap
 
 
@@ -86,4 +88,19 @@ def test_post_give_message_offers_only_a() -> None:
 
 def test_post_give_message_without_sprite_task_stays_busy() -> None:
     scene = StartPartyDetector().detect(_give_ack_snapshot("Task_PrintAndWaitForText"))
+    assert scene is not None and scene.busy and scene.evidence["phase"] == "load_party"
+
+
+def test_post_give_message_with_a_yes_no_task_stays_busy() -> None:
+    snap = _give_ack_snapshot(
+        "Task_UpdateHeldItemSprite", "Task_PrintAndWaitForText", "Task_SwitchItemsYesNo"
+    )
+    scene = StartPartyDetector().detect(snap)
+    assert scene is not None and scene.evidence["phase"] != "ack_message"
+
+
+def test_post_give_message_without_proven_transfer_stays_busy() -> None:
+    snap = _give_ack_snapshot("Task_UpdateHeldItemSprite", "Task_PrintAndWaitForText")
+    snap.party[1].held_item = 0
+    scene = StartPartyDetector().detect(snap)
     assert scene is not None and scene.busy and scene.evidence["phase"] == "load_party"
