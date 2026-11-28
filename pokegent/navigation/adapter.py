@@ -1438,7 +1438,7 @@ class NavigationAdapter:
             (
                 edge
                 for edge in plan.route
-                if edge.kind == "ferry" and edge.source.map_key == current
+                if edge.kind == "ferry" and edge.source.map_key == current and not edge.unmet
             ),
             None,
         )
