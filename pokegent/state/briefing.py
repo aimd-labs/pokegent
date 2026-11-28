@@ -238,6 +238,11 @@ def build_briefing(
     for mon in getattr(snapshot, "party", ()):
         species = _name(tables, "species_name", int(mon.species), f"species {mon.species}")
         nickname = str(getattr(mon, "nickname", "") or "").strip()
+        if getattr(mon, "is_egg", None) is True:
+            # An Egg cannot battle: species, moves and HP would read as a usable member.
+            team.append({"species": species, "level": mon.level, "egg": True, "types": [],
+                         "moves": [], "status": "none", "held_item": None})
+            continue
         types = []
         if tables:
             types = [
