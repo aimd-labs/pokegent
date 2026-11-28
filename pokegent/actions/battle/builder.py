@@ -512,6 +512,7 @@ class BattleBuilder:
                 legality = Legality.CONDITIONAL  # it can miss: legal input, uncertain outcome
             if verdict.reason:
                 facts["unavailable_reason"] = verdict.reason
+                facts["reason"] = verdict.reason  # options.built diagnostics read this key
             out.append(
                 Option(
                     id=f"move:{slot}",
