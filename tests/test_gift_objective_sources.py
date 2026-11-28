@@ -5,8 +5,6 @@ Seam: SimpleNamespace world stub returning the real PokemonGiftSource/CollectSou
 
 from types import SimpleNamespace
 
-import pytest
-
 from pokegent.games.gen3.firered.maps.world import CollectSource, PokemonGiftSource
 from pokegent.goals.models import Objective
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
@@ -31,13 +29,24 @@ def _pokemon(sources):
                     pokemon_gift_sources=lambda snapshot, species: tuple(sources))
 
 
-@pytest.mark.xfail(strict=True, reason="defect: the wild branch returns before the gift scan")
 def test_gift_only_species_reaches_gift_scan_when_world_has_wild_table() -> None:
     resolved = _resolve("collect", ResolvedTarget(species=LAPRAS),
                         wild_encounter_sources=lambda species: (),
                         tables=SimpleNamespace(species_name=lambda s: "LAPRAS"),
                         pokemon_gift_sources=lambda snapshot, species: (_gift(),))
     assert resolved.navigation_target is not None
+
+
+def test_species_with_wild_rows_keeps_wild_result_and_skips_gift_scan() -> None:
+    def scanned(snapshot, species):
+        raise AssertionError("gift scan must not run")
+
+    resolved = _resolve("collect", ResolvedTarget(species=LAPRAS),
+                        wild_encounter_sources=lambda species: (((1, 5), frozenset({"land"})),),
+                        tables=SimpleNamespace(species_name=lambda s: "LAPRAS"),
+                        pokemon_gift_sources=scanned)
+    assert resolved.navigation_map_keys == frozenset({(1, 5)})
+    assert resolved.navigation_target is None
 
 
 def test_single_gift_source_resolves_to_its_npc() -> None:
