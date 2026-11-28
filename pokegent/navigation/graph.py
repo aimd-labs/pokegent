@@ -910,6 +910,8 @@ class NavigationGraph:
             requirement_row = self._requirement_from_guard(guard, capabilities)
             if requirement_row is None:
                 return None
+            if guard.kind == "item" and (name := self._item_names.get(guard.subject)):
+                requirement_row = replace(requirement_row, label=name)
             requirements.append(requirement_row)
         target: list[tuple[str, object]] = [
             ("kind", "ferry"),
