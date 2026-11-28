@@ -80,6 +80,34 @@ def _objective(ctx: BuildContext) -> str:
     return " ".join((ctx.objective or "no active objective").split())[:240]
 
 
+def _species_label(tables: Any, species: int) -> str:
+    """Species name only; a RAM nickname never enters the payload (same rule as #407)."""
+    try:
+        name = tables.species_name(int(species)) if tables is not None else None
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        name = None
+    return str(name) if name else f"species {int(species)}"
+
+
+def _training_targets(ctx: BuildContext, tables: Any = None) -> tuple[dict[str, Any], ...]:
+    """Party members still below a level goal of the active objective, with that goal."""
+    found: dict[int, dict[str, Any]] = {}
+    for personality, slot, goal in ctx.objective_levels:
+        for mon in ctx.snapshot.party:
+            named = personality is None and slot is None
+            if (named or mon.personality == personality or mon.slot == slot) and mon.level < goal:
+                found.setdefault(
+                    mon.slot,
+                    {
+                        "slot": mon.slot,
+                        "name": _species_label(tables, mon.species),
+                        "level": mon.level,
+                        "goal_level": goal,
+                    },
+                )
+    return tuple(found[slot] for slot in sorted(found))
+
+
 def _facts(ctx: BuildContext, entry: MenuEntry, *, novelty: str = "n/a") -> dict[str, Any]:
     return {
         "menu_choice": True,
@@ -298,6 +326,7 @@ class StartPartyBuilder:
                     )
                 )
         facts = party_facts(ctx.snapshot)
+        targets = _training_targets(ctx, _tables_from_env())
         return FrameDraft(
             options=tuple(options),
             state_fingerprint=_fingerprint(scene, model, ctx.snapshot),
@@ -309,6 +338,7 @@ class StartPartyBuilder:
                 ),
                 "team_facts": facts,
                 "team_facts_text": "\n".join(facts),
+                **({"training_targets": targets} if targets else {}),
             },
         )
 

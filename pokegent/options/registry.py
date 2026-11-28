@@ -80,6 +80,9 @@ class BuildContext:
     #: Resolved target facts used by menu families; absent for legacy/fixed goals.
     objective_item: int | None = None
     objective_quantity: int | None = None
+    #: Level goals from the objective's probes: ``(personality, slot, min_level)``; both ``None``
+    #: means the whole party. Lets party menus name who still needs training.
+    objective_levels: tuple[tuple[int | None, int | None, int], ...] = ()
     forbid: tuple[str, ...] = ()
 
 

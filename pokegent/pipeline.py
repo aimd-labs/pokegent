@@ -396,6 +396,7 @@ class Perceiver:
             objective_kind=goal.kind if goal else None,
             objective_item=goal.target_item if goal else None,
             objective_quantity=goal.target_quantity if goal else None,
+            objective_levels=goal.level_goals if goal else (),
             forbid=goal.forbid if goal else (),
         )
         frame = self.builders.build(ctx, decision_id)
