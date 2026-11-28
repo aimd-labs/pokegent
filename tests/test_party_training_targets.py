@@ -6,12 +6,13 @@ from test_party_give_item_args import R, _mon, _party_snapshot, _registries
 from pokegent.options.registry import BuildContext
 
 
-def _context(levels, party_levels=(42, 46, 55)):
+def _context(levels, party_levels=(42, 46, 55), nicknames=("", "", "")):
     snapshot = _party_snapshot()
     members = []
     for slot, level in enumerate(party_levels):
         mon = _mon(slot, 0x100 + slot)
         mon.level = level
+        mon.nickname = nicknames[slot]
         members.append(mon)
     snapshot.party = tuple(members)
     with pytest.MonkeyPatch.context() as monkeypatch:
@@ -37,3 +38,10 @@ def test_mon_level_goal_lists_only_that_member():
 def test_no_level_goal_or_goal_met_adds_nothing():
     assert "training_targets" not in _context(())
     assert "training_targets" not in _context(((None, None, 40),))
+
+
+def test_training_targets_use_species_not_nickname():
+    snapshot_levels = ((None, None, 55),)
+    targets = _context(snapshot_levels, nicknames=("Sparky", "Zippy", "Boss"))["training_targets"]
+    assert "Sparky" not in str(targets) and "Zippy" not in str(targets)
+    assert all(t["name"].startswith("species ") or t["name"].isalpha() for t in targets)

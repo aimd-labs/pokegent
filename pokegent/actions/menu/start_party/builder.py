@@ -80,7 +80,16 @@ def _objective(ctx: BuildContext) -> str:
     return " ".join((ctx.objective or "no active objective").split())[:240]
 
 
-def _training_targets(ctx: BuildContext) -> tuple[dict[str, Any], ...]:
+def _species_label(tables: Any, species: int) -> str:
+    """Species name only; a RAM nickname never enters the payload (same rule as #407)."""
+    try:
+        name = tables.species_name(int(species)) if tables is not None else None
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        name = None
+    return str(name) if name else f"species {int(species)}"
+
+
+def _training_targets(ctx: BuildContext, tables: Any = None) -> tuple[dict[str, Any], ...]:
     """Party members still below a level goal of the active objective, with that goal."""
     found: dict[int, dict[str, Any]] = {}
     for personality, slot, goal in ctx.objective_levels:
@@ -91,7 +100,7 @@ def _training_targets(ctx: BuildContext) -> tuple[dict[str, Any], ...]:
                     mon.slot,
                     {
                         "slot": mon.slot,
-                        "name": mon.nickname or f"species {mon.species}",
+                        "name": _species_label(tables, mon.species),
                         "level": mon.level,
                         "goal_level": goal,
                     },
@@ -315,7 +324,7 @@ class StartPartyBuilder:
                     )
                 )
         facts = party_facts(ctx.snapshot)
-        targets = _training_targets(ctx)
+        targets = _training_targets(ctx, _tables_from_env())
         return FrameDraft(
             options=tuple(options),
             state_fingerprint=_fingerprint(scene, model, ctx.snapshot),
