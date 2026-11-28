@@ -46,6 +46,7 @@ from pokegent.actions.field import targets as T
 from pokegent.actions.field.attempts import AttemptLedger, capability_signature
 from pokegent.actions.field.boulder_options import BoulderPlans, boulder_options
 from pokegent.actions.field.capabilities import field_capability
+from pokegent.actions.field.league import league_readiness
 from pokegent.actions.field.surf.options import surf_options
 from pokegent.actions.field.surf.rules import surf_capability
 from pokegent.actions.field.surf.targets import movement_tiles
@@ -946,6 +947,9 @@ class FieldBuilder:
                     }
                     for member in world_view.party_facts
                 ]
+        readiness = league_readiness(snap, ident.name, ctx.objective_levels, self.tables)
+        if readiness:
+            context["league_readiness"] = readiness
         failed = [
             f"a field action ({r['error_code']})"
             for r in ctx.recent_failed
