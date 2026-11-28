@@ -416,6 +416,9 @@ class BattleBuilder:
         extra = foe_facts(view, ctx.snapshot, ctx.objective) if view.kind == "wild" else {}
         extra["foe_hp_percent"] = view.opponent.hp_percent
         extra["foe_species"] = view.opponent.species
+        matchup = self._party_matchup(options)
+        if matchup:
+            extra["party_matchup"] = matchup
         if view.kind == "wild" and view.tables is not None:
             try:
                 extra["foe_types"] = [
@@ -604,6 +607,36 @@ class BattleBuilder:
                 )
             )
         return out
+
+    @staticmethod
+    def _party_matchup(options: list[Option]) -> list[dict[str, Any]] | None:
+        """Top 3 selectable switch candidates vs the foe, from the switch options' own facts."""
+        rows = []
+        for o in options:
+            f = o.facts
+            if not o.id.startswith("switch:") or o.legality not in (
+                Legality.LEGAL,
+                Legality.CONDITIONAL,
+            ):
+                continue
+            best, stab, hp = f.get("best_move"), f.get("foe_stab_vs_candidate"), f.get("hp_pct")
+            if f.get("species") and best and stab and hp is not None:
+                rows.append(
+                    {
+                        "species": f["species"],
+                        "best_move": best,
+                        "foe_stab_vs_it": stab,
+                        "hp_pct": hp,
+                    }
+                )
+        rows.sort(
+            key=lambda r: (
+                -r["best_move"]["effectiveness"],
+                r["foe_stab_vs_it"]["effectiveness"],
+                -r["hp_pct"],
+            )
+        )
+        return rows[:3] or None
 
     def _switch_offer_facts(self, view: BattleView) -> tuple[dict[str, Any], dict[str, Any]]:
         """Public counter facts for the trainer's incoming Pokemon prompt.
