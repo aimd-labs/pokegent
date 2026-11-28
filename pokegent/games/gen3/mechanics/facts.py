@@ -513,7 +513,10 @@ def switch_option_facts(
     *,
     forced: bool = False,
 ) -> dict[str, Any]:
-    """Facts about sending ``candidate`` in. ``forced`` = replacement after a faint."""
+    """Facts about sending ``candidate`` in. ``forced`` = replacement after a faint.
+
+    ``foe_stab_vs_candidate`` is a type-only proxy for the foe's STAB, not its actual moves.
+    """
     verdict = switch_legality(
         active,
         candidate,
@@ -560,6 +563,17 @@ def switch_option_facts(
             best = (*key, pretty(m.name))
     if best is not None:
         facts["best_move"] = {"name": best[2], "effectiveness": best[0]}
+    if opponent.species is not None:  # unknown foe types stay unknown, never an exception
+        try:
+            foe_types = opponent.types or tables.species(opponent.species).types
+            pairs = [(tables.type_chart.multiplier(t, *types), t) for t in dict.fromkeys(foe_types)]
+            eff, ftype = max(pairs, key=lambda p: p[0])  # first wins ties
+            facts["foe_stab_vs_candidate"] = {
+                "effectiveness": eff,
+                "foe_type": pretty(K.TYPE_NAMES[ftype]),
+            }
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass
     return facts
 
 

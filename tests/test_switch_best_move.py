@@ -16,6 +16,8 @@ _MOVES = {
 
 
 class _Tables:
+    type_chart = NS(multiplier=lambda *_a, **_k: 1.0)
+
     def species_name(self, _species):
         return "SQUIRTLE"
 
