@@ -288,6 +288,11 @@ profiles:
         size: 16480
         source: "scan: gEvolutionTable[412][5] struct Evolution records; Clefairy record is EVO_ITEM/MOON_STONE/CLEFABLE; decomp: src/data/pokemon/evolution.h"
         verified_by: ["rom_scan: host ROM, 2026-10-10: Clefairy evolves with Moon Stone into Clefable; Eevee has Fire/Thunder/Water Stone records"]
+      sInGameTrades:
+        address: 0x0826CF8C
+        size: 540
+        source: "pret/pokefirered 037335f4 symbols/pokefirered.sym: 0826cf8c l 0000021c sInGameTrades; decomp: src/data/ingame_trades.h, struct InGameTrade (src/trade_scene.c) stride 60"
+        verified_by: ["rom_scan: host ROM BPRE rev0 sha1 41cb23d8dccc, 2026-11-28 (lead receipt rom-tables-20261128/VERIFY.md): symbol address and size 0x21C = 9 x 60 B match pokefirered.sym; field-level struct read covered by synthetic tests only"]
       gTrainers:
         address: 0x0823EAC8
         size: 29720

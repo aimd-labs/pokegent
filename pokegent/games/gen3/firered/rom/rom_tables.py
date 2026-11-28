@@ -935,6 +935,35 @@ def _decode_item(item_id: int, raw: bytes, effect: ItemEffect | None) -> ItemDat
     )
 
 
+INGAME_TRADE_SIZE = 60  # struct InGameTrade is 0x3A bytes, padded to 4
+SPECIES_AT, REQUESTED_AT = 0x0C, 0x38
+
+
+def ingame_trades(port: MemoryPort, profile: RomProfile) -> tuple[tuple[int, int], ...]:
+    """(offered, wanted) species ids per NPC trade. Source: pret/pokefirered 037335f4,
+    src/data/ingame_trades.h sInGameTrades + struct InGameTrade (src/trade_scene.c)."""
+    entry = profile.rom_tables.get("sInGameTrades")
+    if entry is None or entry.size % INGAME_TRADE_SIZE:
+        raise TablesError("sInGameTrades is missing or not a whole number of entries")
+    raw = port.read_range(entry.address, entry.size)
+    return tuple(
+        tuple(int.from_bytes(raw[o + f :][:2], "little") for f in (SPECIES_AT, REQUESTED_AT))
+        for o in range(0, entry.size, INGAME_TRADE_SIZE)
+    )
+
+
+def trade_facts(table, party_species_ids):
+    """Per trade: offered, wanted and the party indexes holding the wanted species."""
+    return tuple(
+        {
+            "offered": offered,
+            "wanted": wanted,
+            "matching_members": [i for i, s in enumerate(party_species_ids) if s == wanted],
+        }
+        for offered, wanted in table
+    )
+
+
 class RomImagePort:
     """Read-only ``MemoryPort`` over a ROM image held in memory (bus address 0x08000000+)."""
 
