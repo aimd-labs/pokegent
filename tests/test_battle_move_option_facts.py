@@ -64,6 +64,7 @@ def test_zero_pp_move_is_unavailable_with_no_pp_reason():
     opt = _options((0, 10, 10, 10))["move:0"]
     assert opt.legality.name == "UNAVAILABLE" and opt.executor_ref is None
     assert opt.facts["unavailable_reason"] == "no_pp"
+    assert opt.facts["reason"] == "no_pp"  # the key options.built diagnostics read
     assert "not selectable: no pp" in opt.description
 
 

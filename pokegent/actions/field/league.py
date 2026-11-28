@@ -46,6 +46,25 @@ def _items_hp(snap: Any, tables: Any, missing: int) -> int | None:
     return min(total, missing)
 
 
+def _pp_exhausted(party: Any, tables: Any) -> dict[str, Any] | None:
+    """Members whose damaging moves are all at 0 PP; None when PP or move power is unreadable."""
+    out: list[bool] = []
+    try:
+        for m in party:
+            if getattr(m, "is_egg", False):
+                continue
+            moves = [mv for mv in m.moves if mv.move_id]
+            damaging = [mv for mv in moves if tables.move_data(mv.move_id).power > 0]
+            if not all(isinstance(mv.pp, int) for mv in damaging):
+                return None
+            out.append(bool(damaging) and all(mv.pp == 0 for mv in damaging))
+    except (AttributeError, IndexError, KeyError, TypeError):
+        return None
+    if not any(out):
+        return None
+    return {"members_out_of_pp": sum(out), "lead_out_of_pp": out[0], "_members": len(out)}
+
+
 def heal_advice(snap: Any, tables: Any = None):
     mons = [
         m
@@ -61,11 +80,16 @@ def heal_advice(snap: Any, tables: Any = None):
     items, _, revives = heal_stock(snap)
     lowest, average = min(pcts), sum(pcts) // len(pcts)
     need = lowest < 40 or fainted > 0
-    if need and not (revives >= fainted and items > 0):
+    pp = _pp_exhausted(getattr(snap, "party", ()), tables) if tables is not None else None
+    pp_center = pp is not None and (
+        pp["lead_out_of_pp"] or 2 * pp["members_out_of_pp"] >= pp["_members"]
+    )
+    suggest = None
+    if (need and not (revives >= fainted and items > 0)) or pp_center:
         suggest = "heal_at_center"
     elif (need or average < 60) and items + revives > 0:
         suggest = "use_items"
-    else:
+    elif pp is None:
         return None
     missing = sum(m.max_hp - m.hp for m in mons if m.hp < m.max_hp)
     items_hp = _items_hp(snap, tables, missing) if tables is not None else None
@@ -79,7 +103,8 @@ def heal_advice(snap: Any, tables: Any = None):
         "status_afflicted": sum(1 for m in mons if getattr(m, "status", 0)),
         "heal_items": items,
         "revives": revives,
-        "suggest": suggest,
+        **({"pp_exhausted": {k: v for k, v in pp.items() if k != "_members"}} if pp else {}),
+        **({"suggest": suggest} if suggest else {}),
     }
 
 

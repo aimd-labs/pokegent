@@ -2,7 +2,7 @@ from test_field_start_menu_entry import _snap
 from test_party_swap_species_labels import _members
 
 from pokegent.actions.field import builder as B
-from pokegent.games.gen3.firered.reader.schemas import BagItem, BagPocket
+from pokegent.games.gen3.firered.reader.schemas import BagItem, BagPocket, MonMove
 from pokegent.options.registry import BuildContext
 from pokegent.state.scenes import SceneResult
 
@@ -16,14 +16,24 @@ def _tables(amounts):
         full = amounts[item_id] == "full"
         return NS(effect=NS(heal_hp=None if full else amounts[item_id], heal_hp_full=full))
 
-    return NS(item=item, species_name=lambda s: f"s{s}")
+    return NS(
+        item=item,
+        species_name=lambda s: f"s{s}",
+        move_data=lambda m: NS(power=0 if m == 45 else 40),  # 45 is a status move
+    )
 
 
-def _ctx(hps, items=(), egg=None, pocket_name="items", tables=None):
+def _ctx(hps, items=(), egg=None, pocket_name="items", tables=None, pps=None):
     fields = [
         {"hp": h, "max_hp": 100 if h >= 0 else 0, "is_egg": i == egg, "status": 0}
         for i, h in enumerate(hps)
     ]
+    for f, pp in zip(fields, pps or ()):
+        f["moves"] = (
+            MonMove(move_id=33, pp=pp),
+            MonMove(move_id=45, pp=5),
+            MonMove(move_id=0, pp=0),
+        )
     party = tuple(type(m)(**{**vars(m), **f}) for m, f in zip(_members((25, 1, 6)), fields))
     pocket = BagPocket(
         pocket=pocket_name, capacity=42, items=tuple(BagItem(item_id=i, quantity=1) for i in items)
@@ -83,3 +93,20 @@ def test_hp_amounts_omitted_without_tables_or_readable_effect():
         fact = _advice((30, 90, 80), (13, 13), tables=tables)
         assert "items_hp" not in fact and "missing_hp" not in fact
     assert _advice((55, 58, 59), (13,), tables=_tables({}))["suggest"] == "use_items"
+
+
+def test_pp_exhausted_counts_members_whose_damaging_moves_are_all_empty():
+    t = _tables({})
+    fact = _advice((90, 90, 90), tables=t, pps=(5, 0, 5))  # status move PP is ignored
+    assert fact["pp_exhausted"] == {"members_out_of_pp": 1, "lead_out_of_pp": False}
+    assert "suggest" not in fact  # one of three: below half, lead fine
+    assert _advice((90, 90, 90), tables=t, pps=(0, 5, 5))["suggest"] == "heal_at_center"
+    assert _advice((90, 90, 90), tables=t, pps=(5, 0, 0))["suggest"] == "heal_at_center"  # 2 of 3
+    assert _advice((90, 90, 90), tables=t, pps=(5, 5, 5)) is None
+
+
+def test_pp_unreadable_or_without_tables_keeps_todays_advice():
+    assert _advice((90, 90, 90), pps=(0, 0, 0)) is None
+    bare = _tables({}).__class__(species_name=str)  # tables without move_data
+    assert _advice((90, 90, 90), tables=bare, pps=(0, 0, 0)) is None
+    assert "pp_exhausted" not in _advice((30, 90, 80), tables=_tables({}), pps=(5, 5, 5))
