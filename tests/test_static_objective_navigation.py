@@ -34,6 +34,20 @@ def test_articuno_static_objective_resolves_to_seafoam_islands_b4f() -> None:
     assert resolved.navigation_target.map_key == (1, 87)
 
 
+def test_moltres_static_objective_resolves_to_mt_ember_summit() -> None:
+    resolved, _sources = resolve_collect_navigation(SimpleNamespace(), _resolved(146), _world())
+    assert resolved.navigation_target is not None
+    assert resolved.navigation_target.map_key == (1, 101)
+    assert resolved.navigation_reason is None
+
+
+def test_mewtwo_static_objective_resolves_to_cerulean_cave_b1f() -> None:
+    resolved, _sources = resolve_collect_navigation(SimpleNamespace(), _resolved(150), _world())
+    assert resolved.navigation_target is not None
+    assert resolved.navigation_target.map_key == (1, 74)
+    assert resolved.navigation_reason is None
+
+
 def _surf_gate_graph() -> RegionGraph:
     return RegionGraph({"maps": {
         "3:44": {"connections": [{"dest": "3:3", "pairs": [{"from": 0, "to": 0}]}]},
