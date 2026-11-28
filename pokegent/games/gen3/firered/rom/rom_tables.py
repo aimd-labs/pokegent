@@ -85,12 +85,19 @@ SYMBOLS = (
 )
 
 
+#: read when the profile declares them; a profile without them (FireRed rev1) fails closed
+TUTOR_SYMBOLS = ("sTutorMoves", "sTutorLearnsets")
+TUTOR_MOVE_COUNT = 15  # sTutorMoves symbol size 30 bytes (VERIFY.md), 15 u16 ids
+
+
 class TablesError(Exception):
     """A table could not be read or failed a structural check."""
 
 
 def rom_table_addresses(
-    profile: RomProfile, path: str | os.PathLike[str] | None = None
+    profile: RomProfile,
+    path: str | os.PathLike[str] | None = None,
+    names: tuple[str, ...] = SYMBOLS,
 ) -> dict[str, int]:
     """Base address of every table in :data:`SYMBOLS` for ``profile``.
 
@@ -102,7 +109,7 @@ def rom_table_addresses(
     from pokegent.games.gen3.firered.rom.rom_data import ProfileError, default_profiles_path
 
     from_file: dict[str, dict] = {}
-    missing = [name for name in SYMBOLS if not profile.has_symbol(name)]
+    missing = [name for name in names if not profile.has_symbol(name)]
     if missing:
         try:
             with open(path or default_profiles_path(), encoding="utf-8") as handle:
@@ -113,7 +120,7 @@ def rom_table_addresses(
         except (OSError, yaml.YAMLError, AttributeError) as exc:
             raise ProfileError(f"cannot read rom_tables for {profile.profile_id}: {exc}") from exc
     out: dict[str, int] = {}
-    for name in SYMBOLS:
+    for name in names:
         if profile.has_symbol(name):
             out[name] = profile.symbol(name).address
             continue
@@ -476,7 +483,11 @@ class GameTables:
         tmhm_moves: tuple[int, ...] = (),
         evolutions: tuple[tuple[EvolutionData, ...], ...] = (),
         species_dex: tuple[int, ...] = (),
+        tutor_moves: tuple[int, ...] = (),
+        tutor_learnsets: tuple[int, ...] = (),
     ) -> None:
+        self._tutor_moves = tutor_moves
+        self._tutor_learnsets = tutor_learnsets
         self._moves = moves
         self._species = species
         self._items = items
@@ -500,6 +511,7 @@ class GameTables:
     def from_port(cls, port: MemoryPort, profile: RomProfile) -> GameTables:
         """Read every table through ``port``. A missing table address raises ``ProfileError``;
         malformed data raises :class:`TablesError`. Never guesses an address."""
+        from pokegent.games.gen3.firered.rom.rom_data import ProfileError
         from pokegent.games.gen3.firered.rom.species_dex import read_species_dex
 
         sym = rom_table_addresses(profile)
@@ -564,6 +576,19 @@ class GameTables:
             )
             for species_id in range(n_species)
         )
+        tutor_moves: tuple[int, ...] = ()
+        tutor_learnsets: tuple[int, ...] = ()
+        try:
+            tutor = rom_table_addresses(profile, names=TUTOR_SYMBOLS)
+        except ProfileError:
+            tutor = {}
+        if tutor:
+            tutor_moves = struct.unpack(
+                f"<{TUTOR_MOVE_COUNT}H", port.read_range(tutor["sTutorMoves"], TUTOR_MOVE_COUNT * 2)
+            )
+            tutor_learnsets = struct.unpack(
+                f"<{n_species}H", port.read_range(tutor["sTutorLearnsets"], n_species * 2)
+            )
         return cls(
             moves=moves,
             species=species,
@@ -571,6 +596,8 @@ class GameTables:
             type_chart=chart,
             ability_names=ability_names,
             type_names=type_names,
+            tutor_moves=tutor_moves,
+            tutor_learnsets=tutor_learnsets,
             profile_id=profile.profile_id,
             species_dex=read_species_dex(port, profile),
             tmhm_learnsets=tuple(
@@ -695,6 +722,8 @@ class GameTables:
             tmhm_learnsets=tuple(bytes.fromhex(row) for row in document["tmhm_learnsets"]),
             tmhm_moves=tuple(document["tmhm_moves"]),
             evolutions=evolutions,
+            tutor_moves=tuple(document.get("tutor_moves", ())),
+            tutor_learnsets=tuple(document.get("tutor_learnsets", ())),
         )
 
     def runtime_document(self) -> dict:
@@ -732,6 +761,8 @@ class GameTables:
             "type_names": list(self._type_names),
             "tmhm_learnsets": [row.hex() for row in self._tmhm_learnsets],
             "tmhm_moves": list(self._tmhm_moves),
+            "tutor_moves": list(self._tutor_moves),
+            "tutor_learnsets": list(self._tutor_learnsets),
             "evolutions": [[vars(entry) for entry in rows] for rows in self._evolutions],
         }
 
@@ -799,6 +830,19 @@ class GameTables:
         row = self._tmhm_learnsets[species]
         return bool(row[bit // 8] & (1 << (bit % 8)))
 
+    def tutor_move(self, index: int) -> int | None:
+        """Move id of tutor ``index`` (pret sTutorMoves), or ``None`` when unreadable."""
+        if not 0 <= index < len(self._tutor_moves):
+            return None
+        return self._tutor_moves[index]
+
+    def can_learn_tutor(self, species: int, move_id: int) -> bool | None:
+        """Tutor compatibility bit (pret src/pokemon.c CanSpeciesLearnTutorMove over
+        sTutorLearnsets, rev 037335f4); ``None`` when the move or species is unknown."""
+        if not 0 <= species < len(self._tutor_learnsets) or move_id not in self._tutor_moves:
+            return None
+        return bool(self._tutor_learnsets[species] & (1 << self._tutor_moves.index(move_id)))
+
     @property
     def tmhm_moves(self) -> tuple[int, ...]:
         """The ROM's TM01..TM50/HM01..HM08 move ids in bag-item order."""
@@ -838,6 +882,18 @@ class GameTables:
 
 
 # -- decoding helpers ---------------------------------------------------------------------------
+
+
+def tutor_facts(tables: GameTables, move_id: int, party_species_ids: list[int]) -> dict:
+    """Party indexes whose species can learn tutor ``move_id`` (species ids, never nicknames)."""
+    return {
+        "move": move_id,
+        "learners": [
+            i
+            for i, species in enumerate(party_species_ids)
+            if tables.can_learn_tutor(species, move_id) is True
+        ],
+    }
 
 
 def _read_names(port: MemoryPort, base: int, count: int, stride: int) -> tuple[str, ...]:
