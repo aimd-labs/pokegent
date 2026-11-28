@@ -18,6 +18,17 @@ def _tasks(ui: Any) -> frozenset[str]:
     return frozenset(task.func.name for task in ui.tasks.active if task.func.name is not None)
 
 
+def give_message_waiting(ui: Any, task_names: frozenset[str]) -> bool:
+    """The post-give party message waits for A (#274): sprite task beside the text waiter."""
+    cb = ui.main.callback2
+    return bool(
+        {"Task_UpdateHeldItemSprite", "Task_PrintAndWaitForText"} <= task_names
+        and not task_names & {"Task_HandleChooseMonInput", "Task_SwitchItemsYesNo"}
+        and cb is not None and cb.name == "CB2_UpdatePartyMenu" and cb.verified is True
+        and ui.field.fade_active is False
+    )
+
+
 class StartPartyDetector:
     name = "start_party"
     priority = PriorityClass.MENU
@@ -68,6 +79,8 @@ class StartPartyDetector:
             phase = "choose_action"
         elif building:
             scene, phase = R.PARTY_ACTION, "build_action_menu"
+        elif give_message_waiting(ui, task_names):
+            scene, phase = R.PARTY_LIST, "ack_message"
         elif choose:
             scene, phase = R.PARTY_LIST, "choose_mon"
         elif "Task_HandleMenuInput" in task_names:

@@ -204,6 +204,8 @@ class StartPartyBuilder:
 
     def build(self, ctx: BuildContext) -> FrameDraft:
         scene = ctx.scene.scene_id
+        if scene == R.PARTY_LIST and ctx.scene.evidence.get("phase") == "ack_message":
+            return self._ack_message_frame(ctx)
         model = _model(ctx.snapshot, scene)
         if model is None or model.surface != scene.replace("party.reorder", "party.list"):
             return FrameDraft(
@@ -308,6 +310,28 @@ class StartPartyBuilder:
                 "team_facts": facts,
                 "team_facts_text": "\n".join(facts),
             },
+        )
+
+    @staticmethod
+    def _ack_message_frame(ctx: BuildContext) -> FrameDraft:
+        """Post-give party message: A is the only input (never YES/NO, never party B-cancel)."""
+        from pokegent.actions.menu.dialog import builder as dialog
+
+        option = Option(
+            id="acknowledge_party_message",
+            label="Acknowledge the message",
+            description="The party shows the post-give message; press A once.",
+            legality=Legality.LEGAL,
+            executor_ref=dialog.REF_ADVANCE,
+            postcondition_ref=dialog.POST_BOX_MOVED_ON,
+            risk=Risk.LOW,
+            verb="ADVANCE_TEXT",
+            facts={"blocked_on": "printer", "inputs": 1},
+        )
+        return FrameDraft(
+            options=(option,),
+            state_fingerprint=fingerprint(ctx.scene.scene_id, phase="ack_message"),
+            context={"summary": "A party message waits for A."},
         )
 
     def _teach_target_frame(self, ctx: BuildContext, model: MenuModel, item_id: int) -> FrameDraft:
