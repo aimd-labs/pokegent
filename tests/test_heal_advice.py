@@ -25,6 +25,15 @@ def _advice(*a, **k):
     return _ctx(*a, **k).context.get("heal_advice")
 
 
+def test_members_without_readable_hp_are_skipped_not_raised():
+    from types import SimpleNamespace as NS
+
+    from pokegent.actions.field.league import heal_advice
+
+    assert heal_advice(NS(party=(NS(species=25, level=5),), bag=())) is None
+    assert heal_advice(NS(party=(NS(hp=5, max_hp=100),))) is not None  # no bag: stock unknown = 0
+
+
 def test_center_when_low_or_fainted_and_not_covered():
     fact = _advice((30, 90, 80))
     assert fact["party_hp_pct"] == {"lowest": 30, "average": 66}

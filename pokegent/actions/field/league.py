@@ -9,7 +9,7 @@ _HEALS = (I.ITEM_POTION, I.ITEM_SUPER_POTION, I.ITEM_HYPER_POTION, I.ITEM_MAX_PO
 
 def heal_stock(snap: Any) -> tuple[int, int, int]:
     stock: dict[int, int] = {}
-    for pocket in snap.bag:
+    for pocket in getattr(snap, "bag", ()):
         for item in pocket.items:
             stock[item.item_id] = stock.get(item.item_id, 0) + item.quantity
     full = stock.get(I.ITEM_FULL_RESTORE, 0)
@@ -18,7 +18,13 @@ def heal_stock(snap: Any) -> tuple[int, int, int]:
 
 
 def heal_advice(snap: Any):
-    mons = [m for m in snap.party if not getattr(m, "is_egg", False) and m.max_hp > 0]
+    mons = [
+        m
+        for m in getattr(snap, "party", ())
+        if not getattr(m, "is_egg", False)
+        and isinstance(getattr(m, "hp", None), int)
+        and getattr(m, "max_hp", 0) > 0  # unreadable HP stays unknown: skip the member
+    ]
     if not mons:
         return None
     pcts = [100 * m.hp // m.max_hp for m in mons]
