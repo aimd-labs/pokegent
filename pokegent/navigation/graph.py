@@ -905,11 +905,27 @@ class NavigationGraph:
     ) -> NavigationEdge | None:
         requirements = []
         for guard in route.guards:
-            if guard.kind == "var" and guard.subject >= 0x8000 and guard.subject != 0x800D:
-                return None
-            requirement_row = self._requirement_from_guard(guard, capabilities)
+            requirement_row = (
+                None
+                if guard.kind == "var" and guard.subject >= 0x8000 and guard.subject != 0x800D
+                else self._requirement_from_guard(guard, capabilities)
+            )
             if requirement_row is None:
-                return None
+                # Unproven stays unmet: keep the edge so the route reason names the guard.
+                flag = 0x500 + guard.subject if guard.kind == "trainer" else guard.subject
+                what = (
+                    f"flag 0x{flag:X}"
+                    if guard.kind in {"flag", "badge", "trainer"}
+                    else f"{guard.kind} 0x{guard.subject:X}"
+                    if guard.kind == "var"
+                    else f"{guard.kind} {guard.subject}"
+                )
+                requirement_row = NavigationRequirement(
+                    f"unknown:{guard.kind}:{guard.subject}",
+                    f"unknown requirement ({what})",
+                    False,
+                    "state",
+                )
             requirements.append(requirement_row)
         target: list[tuple[str, object]] = [
             ("kind", "ferry"),
