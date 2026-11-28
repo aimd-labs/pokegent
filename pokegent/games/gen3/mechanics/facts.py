@@ -541,9 +541,25 @@ def switch_option_facts(
     facts["is_egg"] = candidate.is_egg
     if not forced:
         facts["foe_gets_free_attack"] = True  # the turn is spent switching (Gen 3)
-    if opponent is None or candidate.species is None:
+    if opponent is None or candidate.species is None or candidate.hp == 0 or candidate.is_egg:
         return facts
 
+    best: tuple[float, int, str] | None = None  # (effectiveness, power, name); first wins ties
+    for sl in candidate.moves:
+        if not sl.move_id:
+            continue
+        try:
+            est = estimate_damage(candidate, opponent, sl.move_id, tables, field)
+            m = tables.move(sl.move_id)
+        except (KeyError, IndexError):
+            continue
+        if est.damage_model not in ("formula", "fixed") or est.effectiveness is None:
+            continue
+        key = (est.effectiveness, est.power if est.power is not None else (m.power or 0))
+        if best is None or key > best[:2]:
+            best = (*key, pretty(m.name))
+    if best is not None:
+        facts["best_move"] = {"name": best[2], "effectiveness": best[0]}
     return facts
 
 
