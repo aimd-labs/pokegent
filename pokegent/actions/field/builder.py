@@ -50,6 +50,7 @@ from pokegent.actions.field.surf.options import surf_options
 from pokegent.actions.field.surf.rules import surf_capability
 from pokegent.actions.field.surf.targets import movement_tiles
 from pokegent.actions.items import ItemCatalog, ItemOptionBuilder
+from pokegent.actions.menu.start_party.builder import _training_targets
 from pokegent.games.gen3 import mechanics_ids as I
 from pokegent.games.gen3.firered.maps import map_constants as K
 from pokegent.games.gen3.firered.maps.map_boulders import puzzles
@@ -630,6 +631,7 @@ class FieldBuilder:
         if self.field_menu and len(snap.party) > 1:
             lead = next((mon for mon in snap.party if mon.slot == 0), None)
             lead_name = _party_species_name(lead, self.tables) if lead else "the current lead"
+            below_goal = {t["slot"] for t in _training_targets(ctx)}
             for member in snap.party:
                 if member.slot == 0:
                     continue
@@ -652,6 +654,14 @@ class FieldBuilder:
                             "party_order": True,
                             "party_slot": member.slot,
                             "personality": member.personality,
+                            **(
+                                {
+                                    "brings_training_target_to_lead": member.slot in below_goal
+                                    and 0 not in below_goal
+                                }
+                                if ctx.objective_levels
+                                else {}
+                            ),
                         },
                         executor_ref=SWAP_PARTY,
                         executor_args={"target_personality": member.personality},
