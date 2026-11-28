@@ -838,6 +838,7 @@ class FieldBuilder:
             ]
         options = self._filter_closed_navigation_warps(options, snap, navigation_plan)
         options = self._filter_map_only_arrived_exits(options, navigation_plan)
+        options = self._filter_alternating_exits(options, ctx.recent_failed)
         if navigation_result is not None and navigation_result.unknown_reason is not None:
             options.append(
                 self._diagnostic(
@@ -1371,6 +1372,20 @@ class FieldBuilder:
             else:
                 out.append(option)
         return out
+
+    def _filter_alternating_exits(self, options: list[Option], records) -> list[Option]:
+        """#133b: hide held looping exits; never leave no chooseable option."""
+        named: set[str] = set()
+        for record in records:
+            reason = record.get("alternating") if record.get("scene_id") == "loop_guard" else None
+            if isinstance(reason, str) and "options=" in reason:
+                named.update(reason.split("options=", 1)[1].split("/"))
+        out = [
+            self._selection_suppressed(o, "alternating_without_progress")
+            if o.chooseable and o.id in named else o
+            for o in options
+        ]
+        return out if any(o.chooseable for o in out) else options
 
     @staticmethod
     def _selection_suppressed(
