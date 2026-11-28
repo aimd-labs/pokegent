@@ -700,6 +700,11 @@ def _r_switch(f: Mapping[str, Any]) -> list[str]:
     if isinstance(best, Mapping) and isinstance(best.get("name"), str):
         effect = _r_move_effect({"effectiveness": best.get("effectiveness")})
         out.append(f"best move {best['name']}: {effect[0] if effect else 'neutral'}")
+    stab = f.get("foe_stab_vs_candidate")
+    if isinstance(stab, Mapping) and isinstance(stab.get("foe_type"), str):
+        eff = _num(stab.get("effectiveness"))
+        if eff is not None:
+            out.append(f"the foe's {stab['foe_type']} type hits it x{_fmt(eff)}")
     return out
 
 
