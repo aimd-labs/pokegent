@@ -11,7 +11,7 @@ def _mon(species, level, moves=()):
              moves=tuple(N(move_id=m, pp=30) for m in moves))
 
 
-def _draft(boxes):
+def _draft(boxes, goals=()):
     storage = N(boxes=tuple(tuple(b) for b in boxes),
                 names=tuple(f"B{i}" for i in range(len(boxes))))
     ui = N(valid=True, menu=N(menu=N(window_in_use=True, consistent=True,
@@ -22,7 +22,7 @@ def _draft(boxes):
                move_name=lambda m: {1: "Pound", 2: "Growl"}.get(m, f"m{m}"))
     return _storage_main(N(ui=ui, storage=storage),
                          Verdict("pc.main", 0.95, evidence={}),
-                         SystemFlowOptions(tables=tables, menus=menus))
+                         SystemFlowOptions(tables=tables, menus=menus), goals)
 
 
 def test_storage_main_exposes_a_bounded_box_roster():
@@ -42,3 +42,16 @@ def test_storage_main_exposes_a_bounded_box_roster():
                           state_fingerprint=draft.state_fingerprint, context={"box_roster": roster})
     payload = to_system_one_payload(frame)
     assert "BOXNICK" not in str(payload) and "personality" not in str(payload)
+
+
+def _entries(goals, level):
+    return _draft([[_mon(1, level)]], goals).options[0].facts["box_roster"]["entries"]
+
+
+def test_box_roster_flags_rows_below_an_all_party_level_goal():
+    low, high = _entries(((None, None, 30),), 25)[0], _entries(((None, None, 30),), 35)[0]
+    assert (low["below_goal"], low["goal_level"]) == (True, 30)
+    assert high["below_goal"] is False and "goal_level" not in high
+    assert "below_goal" not in _entries((), 25)[0]
+    # Personality or slot goals address party members, rows carry neither: ignored.
+    assert "below_goal" not in _entries(((101, None, 30), (None, 2, 30)), 25)[0]
