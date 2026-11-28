@@ -126,7 +126,11 @@ class ShopBuilder:
         if scene == R.BUY_CONFIRM:
             return self.buy_confirm(ctx.snapshot)
         if scene == R.BUY_DONE:
-            return self.buy_done(ctx.snapshot)
+            return self.buy_done(
+                ctx.snapshot,
+                objective_item=ctx.objective_item,
+                objective_quantity=ctx.objective_quantity,
+            )
         if scene == R.SELL_LIST:
             return self.sell_list(ctx.snapshot)
         if scene == R.SELL_QUANTITY:
@@ -676,7 +680,35 @@ class ShopBuilder:
             },
         )
 
-    def buy_done(self, snapshot: StateSnapshot) -> FrameDraft:
+    def buy_done(
+        self,
+        snapshot: StateSnapshot,
+        *,
+        objective_item: int | None = None,
+        objective_quantity: int | None = None,
+    ) -> FrameDraft:
+        context: dict[str, Any] = {
+            "summary": "The purchase result is on screen. Choose whether to continue or leave."
+        }
+        continue_facts: dict[str, Any] = {}
+        quit_facts: dict[str, Any] = {}
+        if objective_item is not None and objective_quantity is not None:
+            owned = _owned(snapshot, objective_item)
+            remaining = max(0, objective_quantity - owned)
+            met = remaining == 0
+            context.update(
+                objective_owned=owned,
+                objective_target=objective_quantity,
+                objective_remaining=remaining,
+                objective_goal_met=met,
+            )
+            progress = f"({owned}/{objective_quantity})"
+            context["summary"] = (
+                f"The purchase result is on screen; goal met {progress}. Leave the shop."
+                if met
+                else f"The purchase result is on screen; {remaining} more needed {progress}."
+            )
+            (quit_facts if met else continue_facts)["shop_serves_goal"] = True
         return FrameDraft(
             options=(
                 _option(
@@ -687,6 +719,7 @@ class ShopBuilder:
                     executor_ref=R.REF_DONE_CONTINUE,
                     postcondition_ref=R.POST_MOVED_ON,
                     verb="CONTINUE_SHOPPING",
+                    facts=continue_facts,
                 ),
                 _option(
                     "quit",
@@ -696,14 +729,13 @@ class ShopBuilder:
                     executor_ref=R.REF_DONE_QUIT,
                     postcondition_ref=R.POST_MOVED_ON,
                     verb="QUIT",
+                    facts=quit_facts,
                 ),
             ),
             state_fingerprint=fingerprint(
                 R.BUY_DONE, money=_money(snapshot), bag=_bag_fingerprint(snapshot)
             ),
-            context={
-                "summary": "The purchase result is on screen. Choose whether to continue or leave."
-            },
+            context=context,
         )
 
     def _item(self, item_id: int | None):
