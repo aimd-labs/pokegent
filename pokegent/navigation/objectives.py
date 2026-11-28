@@ -16,8 +16,26 @@ _STATIC_SOURCES: dict[int, tuple[tuple[int, int], str]] = {
     145: ((1, 95), "Power Plant"),  # Zapdos
     146: ((1, 101), "Mt. Ember Summit"),  # Moltres
     150: ((1, 74), "Cerulean Cave B1F"),  # Mewtwo
-    143: ((3, 30), "Route 12"),  # Snorlax; the Route 16 sleeper (3, 34) is not modelled
+    143: ((3, 30), "Route 12"),  # Snorlax; second sleeper in _STATIC_ALTERNATES
 }
+# Further fixed maps for a species, used once the earlier one's sleeper is gone (hide flag set).
+_STATIC_ALTERNATES: dict[int, tuple[tuple[tuple[int, int], str], ...]] = {
+    143: (((3, 34), "Route 16"),),
+}
+
+
+def _static_source_gone(world, snapshot, map_key: tuple[int, int]) -> bool:
+    """True when a ROM sleeper object on the map has its hide flag set in the snapshot."""
+    flags = getattr(snapshot, "flags", None)
+    reader = getattr(world, "map_reader", None)
+    if flags is None or reader is None:
+        return False
+    result = reader.read_static(*map_key)
+    state = result.state if result.usable else None
+    return state is not None and any(
+        obj.role == "snorlax" and obj.hidden_flag_id and flags.is_set(obj.hidden_flag_id)
+        for obj in state.objects
+    )
 
 
 def resolve_collect_navigation(snapshot, resolved: ResolvedObjective | None, world):
@@ -41,6 +59,17 @@ def resolve_collect_navigation(snapshot, resolved: ResolvedObjective | None, wor
     if dex_probe is not None:
         species = dex_probe.species
     static_source = _STATIC_SOURCES.get(species) if species is not None else None
+    if static_source is not None and species in _STATIC_ALTERNATES:
+        remaining = [
+            source
+            for source in (static_source, *_STATIC_ALTERNATES[species])
+            if not _static_source_gone(world, snapshot, source[0])
+        ]
+        if not remaining:
+            name = world.tables.species_name(species)
+            reason = f"no remaining static source for {name} ({species})"
+            return replace(resolved, navigation_target=None, navigation_reason=reason), ()
+        static_source = remaining[0]
     if static_source is not None:
         (group, number), map_name = static_source
         target = ResolvedTarget(group=group, number=number, map_name=map_name, species=species)
