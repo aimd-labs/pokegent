@@ -485,7 +485,9 @@ class GameTables:
         species_dex: tuple[int, ...] = (),
         tutor_moves: tuple[int, ...] = (),
         tutor_learnsets: tuple[int, ...] = (),
+        trades: tuple[tuple[int, int], ...] = (),
     ) -> None:
+        self._trades = trades
         self._tutor_moves = tutor_moves
         self._tutor_learnsets = tutor_learnsets
         self._moves = moves
@@ -589,6 +591,10 @@ class GameTables:
             tutor_learnsets = struct.unpack(
                 f"<{n_species}H", port.read_range(tutor["sTutorLearnsets"], n_species * 2)
             )
+        try:
+            trades = ingame_trades(port, profile)
+        except TablesError:
+            trades = ()
         return cls(
             moves=moves,
             species=species,
@@ -596,6 +602,7 @@ class GameTables:
             type_chart=chart,
             ability_names=ability_names,
             type_names=type_names,
+            trades=trades,
             tutor_moves=tutor_moves,
             tutor_learnsets=tutor_learnsets,
             profile_id=profile.profile_id,
@@ -722,6 +729,7 @@ class GameTables:
             tmhm_learnsets=tuple(bytes.fromhex(row) for row in document["tmhm_learnsets"]),
             tmhm_moves=tuple(document["tmhm_moves"]),
             evolutions=evolutions,
+            trades=tuple(tuple(t) for t in document.get("trades", ())),
             tutor_moves=tuple(document.get("tutor_moves", ())),
             tutor_learnsets=tuple(document.get("tutor_learnsets", ())),
         )
@@ -761,6 +769,7 @@ class GameTables:
             "type_names": list(self._type_names),
             "tmhm_learnsets": [row.hex() for row in self._tmhm_learnsets],
             "tmhm_moves": list(self._tmhm_moves),
+            "trades": [list(t) for t in self._trades],
             "tutor_moves": list(self._tutor_moves),
             "tutor_learnsets": list(self._tutor_learnsets),
             "evolutions": [[vars(entry) for entry in rows] for rows in self._evolutions],
@@ -829,6 +838,10 @@ class GameTables:
             return None
         row = self._tmhm_learnsets[species]
         return bool(row[bit // 8] & (1 << (bit % 8)))
+
+    def ingame_trade_table(self) -> tuple[tuple[int, int], ...] | None:
+        """(offered, wanted) species ids per NPC trade, or ``None`` when unreadable."""
+        return self._trades or None
 
     def tutor_move(self, index: int) -> int | None:
         """Move id of tutor ``index`` (pret sTutorMoves), or ``None`` when unreadable."""

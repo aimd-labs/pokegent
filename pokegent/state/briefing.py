@@ -212,6 +212,52 @@ def trim_briefing(result: dict[str, Any], *, max_bytes: int = BRIEFING_MAX_BYTES
     return result
 
 
+def _table_facts(snapshot: Any, tables: Any) -> dict[str, Any]:
+    """Facts: in-game trades the party can do and tutor moves it could learn (keys absent when
+    a table is unreadable). Party indexes only; the Pokedex test reads snapshot.pokedex.owned."""
+    out: dict[str, Any] = {}
+    if tables is None:
+        return out
+    party = [
+        (i, int(mon.species))
+        for i, mon in enumerate(getattr(snapshot, "party", ()))
+        if getattr(mon, "is_egg", None) is not True
+    ]
+    owned = getattr(getattr(snapshot, "pokedex", None), "owned", None)
+    try:
+        table = tables.ingame_trade_table()
+        trades = []
+        for offered, wanted in table or ():
+            dex = tables.national_dex(offered)
+            members = [i for i, species in party if species == wanted]
+            if owned is None or dex is None or dex in owned or not members:
+                continue
+            trades.append(
+                {
+                    "give": tables.species_name(wanted).title(),
+                    "get": tables.species_name(offered).title(),
+                    "party_members": members,
+                }
+            )
+        if trades:
+            out["trades_available"] = trades
+        learnable = []
+        for index in range(15):
+            move_id = tables.tutor_move(index)
+            members = [
+                i for i, s in party if move_id and tables.can_learn_tutor(s, move_id) is True
+            ]
+            if members:
+                learnable.append(
+                    {"move": _name(tables, "move_name", move_id), "party_members": members}
+                )
+        if learnable:
+            out["tutor_moves_learnable"] = learnable
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+        pass
+    return out
+
+
 def build_briefing(
     snapshot: Any,
     *,
@@ -397,4 +443,5 @@ def build_briefing(
     result["keys"] = {"location": location}
     if story_facts is not None:
         result["story_facts"] = dict(story_facts)
+    result.update(_table_facts(snapshot, tables))
     return trim_briefing(result) if trim else result
