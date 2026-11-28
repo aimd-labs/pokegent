@@ -7,14 +7,14 @@ from pokegent.options.registry import BuildContext
 from pokegent.state.scenes import SceneResult
 
 
-def _ctx(hps, items=(), egg=None):
+def _ctx(hps, items=(), egg=None, pocket_name="items"):
     fields = [
         {"hp": h, "max_hp": 100 if h >= 0 else 0, "is_egg": i == egg, "status": 0}
         for i, h in enumerate(hps)
     ]
     party = tuple(type(m)(**{**vars(m), **f}) for m, f in zip(_members((25, 1, 6)), fields))
     pocket = BagPocket(
-        pocket="items", capacity=42, items=tuple(BagItem(item_id=i, quantity=1) for i in items)
+        pocket=pocket_name, capacity=42, items=tuple(BagItem(item_id=i, quantity=1) for i in items)
     )
     snap = _snap(members=3).model_copy(update={"party": party, "bag": (pocket,)})
     ctx = BuildContext(snapshot=snap, scene=SceneResult(scene_id="field.free", confidence=1))
@@ -39,6 +39,12 @@ def test_center_when_low_or_fainted_and_not_covered():
     assert fact["party_hp_pct"] == {"lowest": 30, "average": 66}
     assert (fact["suggest"], fact["heal_items"], fact["revives"]) == ("heal_at_center", 0, 0)
     assert _advice((0, 90, 80), (13,))["suggest"] == "heal_at_center"
+
+
+def test_berries_pocket_oran_and_sitrus_count_as_heal_stock():
+    for berry in (139, 142):
+        fact = _advice((30, 90, 80), (berry,), pocket_name="berries")
+        assert (fact["suggest"], fact["heal_items"]) == ("use_items", 1)
 
 
 def test_items_ok_absent_unreadable_skipped_options_unchanged():
