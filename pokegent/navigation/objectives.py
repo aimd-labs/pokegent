@@ -12,8 +12,10 @@ _SUPPORTED_WILD_METHODS = frozenset({"land", "water"})
 
 # Static legendaries have no wild-table rows but a fixed ROM map (pret FIRERED keys).
 _STATIC_SOURCES: dict[int, tuple[tuple[int, int], str]] = {
-    144: ((1, 87), "Seafoam Islands B4F"),  # Articuno; Mewtwo (150) deferred
+    144: ((1, 87), "Seafoam Islands B4F"),  # Articuno
     145: ((1, 95), "Power Plant"),  # Zapdos
+    146: ((1, 101), "Mt. Ember Summit"),  # Moltres
+    150: ((1, 74), "Cerulean Cave B1F"),  # Mewtwo
 }
 
 
