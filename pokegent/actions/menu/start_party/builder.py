@@ -80,6 +80,25 @@ def _objective(ctx: BuildContext) -> str:
     return " ".join((ctx.objective or "no active objective").split())[:240]
 
 
+def _training_targets(ctx: BuildContext) -> tuple[dict[str, Any], ...]:
+    """Party members still below a level goal of the active objective, with that goal."""
+    found: dict[int, dict[str, Any]] = {}
+    for personality, slot, goal in ctx.objective_levels:
+        for mon in ctx.snapshot.party:
+            named = personality is None and slot is None
+            if (named or mon.personality == personality or mon.slot == slot) and mon.level < goal:
+                found.setdefault(
+                    mon.slot,
+                    {
+                        "slot": mon.slot,
+                        "name": mon.nickname or f"species {mon.species}",
+                        "level": mon.level,
+                        "goal_level": goal,
+                    },
+                )
+    return tuple(found[slot] for slot in sorted(found))
+
+
 def _facts(ctx: BuildContext, entry: MenuEntry, *, novelty: str = "n/a") -> dict[str, Any]:
     return {
         "menu_choice": True,
@@ -296,6 +315,7 @@ class StartPartyBuilder:
                     )
                 )
         facts = party_facts(ctx.snapshot)
+        targets = _training_targets(ctx)
         return FrameDraft(
             options=tuple(options),
             state_fingerprint=_fingerprint(scene, model, ctx.snapshot),
@@ -307,6 +327,7 @@ class StartPartyBuilder:
                 ),
                 "team_facts": facts,
                 "team_facts_text": "\n".join(facts),
+                **({"training_targets": targets} if targets else {}),
             },
         )
 

@@ -89,6 +89,7 @@ class GoalView:
     kind: str | None = None
     target_item: int | None = None
     target_quantity: int | None = None
+    level_goals: tuple[tuple[int | None, int | None, int], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "summary", bound_summary(self.summary))
@@ -277,6 +278,11 @@ class ObjectiveSession:
             kind=obj.kind,
             target_item=resolved.target.item,
             target_quantity=resolved.target.quantity,
+            level_goals=tuple(
+                (getattr(p, "personality", None), getattr(p, "slot", None), p.min_level)
+                for p in obj.success_probes
+                if p.kind in ("party_level", "mon_level")
+            ),
         )
 
     # -- after a perception --------------------------------------------------------------
