@@ -972,7 +972,7 @@ class FieldBuilder:
         readiness = league_readiness(snap, ident.name, ctx.objective_levels, self.tables)
         if readiness:
             context["league_readiness"] = readiness
-        if advice := heal_advice(snap):
+        if advice := heal_advice(snap, self.tables):
             context["heal_advice"] = advice
         failed = [
             f"a field action ({r['error_code']})"
