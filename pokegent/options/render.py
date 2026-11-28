@@ -696,6 +696,10 @@ def _r_switch(f: Mapping[str, Any]) -> list[str]:
         out.append(f"{'/'.join(types)} type")
     if f.get("foe_gets_free_attack") is True:
         out.append("the foe gets a free attack while you switch")
+    best = f.get("best_move")
+    if isinstance(best, Mapping) and isinstance(best.get("name"), str):
+        effect = _r_move_effect({"effectiveness": best.get("effectiveness")})
+        out.append(f"best move {best['name']}: {effect[0] if effect else 'neutral'}")
     return out
 
 
