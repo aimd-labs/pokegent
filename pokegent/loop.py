@@ -825,6 +825,8 @@ class Runner:
             loop_due = self._progress.loop_reason()
             if loop_due is None:
                 loop_due = self._progress.exit_cycle_reason()
+            if loop_due is None:
+                loop_due = self._progress.alternating_reason()
             if loop_due is not None:
                 return self._report_no_progress(loop_due, perception.frame)
         if (

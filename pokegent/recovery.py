@@ -27,6 +27,9 @@ class ProgressMonitor:
       forever).  This catches loops that *change position* on every step, which
       by design never trip ``decision_limit``, while a monotone grind that
       changes party state each step while reusing one option stays clean.
+    * ``alternating_without_progress`` — a verified 2..4 warp/edge hop block
+      repeated twice with the signature returning; a single trip, an unverified
+      hop, a durable change or an unreadable map never arms it.
 
     The opt-in ``exit_cycle_guard`` independently recognises a three-action,
     two-map round trip the two-option detector cannot express.  It is default
@@ -72,6 +75,9 @@ class ProgressMonitor:
         #: #133: exactly three identical three-entry blocks, never a longer history.
         self._cycle_window: deque[tuple[str, str, tuple[int, int]]] = deque(maxlen=9)
         self._cycle_map_key: tuple[int, int] | None = None
+        #: #133: RAM-verified warp/edge hops in order, two copies of a 4-hop block.
+        self._hop_window: deque[tuple[str, str]] = deque(maxlen=8)
+        self._hop_map_key: tuple[int, int] | None = None
 
     @staticmethod
     def _usable_map_key(value: Any) -> tuple[int, int] | None:
@@ -91,12 +97,13 @@ class ProgressMonitor:
         map_key: tuple[int, int] | None = None,
     ) -> bool:
         """Return true only for a verified action followed by a semantic state change."""
+        usable_map = self._usable_map_key(map_key)
+        if usable_map is None:
+            self._cycle_window.clear()
+            self._hop_window.clear()
         if self.exit_cycle_guard:
-            usable_map = self._usable_map_key(map_key)
-            if usable_map is None:
-                # An unreadable map proves nothing about a map round trip.
-                self._cycle_window.clear()
             self._cycle_map_key = usable_map
+        self._hop_map_key = usable_map
         if self._signature is None:
             self._signature = signature
             self.last_progress_at = now
@@ -137,14 +144,31 @@ class ProgressMonitor:
             else:
                 # Interrupted/failed/unverified/noneligible actions are not cycle evidence.
                 self._cycle_window.clear()
+        if (cycle_verified is True and isinstance(option_id, str)
+                and option_id.startswith(("warp:", "edge:"))
+                and self._signature is not None
+                and self._hop_map_key is not None):
+            self._hop_window.append((option_id, self._signature))
+        else:
+            self._hop_window.clear()
+
+    def alternating_reason(self) -> str | None:
+        """Fire when a verified 2..4 warp/edge hop block repeats twice (closed)."""
+        window = list(self._hop_window)
+        if len(window) % 2 or not 4 <= len(window) <= 8:
+            return None
+        half = len(window) // 2
+        first, second = window[:half], window[half:]
+        if (first != second or self._signature != first[0][1]
+                or len({sig for _, sig in window}) < 2):
+            return None
+        options = "/".join(sorted({oid for oid, _ in first}))
+        return f"alternating_without_progress:hops={half},options={options}"
 
     def due_reason(self) -> str | None:
         if self.decisions_since_progress >= self.decision_limit:
             return f"decision_limit:{self.decisions_since_progress}"
-        loop = self.loop_reason()
-        if loop is not None:
-            return loop
-        return self.exit_cycle_reason()
+        return self.loop_reason() or self.alternating_reason() or self.exit_cycle_reason()
 
     def exit_cycle_reason(self) -> str | None:
         """``exit_cycle`` only for three identical three-action blocks over two maps.
@@ -256,6 +280,7 @@ class ProgressMonitor:
         if clear_loop:
             self._window.clear()
             self._cycle_window.clear()
+            self._hop_window.clear()
 
     @property
     def signature(self) -> str | None:
