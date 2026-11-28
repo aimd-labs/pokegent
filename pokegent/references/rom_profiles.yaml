@@ -916,6 +916,11 @@ profiles:
         source: "pret pokefirered src/party_menu.c Task_PrintAndWaitForText; pokefirered.sym 08120328, size 0x48"
         verified_by:
           - "FireRed USA rev0 source-bound symbol: waits on RunTextPrinters_CheckActive(6); live #274 saved state: active in slot 1 (priority 1, data0=1) with the already-holding message"
+      Task_UpdateHeldItemSprite:
+        address: 0x08123BF0
+        source: "pret pokefirered src/party_menu.c Task_UpdateHeldItemSprite; pokefirered.sym 08123bf0"
+        verified_by:
+          - "FireRed USA rev0 live #274 dump: Thumb pointer 0x08123BF1 in slot 0 (priority 0) beside Task_PrintAndWaitForText after a verified give; size not asserted"
       Task_HandleStopLearningMoveYesNoInput:
         address: 0x08126170
         source: "pret pokefirered 037335f4 src/party_menu.c:4688; pokefirered.sym Task_HandleStopLearningMoveYesNoInput"

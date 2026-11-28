@@ -64,3 +64,43 @@ def test_choose_party_list_still_offers_select_mon() -> None:
     assert not scene.busy and scene.evidence["phase"] == "choose_mon"
     frame = _frame(snapshot)
     assert {opt.id for opt in frame.options} >= {"party:cancel", "party:12345678"}
+
+
+def _give_ack_snapshot(*task_names: str) -> SimpleNamespace:
+    """Synthetic copy of the live #274 post-give dump (stale yes/no flag, choose_mon action)."""
+    snap = _party_snapshot(*task_names)
+    ui = snap.ui
+    ui.main.callback2 = SimpleNamespace(name="CB2_UpdatePartyMenu", verified=True)
+    ui.menu.party.action_name, ui.menu.party.slot_id, ui.menu.party.item_id = "choose_mon", 5, 182
+    ui.menu.yes_no = SimpleNamespace(window_in_use=True, window_id=6)
+    holder = SimpleNamespace(**{**vars(snap.party[0]), "slot": 5, "held_item": 182})
+    snap.party = (*snap.party, holder)
+    return snap
+
+
+def test_post_give_message_offers_only_a() -> None:
+    snap = _give_ack_snapshot("Task_UpdateHeldItemSprite", "Task_PrintAndWaitForText")
+    scene = StartPartyDetector().detect(snap)
+    assert scene is not None and not scene.busy and scene.evidence["phase"] == "ack_message"
+    options = _frame(snap).options
+    assert [(o.id, o.verb) for o in options] == [("acknowledge_party_message", "ADVANCE_TEXT")]
+
+
+def test_post_give_message_without_sprite_task_stays_busy() -> None:
+    scene = StartPartyDetector().detect(_give_ack_snapshot("Task_PrintAndWaitForText"))
+    assert scene is not None and scene.busy and scene.evidence["phase"] == "load_party"
+
+
+def test_post_give_message_with_a_yes_no_task_stays_busy() -> None:
+    snap = _give_ack_snapshot(
+        "Task_UpdateHeldItemSprite", "Task_PrintAndWaitForText", "Task_SwitchItemsYesNo"
+    )
+    scene = StartPartyDetector().detect(snap)
+    assert scene is not None and scene.evidence["phase"] != "ack_message"
+
+
+def test_post_give_message_without_proven_transfer_stays_busy() -> None:
+    snap = _give_ack_snapshot("Task_UpdateHeldItemSprite", "Task_PrintAndWaitForText")
+    snap.party[1].held_item = 0
+    scene = StartPartyDetector().detect(snap)
+    assert scene is not None and scene.busy and scene.evidence["phase"] == "load_party"
