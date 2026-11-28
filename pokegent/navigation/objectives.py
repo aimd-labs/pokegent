@@ -16,6 +16,7 @@ _STATIC_SOURCES: dict[int, tuple[tuple[int, int], str]] = {
     145: ((1, 95), "Power Plant"),  # Zapdos
     146: ((1, 101), "Mt. Ember Summit"),  # Moltres
     150: ((1, 74), "Cerulean Cave B1F"),  # Mewtwo
+    143: ((3, 30), "Route 12"),  # Snorlax; the Route 16 sleeper (3, 34) is not modelled
 }
 
 

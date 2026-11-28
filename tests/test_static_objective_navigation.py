@@ -48,6 +48,14 @@ def test_mewtwo_static_objective_resolves_to_cerulean_cave_b1f() -> None:
     assert resolved.navigation_reason is None
 
 
+def test_snorlax_static_objective_resolves_to_route_12() -> None:
+    resolved, _sources = resolve_collect_navigation(SimpleNamespace(), _resolved(143), _world())
+    assert resolved.navigation_target is not None
+    assert resolved.navigation_target.map_key == (3, 30)
+    assert resolved.navigation_target.map_name == "Route 12"
+    assert resolved.navigation_reason is None
+
+
 def _surf_gate_graph() -> RegionGraph:
     return RegionGraph({"maps": {
         "3:44": {"connections": [{"dest": "3:3", "pairs": [{"from": 0, "to": 0}]}]},
