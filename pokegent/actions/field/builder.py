@@ -197,6 +197,28 @@ def _shop_clerk_local_id(state: MapState, view: WorldView, item_id: int | None) 
     )
 
 
+def _clerk_goal_facts(rows: list[dict], row_index: int, quantity: Any, snapshot: Any) -> dict:
+    """Price and affordability of the goal item; unreadable values are left out."""
+    price = rows[row_index].get("price")
+    if not isinstance(price, int) or isinstance(price, bool):
+        return {}
+    if not isinstance(quantity, int):
+        return {"goal_item_price": price}
+    item_id = rows[row_index].get("item_id")
+    bag = getattr(snapshot, "bag", None)
+    player = getattr(snapshot, "player", None)
+    money = getattr(player, "money", None)
+    if bag is None or not isinstance(money, int):
+        return {"goal_item_price": price}
+    owned = sum(i.quantity for p in bag for i in p.items if i.item_id == item_id)
+    remaining = max(0, quantity - owned)
+    return {
+        "goal_item_price": price,
+        "goal_item_remaining": remaining,
+        "money_sufficient": remaining == 0 or money >= price * remaining,
+    }
+
+
 def _shop_target_is_local(resolved: ResolvedObjective | None, map_key: tuple[int, int]) -> bool:
     return resolved is not None and resolved.target.map_key == map_key
 
@@ -1819,16 +1841,27 @@ class FieldBuilder:
                                 if resolved is not None
                                 else objective.target.item
                             )
-                            serves_shop = any(
-                                row.get("item_id") == target_item
+                            goal_rows = [
+                                index
+                                for index, row in enumerate(facts["mart_inventory"])
+                                if row.get("item_id") == target_item
                                 or (
                                     isinstance(objective.target.item, str)
                                     and str(row.get("name", "")).casefold()
                                     == objective.target.item.casefold()
                                 )
-                                for row in facts["mart_inventory"]
-                            )
+                            ]
+                            serves_shop = bool(goal_rows)
                             facts["serves_goal"] = serves_shop
+                            if serves_shop:
+                                facts.update(
+                                    _clerk_goal_facts(
+                                        facts["mart_inventory"],
+                                        goal_rows[0],
+                                        objective.target.quantity,
+                                        snapshot,
+                                    )
+                                )
                             if serves_shop and not shop_step_assigned:
                                 facts.update(
                                     {
