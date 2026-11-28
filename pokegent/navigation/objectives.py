@@ -96,7 +96,9 @@ def resolve_collect_navigation(snapshot, resolved: ResolvedObjective | None, wor
             if resolved.target.map_key is None
             else f"{name} ({species}) is not in the ROM wild table for {resolved.target.map_name}"
         )
-        return replace(resolved, navigation_map_keys=frozenset(), navigation_reason=reason), ()
+        if resolved.target.map_key is not None or not hasattr(world, "pokemon_gift_sources"):
+            return replace(resolved, navigation_map_keys=frozenset(), navigation_reason=reason), ()
+        # No wild table row at all: a gift-only species falls through to the gift scan below.
     is_pokemon = (
         species is not None
         and hasattr(world, "pokemon_gift_sources")
