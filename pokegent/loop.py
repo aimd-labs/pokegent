@@ -433,6 +433,15 @@ class RunSummary:
 # -- the runner -----------------------------------------------------------------------------------
 
 
+ALTERNATING_HOLD_FRAMES = 24
+
+
+def alternating_hold_records(reason: str | None, since: int, now: int) -> tuple[dict, ...]:
+    if reason is None or now - since > ALTERNATING_HOLD_FRAMES:
+        return ()
+    return ({"scene_id": "loop_guard", "alternating": reason},)
+
+
 class Runner:
     def __init__(
         self,
@@ -521,6 +530,7 @@ class Runner:
         # map-unchanged result outside the scene-family failure deque so transitions cannot erase
         # the evidence before the route returns to this door.
         self._warp_blocks: deque[dict[str, Any]] = deque(maxlen=20)
+        self._alternating_hold: tuple[str | None, int] = (None, 0)
         # Dialog-block repetitions survive the field -> dialog -> field handoff. Ordinary execution
         # failures deliberately retain their existing reset policy.
         self._dialog_blocks: deque[dict[str, Any]] = deque(maxlen=20)
@@ -747,7 +757,8 @@ class Runner:
         perception = self.perceiver.perceive(
             self._next_decision_id(),
             self._previous,
-            (*self._recent_failed, *self._warp_blocks, *self._dialog_blocks),
+            (*self._recent_failed, *self._warp_blocks, *self._dialog_blocks,
+             *alternating_hold_records(*self._alternating_hold, self._decision_seq)),
         )
         if perception.snapshot.emulator_frame is not None:
             self._frame_no = perception.snapshot.emulator_frame
@@ -802,6 +813,7 @@ class Runner:
         loop_goal_key = self._objective_ids()
         if loop_goal_key != self._loop_goal_key:
             self._loop_goal_key = loop_goal_key
+            self._alternating_hold = (None, 0)
             self._progress.reset_window(
                 now=observed_at, iteration=self.counters.iterations, clear_loop=True
             )
@@ -828,6 +840,8 @@ class Runner:
             if loop_due is None:
                 loop_due = self._progress.alternating_reason()
             if loop_due is not None:
+                if loop_due.startswith("alternating_without_progress"):
+                    self._alternating_hold = (loop_due, self._decision_seq)
                 return self._report_no_progress(loop_due, perception.frame)
         if (
             not progressed
