@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
-from pokegent.actions.field.builder import _shop_clerk_local_id, _shop_target_is_local
+from pokegent.actions.field.builder import (
+    _clerk_goal_facts,
+    _shop_clerk_local_id,
+    _shop_target_is_local,
+)
 from pokegent.goals.models import Objective, Target
 from pokegent.goals.validate import ResolvedObjective, ResolvedTarget
 from pokegent.navigation.serving import serves_goal
@@ -94,3 +98,30 @@ def test_shop_clerk_selection_uses_matching_mart_inventory() -> None:
     )
 
     assert _shop_clerk_local_id(state, view, 20) == 2
+
+
+def _clerk_snapshot(money, owned):
+    items = [SimpleNamespace(item_id=20, quantity=owned)] if owned else []
+    return SimpleNamespace(bag=[SimpleNamespace(items=items)], player=SimpleNamespace(money=money))
+
+
+def test_clerk_goal_facts_price_and_affordability() -> None:
+    rows = [{"item_id": 20, "name": "Max Potion", "price": 2500}]
+    got = _clerk_goal_facts(rows, 0, 3, _clerk_snapshot(5000, 1))
+    assert got == {
+        "goal_item_price": 2500,
+        "goal_item_remaining": 2,
+        "money_sufficient": True,
+    }
+    short = _clerk_goal_facts(rows, 0, 3, _clerk_snapshot(4999, 1))
+    assert short["money_sufficient"] is False
+    done = _clerk_goal_facts(rows, 0, 1, _clerk_snapshot(0, 1))
+    assert done["goal_item_remaining"] == 0 and done["money_sufficient"] is True
+
+
+def test_clerk_goal_facts_unknown_stays_absent() -> None:
+    assert _clerk_goal_facts([{"item_id": 20, "price": None}], 0, 1, _clerk_snapshot(1, 0)) == {}
+    rows = [{"item_id": 20, "price": 100}]
+    assert _clerk_goal_facts(rows, 0, 2, SimpleNamespace(bag=[], player=None)) == {
+        "goal_item_price": 100
+    }
