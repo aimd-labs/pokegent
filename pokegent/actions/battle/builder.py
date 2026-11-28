@@ -216,6 +216,14 @@ class BattleBuilder:
             "turns_played": view.block.turn,
             "opposing_pokemon": theirs,
         }
+        if view.tables is not None:
+            try:
+                out["opposing_types"] = [
+                    view.tables.type_name(value)
+                    for value in dict.fromkeys(view.tables.species(foe.species).types)
+                ]
+            except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+                pass
         if view.kind != "safari":
             mine = f"{me.name} Lv{me.level} HP {me.hp}/{me.max_hp}"
             if me.status:
