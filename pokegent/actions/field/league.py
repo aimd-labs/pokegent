@@ -3,7 +3,7 @@ from typing import Any
 from pokegent.games.gen3 import mechanics_ids as I
 
 PREFIXES = ("IndigoPlateau", "PokemonLeague")
-DEFAULT_TARGET_LEVEL = 50
+DEFAULT_TARGET_LEVEL = 55  # Champion team is about 59-63; an objective level goal overrides
 _HEALS = (I.ITEM_POTION, I.ITEM_SUPER_POTION, I.ITEM_HYPER_POTION, I.ITEM_MAX_POTION)
 
 

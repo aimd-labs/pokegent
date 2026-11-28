@@ -23,7 +23,7 @@ def _draft(levels, name, items=(), goals=()):
 
 def test_fact_on_league_maps_with_default_and_objective_target():
     fact = _draft((44, 47, 42), "IndigoPlateau_Exterior").context["league_readiness"]
-    assert (fact["min_level"], fact["avg_level"], fact["target_level"]) == (42, 44.3, 50)
+    assert (fact["min_level"], fact["avg_level"], fact["target_level"]) == (42, 44.3, 55)
     assert fact["target_source"] == "default" and len(fact["below_target"]) == 3
     goal = _draft((44, 47, 42), "PokemonLeague_LoreleisRoom", goals=((None, None, 46),))
     assert goal.context["league_readiness"]["target_level"] == 46
